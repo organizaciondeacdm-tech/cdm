@@ -136,12 +136,30 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Servir archivos estáticos en producción
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../../frontend/build')));
+// Servir archivos estáticos en producción (solo si existe el directorio)
+const fs = require('fs');
+const frontendBuildPath = process.env.NODE_ENV === 'production' 
+  ? path.join(__dirname, '../../frontend/build')
+  : null;
+
+if (frontendBuildPath && fs.existsSync(frontendBuildPath)) {
+  app.use(express.static(frontendBuildPath));
   
+  // SPA fallback - servir index.html para rutas desconocidas
   app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../../frontend/build', 'index.html'));
+    // Evitar servir index.html para rutas API o assets
+    if (!req.path.startsWith('/api/') && !req.path.includes('.')) {
+      res.sendFile(path.join(frontendBuildPath, 'index.html'), (err) => {
+        if (err) {
+          res.status(404).json({
+            success: false,
+            error: 'Ruta no encontrada'
+          });
+        }
+      });
+      return;
+    }
+    next();
   });
 }
 
