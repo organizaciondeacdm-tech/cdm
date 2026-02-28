@@ -23,8 +23,26 @@ const reporteRoutes = require('./routes/reporteRoutes');
 
 const app = express();
 
-// Conectar a MongoDB
-connectDB();
+// Flag para rastrear inicialización
+let dbInitialized = false;
+let dbInitializing = false;
+
+// Middleware para inicializar conexión a MongoDB en la primera solicitud
+app.use(async (req, res, next) => {
+  if (!dbInitialized && !dbInitializing) {
+    dbInitializing = true;
+    try {
+      await connectDB();
+      dbInitialized = true;
+      dbInitializing = false;
+    } catch (error) {
+      dbInitializing = false;
+      console.error('Failed to connect to database:', error.message);
+      // Continuar de todas formas para permitir rutas de health check
+    }
+  }
+  next();
+});
 
 // Middleware de seguridad
 app.use(helmet({
@@ -47,8 +65,8 @@ app.use(cors({
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW) * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX),
+  windowMs: (parseInt(process.env.RATE_LIMIT_WINDOW) || 15) * 60 * 1000,
+  max: parseInt(process.env.RATE_LIMIT_MAX) || 100,
   message: 'Demasiadas peticiones, intente nuevamente más tarde'
 });
 app.use('/api', limiter);
