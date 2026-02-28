@@ -13,31 +13,37 @@ const logger = winston.createLogger({
 
 const PORT = process.env.PORT || 5000;
 
-const server = app.listen(PORT, () => {
-  logger.info(`Servidor corriendo en puerto ${PORT} en modo ${process.env.NODE_ENV}`);
-  console.log(`🚀 Servidor iniciado en http://localhost:${PORT}`);
-});
+// Solo iniciar el servidor si NO estamos en Vercel
+let server;
+if (!process.env.VERCEL) {
+  server = app.listen(PORT, () => {
+    logger.info(`Servidor corriendo en puerto ${PORT} en modo ${process.env.NODE_ENV}`);
+    console.log(`🚀 Servidor iniciado en http://localhost:${PORT}`);
+  });
+}
 
-// Manejo de señales de terminación
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM recibido, cerrando servidor...');
-  server.close(() => {
-    mongoose.connection.close(false, () => {
-      logger.info('Servidor y conexión a DB cerrados');
-      process.exit(0);
+// Manejo de señales de terminación (solo si el servidor está corriendo)
+if (server) {
+  process.on('SIGTERM', () => {
+    logger.info('SIGTERM recibido, cerrando servidor...');
+    server.close(() => {
+      mongoose.connection.close(false, () => {
+        logger.info('Servidor y conexión a DB cerrados');
+        process.exit(0);
+      });
     });
   });
-});
 
-process.on('SIGINT', () => {
-  logger.info('SIGINT recibido, cerrando servidor...');
-  server.close(() => {
-    mongoose.connection.close(false, () => {
-      logger.info('Servidor y conexión a DB cerrados');
-      process.exit(0);
+  process.on('SIGINT', () => {
+    logger.info('SIGINT recibido, cerrando servidor...');
+    server.close(() => {
+      mongoose.connection.close(false, () => {
+        logger.info('Servidor y conexión a DB cerrados');
+        process.exit(0);
+      });
     });
   });
-});
+}
 
 // Manejo de errores no capturados
 process.on('uncaughtException', (error) => {
