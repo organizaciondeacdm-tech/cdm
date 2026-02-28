@@ -20,6 +20,7 @@ const escuelaRoutes = require('./routes/escuelaRoutes');
 const docenteRoutes = require('./routes/docenteRoutes');
 const alumnoRoutes = require('./routes/alumnoRoutes');
 const reporteRoutes = require('./routes/reporteRoutes');
+const { sendEmail } = require('./services/emailService');
 
 const app = express();
 
@@ -140,6 +141,83 @@ app.get('/api/test', (req, res) => {
     success: true,
     message: 'API is working'
   });
+});
+
+// Endpoint para enviar alertas por email
+app.post('/api/send-alert-email', async (req, res) => {
+  try {
+    const { to, subject, alerts, message, timestamp } = req.body;
+
+    if (!to || !alerts || alerts.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email destinatario y alertas son requeridos'
+      });
+    }
+
+    // Construir contenido HTML del email
+    const alertsHtml = alerts.map(a => `
+      <div style="margin-bottom: 20px; padding: 15px; border-left: 4px solid ${a.severity === 'critica' ? '#ff4444' : a.severity === 'urgente' ? '#ff8800' : a.severity === 'proxima' ? '#ffaa00' : '#0088ff'}; background-color: #f5f5f5; border-radius: 4px;">
+        <h3 style="margin: 0 0 10px 0; color: ${a.severity === 'critica' ? '#ff4444' : a.severity === 'urgente' ? '#ff8800' : a.severity === 'proxima' ? '#ffaa00' : '#0088ff'};">${a.icon} ${a.title}</h3>
+        <p style="margin: 5px 0; font-weight: bold;">${a.desc}</p>
+        <pre style="margin: 10px 0; padding: 10px; background-color: #fff; border-radius: 3px; font-size: 12px; overflow-x: auto;">${a.details}</pre>
+      </div>
+    `).join('');
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: Arial, sans-serif; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            h1 { color: #0088ff; border-bottom: 2px solid #0088ff; padding-bottom: 10px; }
+            .header { background-color: #f0f0f0; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+            .timestamp { color: #999; font-size: 12px; margin-top: 5px; }
+            .message { background-color: #e8f4f8; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid #0088ff; }
+            .footer { color: #999; font-size: 12px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>📋 Alertas del Sistema ACDM</h1>
+            
+            <div class="header">
+              <p><strong>Reporte de Alertas Generado</strong></p>
+              <p class="timestamp">${timestamp}</p>
+              <p>Se adjuntan <strong>${alerts.length}</strong> alerta(s) para su revisión:</p>
+            </div>
+
+            ${message ? `<div class="message"><p><strong>Mensaje:</strong></p><p>${message}</p></div>` : ''}
+
+            <h2>Alertas Registradas:</h2>
+            ${alertsHtml}
+
+            <div class="footer">
+              <p>Sistema ACDM - Gestión de Asistentes de Clase</p>
+              <p>© ${new Date().getFullYear()} Organización de ACDM. Todos los derechos reservados.</p>
+              <p><em>Este es un correo automático, por favor no responda directamente a este mensaje.</em></p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    await sendEmail(to, subject || '📋 Alertas del Sistema ACDM', html);
+
+    res.status(200).json({
+      success: true,
+      message: `Email enviado exitosamente a ${to}`,
+      alertsCount: alerts.length
+    });
+  } catch (error) {
+    console.error('Error sending alert email:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al enviar el email: ' + error.message
+    });
+  }
 });
 
 // Ruta de health check
