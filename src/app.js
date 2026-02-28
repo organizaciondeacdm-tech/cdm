@@ -170,11 +170,16 @@ app.get('/', (req, res) => {
   });
 });
 
-// Servir archivos estáticos en producción (solo si existe el directorio)
+// Servir archivos estáticos en producción
 const fs = require('fs');
-const frontendBuildPath = process.env.NODE_ENV === 'production' 
-  ? path.join(__dirname, '../../frontend/build')
-  : null;
+let frontendBuildPath = null;
+
+// En Vercel, el frontend compilado estará en dist/
+if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
+  frontendBuildPath = path.join(__dirname, '../../dist');
+} else if (process.env.NODE_ENV === 'production') {
+  frontendBuildPath = path.join(__dirname, '../../frontend/build');
+}
 
 if (frontendBuildPath && fs.existsSync(frontendBuildPath)) {
   app.use(express.static(frontendBuildPath));
