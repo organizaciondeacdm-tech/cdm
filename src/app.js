@@ -100,22 +100,30 @@ if (process.env.NODE_ENV === 'development') {
   }));
 }
 
-// Middleware de auditoría
+// Middleware de auditoría (simplificado para evitar errores)
 app.use((req, res, next) => {
-  const oldJson = res.json;
-  res.json = function(data) {
-    // Log de acciones importantes
-    if (req.method !== 'GET' && res.statusCode < 400) {
-      registrarAccion(
-        req.user,
-        `${req.method} ${req.originalUrl}`,
-        req.baseUrl.split('/').pop(),
-        { body: req.body, params: req.params, query: req.query },
-        req
-      );
-    }
-    oldJson.call(this, data);
-  };
+  try {
+    const oldJson = res.json;
+    res.json = function(data) {
+      // Log de acciones importantes
+      if (req.method !== 'GET' && res.statusCode < 400) {
+        try {
+          registrarAccion(
+            req.user,
+            `${req.method} ${req.originalUrl}`,
+            req.baseUrl.split('/').pop(),
+            { body: req.body, params: req.params },
+            req
+          );
+        } catch (err) {
+          console.error('Error in audit logging:', err.message);
+        }
+      }
+      return oldJson.call(this, data);
+    };
+  } catch (err) {
+    console.error('Error setting up audit middleware:', err.message);
+  }
   next();
 });
 
@@ -125,6 +133,14 @@ app.use('/api/escuelas', escuelaRoutes);
 app.use('/api/docentes', docenteRoutes);
 app.use('/api/alumnos', alumnoRoutes);
 app.use('/api/reportes', reporteRoutes);
+
+// Endpoint de prueba
+app.get('/api/test', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'API is working'
+  });
+});
 
 // Ruta de health check
 app.get('/health', (req, res) => {
@@ -148,7 +164,8 @@ app.get('/', (req, res) => {
       docentes: '/api/docentes',
       alumnos: '/api/alumnos',
       reportes: '/api/reportes',
-      health: '/health'
+      health: '/health',
+      test: '/api/test'
     }
   });
 });
