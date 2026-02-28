@@ -136,6 +136,23 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Ruta raíz
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'ACDM Backend API',
+    version: '1.0.0',
+    endpoints: {
+      auth: '/api/auth',
+      escuelas: '/api/escuelas',
+      docentes: '/api/docentes',
+      alumnos: '/api/alumnos',
+      reportes: '/api/reportes',
+      health: '/health'
+    }
+  });
+});
+
 // Servir archivos estáticos en producción (solo si existe el directorio)
 const fs = require('fs');
 const frontendBuildPath = process.env.NODE_ENV === 'production' 
@@ -147,31 +164,26 @@ if (frontendBuildPath && fs.existsSync(frontendBuildPath)) {
   
   // SPA fallback - servir index.html para rutas desconocidas
   app.get('*', (req, res) => {
-    // Evitar servir index.html para rutas API o assets
-    if (!req.path.startsWith('/api/') && !req.path.includes('.')) {
-      res.sendFile(path.join(frontendBuildPath, 'index.html'), (err) => {
-        if (err) {
-          res.status(404).json({
-            success: false,
-            error: 'Ruta no encontrada'
-          });
-        }
-      });
-      return;
-    }
-    next();
+    res.sendFile(path.join(frontendBuildPath, 'index.html'), (err) => {
+      if (err) {
+        res.status(404).json({
+          success: false,
+          error: 'Ruta no encontrada'
+        });
+      }
+    });
+  });
+} else {
+  // Si no hay frontend, servir respuesta JSON en raíces desconocidas
+  app.get('*', (req, res) => {
+    res.status(404).json({
+      success: false,
+      error: 'Ruta no encontrada'
+    });
   });
 }
 
 // Manejo de errores
 app.use(errorHandler);
-
-// Manejo de rutas no encontradas
-app.use('*', (req, res) => {
-  res.status(404).json({
-    success: false,
-    error: 'Ruta no encontrada'
-  });
-});
 
 module.exports = app;
