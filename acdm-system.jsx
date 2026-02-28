@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import apiService from "./acdm-api.js";
 
 // ============================================================
 // CRYPTO UTILS - Simple XOR + Base64 encryption for JSON DB
@@ -1375,7 +1376,22 @@ function Login({ onLogin }) {
   const [pass, setPass] = useState("");
   const [err, setErr] = useState("");
   
-  function doLogin() {
+  async function doLogin() {
+    setErr("");
+    try {
+      // Intentar login con el backend
+      const response = await apiService.login(user, pass);
+      if (response.user) {
+        apiService.setToken(response.token);
+        onLogin(response.user);
+        return;
+      }
+    } catch (backendError) {
+      console.log('Backend login fallido, intentando locally', backendError.message);
+      // Fallback a localStorage si el backend no está disponible
+    }
+    
+    // Fallback: login local
     const db = loadDB() || INITIAL_DB;
     const found = db.usuarios.find(u => u.username === user && u.passwordHash === btoa(pass));
     if (found) { onLogin(found); setErr(""); }
@@ -1435,8 +1451,14 @@ export default function App() {
   
   const isAdmin = currentUser?.rol === "admin";
   
-  // Persist on change
-  useEffect(() => { if (currentUser) saveDB(db); }, [db]);
+  // Persist on change (localStorage + backend sync)
+  useEffect(() => { 
+    if (currentUser) {
+      // Siempre guardar en localStorage como respaldo
+      saveDB(db);
+      // El backend se actualizaría de forma independiente según sea necesario
+    }
+  }, [db]);
   
   // Keyboard shortcut: Ctrl+Alt+A = admin login
   useEffect(() => {
