@@ -1,0 +1,52 @@
+const app = require('./src/app');
+const mongoose = require('mongoose');
+const winston = require('winston');
+
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.json(),
+  transports: [
+    new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
+    new winston.transports.File({ filename: 'logs/combined.log' })
+  ]
+});
+
+const PORT = process.env.PORT || 5000;
+
+const server = app.listen(PORT, () => {
+  logger.info(`Servidor corriendo en puerto ${PORT} en modo ${process.env.NODE_ENV}`);
+  console.log(`🚀 Servidor iniciado en http://localhost:${PORT}`);
+});
+
+// Manejo de señales de terminación
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM recibido, cerrando servidor...');
+  server.close(() => {
+    mongoose.connection.close(false, () => {
+      logger.info('Servidor y conexión a DB cerrados');
+      process.exit(0);
+    });
+  });
+});
+
+process.on('SIGINT', () => {
+  logger.info('SIGINT recibido, cerrando servidor...');
+  server.close(() => {
+    mongoose.connection.close(false, () => {
+      logger.info('Servidor y conexión a DB cerrados');
+      process.exit(0);
+    });
+  });
+});
+
+// Manejo de errores no capturados
+process.on('uncaughtException', (error) => {
+  logger.error('Error no capturado:', error);
+  console.error('🔥 Error fatal:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Promesa rechazada no manejada:', { reason, promise });
+  console.error('🔥 Promesa rechazada:', reason);
+});
