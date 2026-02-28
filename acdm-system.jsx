@@ -1544,10 +1544,6 @@ function Login({ onLogin }) {
         </div>
         {err && <div className="alert alert-danger" style={{marginBottom:12}}><span>⚠️</span>{err}</div>}
         <button className="btn btn-primary" style={{width:'100%', justifyContent:'center', marginTop:8}} onClick={doLogin}>Ingresar →</button>
-        <div className="hint-text">
-          Demo: <span className="hint-key">admin</span> / <span className="hint-key">admin2025</span>
-          <br/>Acceso rápido: <span className="hint-key">Ctrl+Alt+A</span>
-        </div>
       </div>
     </div>
   );
