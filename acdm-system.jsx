@@ -2126,6 +2126,38 @@ export default function App() {
     e.alumnos.some(a => a.nombre.toLowerCase().includes(search.toLowerCase()))
   );
   
+  // Filtrar visitas globalmente
+  const filteredVisitas = db.escuelas.map(esc => ({
+    ...esc,
+    visitas: (!esc.visitas || !search) ? (esc.visitas || []) : esc.visitas.filter(v =>
+      v.observaciones.toLowerCase().includes(search.toLowerCase()) ||
+      esc.escuela.toLowerCase().includes(search.toLowerCase()) ||
+      esc.de.toLowerCase().includes(search.toLowerCase())
+    )
+  })).filter(esc => !search || esc.visitas.length > 0);
+  
+  // Filtrar proyectos globalmente
+  const filteredProyectos = db.escuelas.map(esc => ({
+    ...esc,
+    proyectos: (!esc.proyectos || !search) ? (esc.proyectos || []) : esc.proyectos.filter(p =>
+      p.nombre.toLowerCase().includes(search.toLowerCase()) ||
+      p.descripcion.toLowerCase().includes(search.toLowerCase()) ||
+      esc.escuela.toLowerCase().includes(search.toLowerCase()) ||
+      esc.de.toLowerCase().includes(search.toLowerCase())
+    )
+  })).filter(esc => !search || esc.proyectos.length > 0);
+  
+  // Filtrar informes globalmente
+  const filteredInformes = db.escuelas.map(esc => ({
+    ...esc,
+    informes: (!esc.informes || !search) ? (esc.informes || []) : esc.informes.filter(i =>
+      i.titulo.toLowerCase().includes(search.toLowerCase()) ||
+      i.observaciones.toLowerCase().includes(search.toLowerCase()) ||
+      esc.escuela.toLowerCase().includes(search.toLowerCase()) ||
+      esc.de.toLowerCase().includes(search.toLowerCase())
+    )
+  })).filter(esc => !search || esc.informes.length > 0);
+  
   if (!currentUser) return <><style>{STYLES}</style><Login onLogin={setCurrentUser} /></>;
   
   const navItems = [
@@ -2313,8 +2345,9 @@ export default function App() {
                   </div>
                   {isAdmin && <button className="btn btn-primary" onClick={() => setVisitaModal({ isNew: true, data: null, escuelaId: null })}>➕ Nueva Visita</button>}
                 </div>
+                {filteredVisitas.length === 0 && search && <div className="no-data card">No se encontraron visitas para "{search}"</div>}
                 <div className="card-grid">
-                  {db.escuelas.map(esc => (
+                  {filteredVisitas.map(esc => (
                     <div key={esc.id} className="card">
                       <div className="card-header">
                         <span className="card-title">{esc.escuela}</span>
@@ -2359,8 +2392,9 @@ export default function App() {
                   </div>
                   {isAdmin && <button className="btn btn-primary" onClick={() => setProyectoModal({ isNew: true, data: null, escuelaId: null })}>➕ Nuevo Proyecto</button>}
                 </div>
+                {filteredProyectos.length === 0 && search && <div className="no-data card">No se encontraron proyectos para "{search}"</div>}
                 <div className="card-grid">
-                  {db.escuelas.map(esc => (
+                  {filteredProyectos.map(esc => (
                     <div key={esc.id} className="card">
                       <div className="card-header">
                         <span className="card-title">{esc.escuela}</span>
@@ -2409,8 +2443,9 @@ export default function App() {
                   </div>
                   {isAdmin && <button className="btn btn-primary" onClick={() => setInformeModal({ isNew: true, data: null, escuelaId: null })}>➕ Nuevo Informe</button>}
                 </div>
+                {filteredInformes.length === 0 && search && <div className="no-data card">No se encontraron informes para "{search}"</div>}
                 <div className="card-grid">
-                  {db.escuelas.map(esc => (
+                  {filteredInformes.map(esc => (
                     <div key={esc.id} className="card">
                       <div className="card-header">
                         <span className="card-title">{esc.escuela}</span>
