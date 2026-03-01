@@ -54,15 +54,25 @@ const INITIAL_DB = {
           id: "d1", cargo: "Titular", nombreApellido: "López, María Elena",
           estado: "Licencia", motivo: "Art. 102 - Enfermedad",
           diasAutorizados: 30, fechaInicioLicencia: "2025-01-15", fechaFinLicencia: "2025-02-14",
+          jornada: "Completa",
           suplentes: [
-            { id: "s1", cargo: "Suplente", nombreApellido: "Fernández, Ana Clara", estado: "Activo", motivo: "-", fechaIngreso: "2025-01-15" }
+            { id: "s1", cargo: "Suplente", nombreApellido: "Fernández, Ana Clara", estado: "Activo", motivo: "-", fechaIngreso: "2025-01-15", jornada: "Completa" }
           ]
         },
         {
           id: "d2", cargo: "Titular", nombreApellido: "Rodríguez, Carlos",
           estado: "Activo", motivo: "-", diasAutorizados: 0,
-          fechaInicioLicencia: null, fechaFinLicencia: null, suplentes: []
+          fechaInicioLicencia: null, fechaFinLicencia: null, jornada: "Simple", suplentes: []
         }
+      ],
+      visitas: [
+        { id: "v1", fecha: "2025-02-15", observaciones: "Primera visita de seguimiento. Escuela con muy buen desempeño." }
+      ],
+      proyectos: [
+        { id: "p1", nombre: "Adaptación de material didáctico", estado: "Completado", descripcion: "Material visual para estudiante con TEA", fechaInicio: "2025-01-20", fechaBaja: "2025-02-28" }
+      ],
+      informes: [
+        { id: "i1", titulo: "Informe mensual enero", estado: "Entregado", fechaEntrega: "2025-01-31", observaciones: "Informe detallado sobre el desempeño de los alumnos" }
       ]
     },
     {
@@ -78,9 +88,12 @@ const INITIAL_DB = {
         {
           id: "d3", cargo: "Titular", nombreApellido: "Gómez, Patricia",
           estado: "Activo", motivo: "-", diasAutorizados: 0,
-          fechaInicioLicencia: null, fechaFinLicencia: null, suplentes: []
+          fechaInicioLicencia: null, fechaFinLicencia: null, jornada: "Simple", suplentes: []
         }
-      ]
+      ],
+      visitas: [],
+      proyectos: [],
+      informes: []
     },
     {
       id: "e3", de: "DE 03", escuela: "Escuela Secundaria N°12 Domingo F. Sarmiento",
@@ -89,7 +102,10 @@ const INITIAL_DB = {
       telefonos: ["011-4987-9012"], mail: "secundaria12@bue.edu.ar",
       jornada: "Completa", turno: "Mañana",
       alumnos: [],
-      docentes: []
+      docentes: [],
+      visitas: [],
+      proyectos: [],
+      informes: []
     }
   ],
   usuarios: [
@@ -153,6 +169,28 @@ const STYLES = `
     --glow2: 0 0 40px rgba(0,212,255,0.2);
     --radius: 12px;
     --radius2: 8px;
+  }
+
+  .app.light-mode {
+    --bg: #f5f7fa;
+    --bg2: #e8ecf1;
+    --bg3: #dce4ed;
+    --card: #ffffff;
+    --card2: #f0f5fb;
+    --border: #d1dae8;
+    --border2: #b8c8e1;
+    --accent: #0077be;
+    --accent2: #004a96;
+    --accent3: #008c45;
+    --text: #1a1f3a;
+    --text2: #475569;
+    --text3: #64748b;
+    --metal1: #1a1f3a;
+    --metal2: #475569;
+    --metal3: #94a3b8;
+    --shadow: 0 4px 15px rgba(0,0,0,0.1);
+    --glow: 0 0 15px rgba(0,119,190,0.2);
+    --glow2: 0 0 30px rgba(0,119,190,0.15);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -259,21 +297,21 @@ const STYLES = `
   .header {
     background: linear-gradient(180deg, var(--bg2) 0%, var(--bg3) 100%);
     border-bottom: 1px solid var(--border);
-    padding: 12px 24px;
-    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
     position: sticky; top: 0; z-index: 100;
     box-shadow: 0 4px 20px rgba(0,0,0,0.5);
   }
   .header-title {
     font-family: 'Rajdhani', sans-serif;
     font-size: 22px; font-weight: 700;
-    letter-spacing: 3px; text-transform: uppercase;
+    letter-spacing: 2px; text-transform: uppercase;
     background: linear-gradient(90deg, var(--accent), #fff, var(--accent2));
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     background-clip: text;
     filter: drop-shadow(0 0 10px rgba(0,212,255,0.4));
   }
-  .header-sub { font-size: 11px; color: var(--text3); letter-spacing: 2px; }
+  .header-sub { font-size: 10px; color: var(--text3); letter-spacing: 1.5px; }
 
   .main { display: flex; flex: 1; }
   .sidebar {
@@ -327,9 +365,10 @@ const STYLES = `
     display: flex; align-items: center; justify-content: space-between;
     margin-bottom: 16px; padding-bottom: 12px;
     border-bottom: 1px solid var(--border);
+    flex-wrap: wrap; gap: 8px;
   }
   .card-title { font-family: 'Rajdhani', sans-serif; font-size: 16px; font-weight: 700; letter-spacing: 1px; color: var(--accent); }
-  .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
 
   /* STATS */
   .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
@@ -594,10 +633,65 @@ const STYLES = `
   .search-input-wrap .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text3); font-size: 14px; pointer-events: none; }
   .search-input-wrap .form-input { padding-left: 32px; }
 
+  @media (max-width: 1024px) {
+    .header { flex-direction: column; align-items: flex-start; }
+    .header .search-input-wrap { width: 100%; }
+    .header > div:last-child { width: 100%; justify-content: space-between; }
+    .content { padding: 16px; }
+    .card-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+  }
+
   @media (max-width: 768px) {
+    .header { flex-direction: column; gap: 8px; padding: 8px 12px; }
+    .header .search-input-wrap { width: 100%; }
     .sidebar { display: none; }
+    .content { padding: 12px; }
     .form-row { grid-template-columns: 1fr; }
-    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .stats-grid { grid-template-columns: 1fr; }
+    .card-grid { grid-template-columns: 1fr; }
+    .school-info-grid { grid-template-columns: 1fr; }
+    .modal { width: 90vw; max-height: 85vh; padding: 16px; }
+    .view-toggle { width: 100%; }
+    .docente-details { grid-template-columns: 1fr; }
+    .papiweb-brand { display: none; }
+    .school-meta { flex-direction: column; gap: 8px; }
+    .header-title { font-size: 16px; letter-spacing: 1px; }
+    .modal-title { font-size: 18px; }
+  }
+  
+  @media (max-width: 480px) {
+    .header { padding: 8px 12px; gap: 6px; }
+    .header-title { font-size: 14px; }
+    .header-sub { font-size: 8px; }
+    .header > div:first-child { width: 100%; }
+    .header > div:last-child { width: 100%; flex-wrap: wrap; gap: 4px; }
+    h1 { font-size: 18px !important; }
+    .content { padding: 8px; }
+    .card { padding: 12px; }
+    .school-card-body { padding: 12px; }
+    .school-card-header { padding: 12px; }
+    .form-input, .form-select, .form-textarea { font-size: 12px; padding: 8px 12px; }
+    .btn { padding: 6px 12px; font-size: 11px; }
+    .btn-sm { padding: 4px 8px; font-size: 10px; }
+    .btn-icon { padding: 5px; font-size: 14px; }
+    .nav-item { padding: 8px 12px; font-size: 11px; }
+    .stat-value { font-size: 24px; }
+    .stat-label { font-size: 10px; }
+    .stat-card { padding: 12px 16px; }
+    .modal { width: 95vw; max-height: 90vh; padding: 12px; }
+    .modal-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .modal-title { font-size: 16px; }
+    .table-wrap { font-size: 11px; }
+    th, td { padding: 6px 8px; font-size: 11px; }
+    .docente-name { font-size: 14px; }
+    .docente-details { font-size: 11px; }
+    .search-icon { font-size: 12px; left: 8px; }
+    .search-input-wrap .form-input { padding-left: 28px; font-size: 12px; }
+    .flex-wrap { flex-wrap: wrap; }
+    .form-label { font-size: 10px; }
+    .school-name { font-size: 16px; }
+    .school-de { font-size: 9px; }
+    .school-meta-item { font-size: 10px; }
   }
 `;
 
@@ -950,7 +1044,8 @@ function DocenteModal({ docente, titularId, isNew, onSave, onClose }) {
   const [form, setForm] = useState(docente || {
     id: `d${Date.now()}`, cargo: "Titular", nombreApellido: "",
     estado: "Activo", motivo: "-", diasAutorizados: 0,
-    fechaInicioLicencia: null, fechaFinLicencia: null, suplentes: []
+    fechaInicioLicencia: null, fechaFinLicencia: null, suplentes: [],
+    jornada: "Completa"
   });
   
   const MOTIVOS = ["-","Art. 101 - Enfermedad","Art. 102 - Familiar enfermo","Art. 103 - Maternidad","Art. 104 - Accidente de trabajo","Art. 108 - Gremial","Art. 115 - Estudio","Art. 140 - Concurso","Otro"];
@@ -968,20 +1063,26 @@ function DocenteModal({ docente, titularId, isNew, onSave, onClose }) {
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
-          <div className="modal-title">{isNew ? "➕ Nuevo Docente" : "✏️ Editar Docente"}</div>
+          <div className="modal-title">{isNew ? "➕ Nuevo ACDM" : "✏️ Editar ACDM"}</div>
           <button className="btn-icon" onClick={onClose}>✕</button>
         </div>
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">Cargo</label>
+            <label className="form-label">Rol ACDM</label>
             <select className="form-select" value={form.cargo} onChange={e => setForm({...form, cargo: e.target.value})}>
               <option>Titular</option><option>Suplente</option><option>Interino</option>
             </select>
           </div>
           <div className="form-group">
-            <label className="form-label">Nombre y Apellido</label>
-            <input className="form-input" value={form.nombreApellido} onChange={e => setForm({...form, nombreApellido: e.target.value})} placeholder="Apellido, Nombre" />
+            <label className="form-label">Jornada</label>
+            <select className="form-select" value={form.jornada} onChange={e => setForm({...form, jornada: e.target.value})}>
+              <option>Simple</option><option>Completa</option><option>Extendida</option>
+            </select>
           </div>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Nombre y Apellido</label>
+          <input className="form-input" value={form.nombreApellido} onChange={e => setForm({...form, nombreApellido: e.target.value})} placeholder="Apellido, Nombre" />
         </div>
         <div className="form-row">
           <div className="form-group">
@@ -1135,7 +1236,7 @@ function EscuelaModal({ escuela, isNew, onSave, onClose }) {
           <div className="form-group">
             <label className="form-label">Turno</label>
             <select className="form-select" value={form.turno} onChange={e => setForm({...form, turno: e.target.value})}>
-              <option>Mañana</option><option>Tarde</option><option>Vespertino</option><option>Noche</option>
+              <option>Mañana</option><option>Tarde</option><option>Vespertino</option><option>Completa</option><option>Noche</option>
             </select>
           </div>
         </div>
@@ -1161,7 +1262,7 @@ function EscuelaModal({ escuela, isNew, onSave, onClose }) {
 // ============================================================
 // SCHOOL DETAIL VIEW
 // ============================================================
-function EscuelaDetail({ esc, onEdit, onAddDocente, onEditDocente, onDeleteDocente, onAddAlumno, onEditAlumno, onDeleteAlumno, viewMode, isAdmin }) {
+function EscuelaDetail({ esc, onEdit, onDelete, onAddDocente, onEditDocente, onDeleteDocente, onAddAlumno, onEditAlumno, onDeleteAlumno, viewMode, isAdmin }) {
   const [expanded, setExpanded] = useState(false);
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
@@ -1216,6 +1317,7 @@ function EscuelaDetail({ esc, onEdit, onAddDocente, onEditDocente, onDeleteDocen
                   <span className={`badge badge-${doc.cargo.toLowerCase()}`}>{doc.cargo}</span>
                   <span style={{fontFamily:'Rajdhani', fontWeight:700, fontSize:15}}>{doc.nombreApellido}</span>
                   <span className={`badge badge-${doc.estado === "Activo" ? "active" : "licencia"}`}>{doc.estado}</span>
+                  <span style={{fontSize:11, color:'var(--text3)', background:'rgba(0,100,200,0.1)', padding:'2px 8px', borderRadius:'4px'}}>📅 {doc.jornada || "N/D"}</span>
                   {doc.estado === "Licencia" && <span style={{fontSize:12, color:'var(--text2)'}}>{doc.motivo}</span>}
                   {doc.estado === "Licencia" && <DaysRemaining fechaFin={doc.fechaFinLicencia} />}
                 </div>
@@ -1224,6 +1326,7 @@ function EscuelaDetail({ esc, onEdit, onAddDocente, onEditDocente, onDeleteDocen
                     <span style={{color:'var(--yellow)', fontSize:12}}>↳</span>
                     <span className="badge badge-suplente">{s.cargo}</span>
                     <span style={{fontSize:13, color:'var(--text2)'}}>{s.nombreApellido}</span>
+                    <span style={{fontSize:11, color:'var(--text3)', background:'rgba(0,100,200,0.1)', padding:'2px 8px', borderRadius:'4px'}}>📅 {s.jornada || "N/D"}</span>
                     {doc.estado === "Licencia" && doc.fechaInicioLicencia && (
                       <span style={{fontSize:11, color:'var(--text3)'}}>desde {formatDate(doc.fechaInicioLicencia)}</span>
                     )}
@@ -1234,7 +1337,7 @@ function EscuelaDetail({ esc, onEdit, onAddDocente, onEditDocente, onDeleteDocen
           </div>
         </div>
         
-        {expanded && <EscuelaExpandida esc={esc} onEdit={onEdit} onAddDocente={onAddDocente} onEditDocente={onEditDocente} onDeleteDocente={onDeleteDocente} onAddAlumno={onAddAlumno} onEditAlumno={onEditAlumno} onDeleteAlumno={onDeleteAlumno} calYear={calYear} calMonth={calMonth} navCal={navCal} activeTab={activeTab} setActiveTab={setActiveTab} openMaps={openMaps} openMail={openMail} isAdmin={isAdmin} />}
+        {expanded && <EscuelaExpandida esc={esc} onEdit={onEdit} onDelete={onDelete} onAddDocente={onAddDocente} onEditDocente={onEditDocente} onDeleteDocente={onDeleteDocente} onAddAlumno={onAddAlumno} onEditAlumno={onEditAlumno} onDeleteAlumno={onDeleteAlumno} calYear={calYear} calMonth={calMonth} navCal={navCal} activeTab={activeTab} setActiveTab={setActiveTab} openMaps={openMaps} openMail={openMail} isAdmin={isAdmin} />}
       </div>
     );
   }
@@ -1261,12 +1364,12 @@ function EscuelaDetail({ esc, onEdit, onAddDocente, onEditDocente, onDeleteDocen
           <span className="school-meta-item link" onClick={(e) => openMail(esc.mail, e)}>✉️ {esc.mail}</span>
         </div>
       </div>
-      {expanded && <EscuelaExpandida esc={esc} onEdit={onEdit} onAddDocente={onAddDocente} onEditDocente={onEditDocente} onDeleteDocente={onDeleteDocente} onAddAlumno={onAddAlumno} onEditAlumno={onEditAlumno} onDeleteAlumno={onDeleteAlumno} calYear={calYear} calMonth={calMonth} navCal={navCal} activeTab={activeTab} setActiveTab={setActiveTab} openMaps={openMaps} openMail={openMail} isAdmin={isAdmin} />}
+      {expanded && <EscuelaExpandida esc={esc} onEdit={onEdit} onDelete={onDelete} onAddDocente={onAddDocente} onEditDocente={onEditDocente} onDeleteDocente={onDeleteDocente} onAddAlumno={onAddAlumno} onEditAlumno={onEditAlumno} onDeleteAlumno={onDeleteAlumno} calYear={calYear} calMonth={calMonth} navCal={navCal} activeTab={activeTab} setActiveTab={setActiveTab} openMaps={openMaps} openMail={openMail} isAdmin={isAdmin} />}
     </div>
   );
 }
 
-function EscuelaExpandida({ esc, onEdit, onAddDocente, onEditDocente, onDeleteDocente, onAddAlumno, onEditAlumno, onDeleteAlumno, calYear, calMonth, navCal, activeTab, setActiveTab, openMaps, openMail, isAdmin }) {
+function EscuelaExpandida({ esc, onEdit, onDelete, onAddDocente, onEditDocente, onDeleteDocente, onAddAlumno, onEditAlumno, onDeleteAlumno, calYear, calMonth, navCal, activeTab, setActiveTab, openMaps, openMail, isAdmin }) {
   return (
     <div className="school-card-body" style={{animation:'slideIn 0.2s ease'}}>
       <div className="flex items-center justify-between mb-16">
@@ -1277,6 +1380,7 @@ function EscuelaExpandida({ esc, onEdit, onAddDocente, onEditDocente, onDeleteDo
         </div>
         <div className="flex gap-8">
           {isAdmin && <button className="btn btn-secondary btn-sm" onClick={onEdit}>✏️ Editar</button>}
+          {isAdmin && <button className="btn btn-danger btn-sm" onClick={() => { if(confirm("¿Está seguro de eliminar esta escuela?")) onDelete(); }}>🗑️ Eliminar</button>}
           {isAdmin && activeTab === "docentes" && <button className="btn btn-primary btn-sm" onClick={() => onAddDocente(esc.id)}>+ ACDM</button>}
           {isAdmin && activeTab === "alumnos" && <button className="btn btn-primary btn-sm" onClick={() => onAddAlumno(esc.id)}>+ Alumno</button>}
         </div>
@@ -1292,6 +1396,7 @@ function EscuelaExpandida({ esc, onEdit, onAddDocente, onEditDocente, onDeleteDo
                   <span className={`badge badge-${doc.cargo.toLowerCase()}`}>{doc.cargo}</span>
                   <span className="docente-name">{doc.nombreApellido}</span>
                   <span className={`badge badge-${doc.estado === "Activo" ? "active" : "licencia"}`}>{doc.estado}</span>
+                  <span style={{fontSize:11, color:'var(--text3)', background:'rgba(0,100,200,0.1)', padding:'2px 8px', borderRadius:'4px'}}>📅 {doc.jornada || "N/D"}</span>
                   {doc.estado === "Licencia" && <DaysRemaining fechaFin={doc.fechaFinLicencia} />}
                   {isAdmin && (
                     <div className="flex gap-4" style={{marginLeft:'auto'}}>
@@ -1322,6 +1427,7 @@ function EscuelaExpandida({ esc, onEdit, onAddDocente, onEditDocente, onDeleteDo
                     <span className={`badge badge-${s.cargo.toLowerCase()}`}>{s.cargo}</span>
                     <span className="docente-name">{s.nombreApellido}</span>
                     <span className={`badge badge-${s.estado === "Activo" ? "active" : "licencia"}`}>{s.estado}</span>
+                    <span style={{fontSize:11, color:'var(--text3)', background:'rgba(0,100,200,0.1)', padding:'2px 8px', borderRadius:'4px'}}>📅 {s.jornada || "N/D"}</span>
                     {s.fechaIngreso && <span style={{fontSize:11, color:'var(--text3)'}}>desde {formatDate(s.fechaIngreso)}</span>}
                     {isAdmin && (
                       <div className="flex gap-4" style={{marginLeft:'auto'}}>
@@ -1402,36 +1508,155 @@ function EscuelaExpandida({ esc, onEdit, onAddDocente, onEditDocente, onDeleteDo
 function ExportPDF({ escuelas, onClose }) {
   const [filter, setFilter] = useState("all");
   const [tipo, setTipo] = useState("completo");
+  const [formato, setFormato] = useState("txt");
   
-  function doExport() {
+  // Generar CSV
+  function generateCSV() {
     const data = filter === "all" ? escuelas : escuelas.filter(e => e.de === filter);
-    const lines = [];
-    lines.push(`SISTEMA ACDM - REPORTE ${tipo.toUpperCase()}`);
-    lines.push(`Generado: ${new Date().toLocaleDateString('es-AR')} ${new Date().toLocaleTimeString('es-AR')}`);
-    lines.push(`Desarrollado por: PAPIWEB Desarrollos Informáticos`);
-    lines.push("─".repeat(60));
-    data.forEach(esc => {
-      lines.push(`\n${esc.de} | ${esc.escuela}`);
-      lines.push(`Nivel: ${esc.nivel} | Jornada: ${esc.jornada} | Turno: ${esc.turno}`);
-      lines.push(`Dirección: ${esc.direccion}`);
-      lines.push(`Mail: ${esc.mail} | Tel: ${esc.telefonos.join(", ")}`);
-      if (tipo !== "mini") {
-        lines.push(`\n  DOCENTES (${esc.docentes.length}):`);
-        esc.docentes.forEach(d => {
-          lines.push(`  - [${d.cargo}] ${d.nombreApellido} — ${d.estado}${d.estado === "Licencia" ? ` (${d.motivo}, hasta ${formatDate(d.fechaFinLicencia)})` : ""}`);
-          d.suplentes.forEach(s => lines.push(`      ↳ [${s.cargo}] ${s.nombreApellido} — ${s.estado}`));
-        });
-        lines.push(`\n  ALUMNOS (${esc.alumnos.length}):`);
-        esc.alumnos.forEach(a => lines.push(`  - ${a.gradoSalaAnio}: ${a.nombre} — ${a.diagnostico}`));
-      }
-      lines.push("─".repeat(60));
-    });
-    const content = lines.join("\n");
-    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const rows = [];
+    
+    // Encabezados generales
+    rows.push(["SISTEMA ACDM - REPORTE EXPORTADO"]);
+    rows.push([`Generado: ${new Date().toLocaleDateString('es-AR')} ${new Date().toLocaleTimeString('es-AR')}`]);
+    rows.push([`Tipo: ${tipo}`]);
+    rows.push([]);
+    
+    if (tipo === "completo" || tipo === "docentes") {
+      rows.push(["DE", "Escuela", "Nivel", "Jornada", "Turno", "Dirección", "Mail", "Teléfonos"]);
+      data.forEach(esc => {
+        rows.push([esc.de, esc.escuela, esc.nivel, esc.jornada, esc.turno, esc.direccion, esc.mail, esc.telefonos.join("; ")]);
+        
+        if (tipo !== "mini") {
+          rows.push([]);
+          rows.push(["DOCENTES:", esc.escuela]);
+          rows.push(["Cargo", "Nombre", "Estado", "Motivo", "Jornada", "Días Autorizados", "Fecha Inicio", "Fecha Fin"]);
+          esc.docentes.forEach(d => {
+            rows.push([d.cargo, d.nombreApellido, d.estado, d.motivo, d.jornada || "N/D", d.diasAutorizados, formatDate(d.fechaInicioLicencia), formatDate(d.fechaFinLicencia)]);
+            if (d.suplentes.length > 0) {
+              rows.push(["-- SUPLENTES", d.nombreApellido]);
+              d.suplentes.forEach(s => rows.push([s.cargo, s.nombreApellido, s.estado, s.motivo, s.jornada || "N/D"]));
+            }
+          });
+          
+          rows.push([]);
+          rows.push(["ALUMNOS:", esc.escuela]);
+          rows.push(["Grado/Sala", "Nombre", "Diagnóstico", "Observaciones"]);
+          esc.alumnos.forEach(a => {
+            rows.push([a.gradoSalaAnio, a.nombre, a.diagnostico, a.observaciones]);
+          });
+          rows.push([]);
+        }
+      });
+    }
+    
+    // Convertir a CSV
+    const csvContent = rows.map(row => row.map(cell => `"${String(cell || "").replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = `ACDM_Reporte_${new Date().toISOString().split("T")[0]}.txt`;
-    a.click(); URL.revokeObjectURL(url);
+    a.href = url;
+    a.download = `ACDM_Reporte_${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  
+  // Generar Excel usando SheetJS CDN
+  function generateExcel() {
+    const data = filter === "all" ? escuelas : escuelas.filter(e => e.de === filter);
+    
+    // Cargar SheetJS desde CDN
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.min.js";
+    script.onload = () => {
+      const XLSX = window.XLSX;
+      const workbook = XLSX.utils.book_new();
+      
+      // Hoja 1: Resumen de Escuelas
+      const escuelasData = [];
+      escuelasData.push(["DE", "Escuela", "Nivel", "Jornada", "Turno", "Dirección", "Mail", "Teléfonos", "Docentes", "Alumnos"]);
+      data.forEach(esc => {
+        escuelasData.push([
+          esc.de, esc.escuela, esc.nivel, esc.jornada, esc.turno, esc.direccion, esc.mail,
+          esc.telefonos.join("; "), esc.docentes.length, esc.alumnos.length
+        ]);
+      });
+      const wsEscuelas = XLSX.utils.aoa_to_sheet(escuelasData);
+      XLSX.utils.book_append_sheet(workbook, wsEscuelas, "Escuelas");
+      
+      // Hoja 2: Docentes
+      if (tipo !== "mini") {
+        const docentesData = [];
+        docentesData.push(["Escuela", "DE", "Cargo", "Nombre", "Estado", "Motivo", "Jornada", "Días Auth.", "Inicio", "Fin", "Suplente"]);
+        data.forEach(esc => {
+          esc.docentes.forEach(d => {
+            docentesData.push([
+              esc.escuela, esc.de, d.cargo, d.nombreApellido, d.estado, d.motivo, d.jornada || "N/D",
+              d.diasAutorizados, formatDate(d.fechaInicioLicencia), formatDate(d.fechaFinLicencia), ""
+            ]);
+            d.suplentes.forEach(s => {
+              docentesData.push([
+                esc.escuela, esc.de, s.cargo, s.nombreApellido, s.estado, s.motivo, s.jornada || "N/D", "", "", "", "Suplente"
+              ]);
+            });
+          });
+        });
+        const wsDocentes = XLSX.utils.aoa_to_sheet(docentesData);
+        XLSX.utils.book_append_sheet(workbook, wsDocentes, "Docentes");
+        
+        // Hoja 3: Alumnos
+        const alumnosData = [];
+        alumnosData.push(["Escuela", "DE", "Grado/Sala", "Nombre", "Diagnóstico", "Observaciones"]);
+        data.forEach(esc => {
+          esc.alumnos.forEach(a => {
+            alumnosData.push([esc.escuela, esc.de, a.gradoSalaAnio, a.nombre, a.diagnostico, a.observaciones]);
+          });
+        });
+        const wsAlumnos = XLSX.utils.aoa_to_sheet(alumnosData);
+        XLSX.utils.book_append_sheet(workbook, wsAlumnos, "Alumnos");
+      }
+      
+      // Generar archivo
+      XLSX.writeFile(workbook, `ACDM_Reporte_${new Date().toISOString().split("T")[0]}.xlsx`);
+    };
+    document.head.appendChild(script);
+  }
+  
+  function doExport() {
+    if (formato === "csv") {
+      generateCSV();
+    } else if (formato === "excel") {
+      generateExcel();
+    } else {
+      // TXT (original)
+      const data = filter === "all" ? escuelas : escuelas.filter(e => e.de === filter);
+      const lines = [];
+      lines.push(`SISTEMA ACDM - REPORTE ${tipo.toUpperCase()}`);
+      lines.push(`Generado: ${new Date().toLocaleDateString('es-AR')} ${new Date().toLocaleTimeString('es-AR')}`);
+      lines.push(`Desarrollado por: PAPIWEB Desarrollos Informáticos`);
+      lines.push("─".repeat(60));
+      data.forEach(esc => {
+        lines.push(`\n${esc.de} | ${esc.escuela}`);
+        lines.push(`Nivel: ${esc.nivel} | Jornada: ${esc.jornada} | Turno: ${esc.turno}`);
+        lines.push(`Dirección: ${esc.direccion}`);
+        lines.push(`Mail: ${esc.mail} | Tel: ${esc.telefonos.join(", ")}`);
+        if (tipo !== "mini") {
+          lines.push(`\n  DOCENTES (${esc.docentes.length}):`);
+          esc.docentes.forEach(d => {
+            lines.push(`  - [${d.cargo}] ${d.nombreApellido} (${d.jornada || "N/D"}) — ${d.estado}${d.estado === "Licencia" ? ` (${d.motivo}, hasta ${formatDate(d.fechaFinLicencia)})` : ""}`);
+            d.suplentes.forEach(s => lines.push(`      ↳ [${s.cargo}] ${s.nombreApellido} (${s.jornada || "N/D"}) — ${s.estado}`));
+          });
+          lines.push(`\n  ALUMNOS (${esc.alumnos.length}):`);
+          esc.alumnos.forEach(a => lines.push(`  - ${a.gradoSalaAnio}: ${a.nombre} — ${a.diagnostico}`));
+        }
+        lines.push("─".repeat(60));
+      });
+      const content = lines.join("\n");
+      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `ACDM_Reporte_${new Date().toISOString().split("T")[0]}.txt`;
+      a.click(); URL.revokeObjectURL(url);
+    }
     onClose();
   }
   
@@ -1462,29 +1687,54 @@ function ExportPDF({ escuelas, onClose }) {
           </div>
         </div>
         
+        <div className="form-group">
+          <label className="form-label">Formato de Exportación</label>
+          <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:8}}>
+            <button 
+              className={`btn ${formato === 'txt' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{textAlign:'center'}}
+              onClick={() => setFormato('txt')}>
+              📄 TXT
+            </button>
+            <button 
+              className={`btn ${formato === 'csv' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{textAlign:'center'}}
+              onClick={() => setFormato('csv')}>
+              📊 CSV (Excel)
+            </button>
+            <button 
+              className={`btn ${formato === 'excel' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{textAlign:'center'}}
+              onClick={() => setFormato('excel')}>
+              📈 Excel
+            </button>
+          </div>
+        </div>
+        
         {/* Preview */}
-        <div className="pdf-preview">
+        <div className="pdf-preview" style={{fontSize:12, maxHeight:'300px', overflowY:'auto'}}>
           <div className="pdf-header">
             <div className="pdf-title">Sistema ACDM — Reporte {tipo}</div>
-            <div className="pdf-sub">Generado por PAPIWEB Desarrollos Informáticos · {new Date().toLocaleDateString('es-AR')}</div>
+            <div className="pdf-sub">Formato: {formato.toUpperCase()} · {new Date().toLocaleDateString('es-AR')}</div>
           </div>
-          {(filter === "all" ? escuelas : escuelas.filter(e => e.de === filter)).map(esc => (
+          {(filter === "all" ? escuelas : escuelas.filter(e => e.de === filter)).slice(0, 3).map(esc => (
             <div key={esc.id} style={{marginBottom:12, paddingBottom:8, borderBottom:'1px solid #ddd'}}>
               <div style={{fontWeight:700, color:'#0066aa'}}>{esc.de} — {esc.escuela}</div>
               <div style={{fontSize:11, color:'#444'}}>{esc.nivel} | {esc.jornada} | {esc.turno} | {esc.mail}</div>
-              {tipo !== "mini" && esc.docentes.map(d => (
+              {tipo !== "mini" && esc.docentes.slice(0, 2).map(d => (
                 <div key={d.id} style={{marginLeft:12, marginTop:4, fontSize:11}}>
-                  <span style={{fontWeight:700}}>[{d.cargo}]</span> {d.nombreApellido} — <span style={{color: d.estado === "Activo" ? "green" : "red"}}>{d.estado}</span>
+                  <span style={{fontWeight:700}}>[{d.cargo}]</span> {d.nombreApellido} · <span style={{color:'#0066aa'}}>📅 {d.jornada || 'N/D'}</span> — <span style={{color: d.estado === "Activo" ? "green" : "red"}}>{d.estado}</span>
                   {d.estado === "Licencia" && <span style={{color:'#888'}}> · {d.motivo} hasta {formatDate(d.fechaFinLicencia)}</span>}
                 </div>
               ))}
             </div>
           ))}
+          <div style={{fontSize:11, color:'#999', marginTop:8}}>*Mostrando vista previa de los primeros registros</div>
         </div>
         
         <div className="flex gap-8 justify-end mt-16">
           <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={doExport}>⬇️ Exportar TXT/PDF</button>
+          <button className="btn btn-primary" onClick={doExport}>⬇️ Exportar {formato.toUpperCase()}</button>
         </div>
       </div>
     </div>
@@ -1550,6 +1800,156 @@ function Login({ onLogin }) {
 }
 
 // ============================================================
+// VISITA MODAL
+// ============================================================
+function VisitaModal({ visita, isNew, onSave, onClose, escuelas, escuelaId }) {
+  const [form, setForm] = useState(visita || { id: `v${Date.now()}`, fecha: "", observaciones: "" });
+  const [selectedEscuela, setSelectedEscuela] = useState(escuelaId || "");
+  
+  return (
+    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-header">
+          <div className="modal-title">{isNew ? "➕ Nueva Visita" : "✏️ Editar Visita"}</div>
+          <button className="btn-icon" onClick={onClose}>✕</button>
+        </div>
+        {isNew && (
+          <div className="form-group">
+            <label className="form-label">Seleccionar Escuela</label>
+            <select className="form-select" value={selectedEscuela} onChange={e => setSelectedEscuela(e.target.value)}>
+              <option value="">-- Seleccionar escuela --</option>
+              {escuelas.map(e => <option key={e.id} value={e.id}>{e.escuela} ({e.de})</option>)}
+            </select>
+          </div>
+        )}
+        <div className="form-group">
+          <label className="form-label">Fecha de Visita</label>
+          <input type="date" className="form-input" value={form.fecha} onChange={e => setForm({...form, fecha: e.target.value})} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Observaciones</label>
+          <textarea className="form-textarea" value={form.observaciones} onChange={e => setForm({...form, observaciones: e.target.value})} placeholder="Detalles de la visita..." rows="4"></textarea>
+        </div>
+        <div className="flex gap-8 justify-end mt-16">
+          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={() => { onSave(form, selectedEscuela || escuelaId); onClose(); }}>Guardar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// PROYECTO MODAL
+// ============================================================
+function ProyectoModal({ proyecto, isNew, onSave, onClose, escuelas, escuelaId }) {
+  const [form, setForm] = useState(proyecto || { id: `p${Date.now()}`, nombre: "", estado: "En progreso", descripcion: "", fechaInicio: "", fechaBaja: "" });
+  const [selectedEscuela, setSelectedEscuela] = useState(escuelaId || "");
+  
+  return (
+    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-header">
+          <div className="modal-title">{isNew ? "➕ Nuevo Proyecto" : "✏️ Editar Proyecto"}</div>
+          <button className="btn-icon" onClick={onClose}>✕</button>
+        </div>
+        {isNew && (
+          <div className="form-group">
+            <label className="form-label">Seleccionar Escuela</label>
+            <select className="form-select" value={selectedEscuela} onChange={e => setSelectedEscuela(e.target.value)}>
+              <option value="">-- Seleccionar escuela --</option>
+              {escuelas.map(e => <option key={e.id} value={e.id}>{e.escuela} ({e.de})</option>)}
+            </select>
+          </div>
+        )}
+        <div className="form-group">
+          <label className="form-label">Nombre del Proyecto</label>
+          <input className="form-input" value={form.nombre} onChange={e => setForm({...form, nombre: e.target.value})} placeholder="Ej: Adaptación de material didáctico" />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Descripción</label>
+          <textarea className="form-textarea" value={form.descripcion} onChange={e => setForm({...form, descripcion: e.target.value})} placeholder="Detalles del proyecto..." rows="3"></textarea>
+        </div>
+        <div className="form-row">
+          <div className="form-group">
+            <label className="form-label">Estado</label>
+            <select className="form-select" value={form.estado} onChange={e => setForm({...form, estado: e.target.value})}>
+              <option>En progreso</option><option>Completado</option><option>Pausado</option>
+            </select>
+          </div>
+        </div>
+        <div className="form-row">
+          <div className="form-group">
+            <label className="form-label">Fecha de Inicio</label>
+            <input type="date" className="form-input" value={form.fechaInicio} onChange={e => setForm({...form, fechaInicio: e.target.value})} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Fecha de Baja/Finalización</label>
+            <input type="date" className="form-input" value={form.fechaBaja} onChange={e => setForm({...form, fechaBaja: e.target.value})} />
+          </div>
+        </div>
+        <div className="flex gap-8 justify-end mt-16">
+          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={() => { onSave(form, selectedEscuela || escuelaId); onClose(); }}>Guardar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// INFORME MODAL
+// ============================================================
+function InformeModal({ informe, isNew, onSave, onClose, escuelas, escuelaId }) {
+  const [form, setForm] = useState(informe || { id: `i${Date.now()}`, titulo: "", estado: "Entregado", observaciones: "", fechaEntrega: "" });
+  const [selectedEscuela, setSelectedEscuela] = useState(escuelaId || "");
+  
+  return (
+    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-header">
+          <div className="modal-title">{isNew ? "➕ Nuevo Informe" : "✏️ Editar Informe"}</div>
+          <button className="btn-icon" onClick={onClose}>✕</button>
+        </div>
+        {isNew && (
+          <div className="form-group">
+            <label className="form-label">Seleccionar Escuela</label>
+            <select className="form-select" value={selectedEscuela} onChange={e => setSelectedEscuela(e.target.value)}>
+              <option value="">-- Seleccionar escuela --</option>
+              {escuelas.map(e => <option key={e.id} value={e.id}>{e.escuela} ({e.de})</option>)}
+            </select>
+          </div>
+        )}
+        <div className="form-group">
+          <label className="form-label">Título del Informe</label>
+          <input className="form-input" value={form.titulo} onChange={e => setForm({...form, titulo: e.target.value})} placeholder="Ej: Informe mensual enero" />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Observaciones / Contenido</label>
+          <textarea className="form-textarea" value={form.observaciones} onChange={e => setForm({...form, observaciones: e.target.value})} placeholder="Detalles del informe..." rows="4"></textarea>
+        </div>
+        <div className="form-row">
+          <div className="form-group">
+            <label className="form-label">Estado</label>
+            <select className="form-select" value={form.estado} onChange={e => setForm({...form, estado: e.target.value})}>
+              <option>Pendiente</option><option>Entregado</option><option>Revisado</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Fecha de Entrega</label>
+            <input type="date" className="form-input" value={form.fechaEntrega} onChange={e => setForm({...form, fechaEntrega: e.target.value})} />
+          </div>
+        </div>
+        <div className="flex gap-8 justify-end mt-16">
+          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={() => { onSave(form, selectedEscuela || escuelaId); onClose(); }}>Guardar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // MAIN APP
 // ============================================================
 export default function App() {
@@ -1560,6 +1960,11 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [search, setSearch] = useState("");
   const [showExport, setShowExport] = useState(false);
+  const [showMailsExtractor, setShowMailsExtractor] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem("acdm_darkMode");
+    return saved !== null ? saved === "true" : true;
+  });
   
   // Modals
   const [escuelaModal, setEscuelaModal] = useState(null);
@@ -1567,6 +1972,9 @@ export default function App() {
   const [alumnoModal, setAlumnoModal] = useState(null);
   const [addDocenteTarget, setAddDocenteTarget] = useState(null); // {escuelaId, titularId?}
   const [addAlumnoTarget, setAddAlumnoTarget] = useState(null); // escuelaId
+  const [visitaModal, setVisitaModal] = useState(null);
+  const [proyectoModal, setProyectoModal] = useState(null);
+  const [informeModal, setInformeModal] = useState(null);
   
   const isAdmin = currentUser?.rol === "admin";
   
@@ -1578,6 +1986,11 @@ export default function App() {
       // El backend se actualizaría de forma independiente según sea necesario
     }
   }, [db]);
+  
+  // Persist dark mode preference
+  useEffect(() => {
+    localStorage.setItem("acdm_darkMode", darkMode);
+  }, [darkMode]);
   
   // Keyboard shortcut: Ctrl+Alt+A = admin login
   useEffect(() => {
@@ -1657,6 +2070,48 @@ export default function App() {
     updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, alumnos: esc.alumnos.filter(a => a.id !== alumnoId) }));
   }
   
+  // Visitas
+  function addVisita(escuelaId, visitaForm) {
+    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, visitas: [...(esc.visitas || []), visitaForm] }));
+  }
+  
+  function updateVisita(escuelaId, visitaForm) {
+    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, visitas: esc.visitas.map(v => v.id === visitaForm.id ? visitaForm : v) }));
+  }
+  
+  function deleteVisita(escuelaId, visitaId) {
+    if (!confirm("¿Eliminar visita?")) return;
+    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, visitas: esc.visitas.filter(v => v.id !== visitaId) }));
+  }
+  
+  // Proyectos
+  function addProyecto(escuelaId, proyectoForm) {
+    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, proyectos: [...(esc.proyectos || []), proyectoForm] }));
+  }
+  
+  function updateProyecto(escuelaId, proyectoForm) {
+    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, proyectos: esc.proyectos.map(p => p.id === proyectoForm.id ? proyectoForm : p) }));
+  }
+  
+  function deleteProyecto(escuelaId, proyectoId) {
+    if (!confirm("¿Eliminar proyecto?")) return;
+    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, proyectos: esc.proyectos.filter(p => p.id !== proyectoId) }));
+  }
+  
+  // Informes
+  function addInforme(escuelaId, informeForm) {
+    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, informes: [...(esc.informes || []), informeForm] }));
+  }
+  
+  function updateInforme(escuelaId, informeForm) {
+    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, informes: esc.informes.map(i => i.id === informeForm.id ? informeForm : i) }));
+  }
+  
+  function deleteInforme(escuelaId, informeId) {
+    if (!confirm("¿Eliminar informe?")) return;
+    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, informes: esc.informes.filter(i => i.id !== informeId) }));
+  }
+  
   const alertCount = db.escuelas.reduce((a, esc) => {
     if (esc.docentes.length === 0) a++;
     esc.docentes.forEach(d => { if (d.estado === "Licencia" && d.fechaFinLicencia && diasRestantes(d.fechaFinLicencia) <= 10) a++; });
@@ -1676,6 +2131,9 @@ export default function App() {
   const navItems = [
     { id: "dashboard", icon: "📊", label: "Dashboard" },
     { id: "escuelas", icon: "🏫", label: "Escuelas", badge: 0 },
+    { id: "visitas", icon: "👁️", label: "Visitas" },
+    { id: "proyectos", icon: "📦", label: "Proyectos" },
+    { id: "informes", icon: "📋", label: "Informes" },
     { id: "alertas", icon: "🔔", label: "Alertas", badge: alertCount },
     { id: "estadisticas", icon: "📈", label: "Estadísticas" },
     { id: "calendario", icon: "📅", label: "Calendario" },
@@ -1685,7 +2143,7 @@ export default function App() {
   return (
     <>
       <style>{STYLES}</style>
-      <div className="app">
+      <div className={`app ${darkMode ? "" : "light-mode"}`}>
         {/* HEADER */}
         <header className="header">
           <div className="flex items-center gap-16">
@@ -1708,6 +2166,7 @@ export default function App() {
               </div>
             </div>
             <div className="flex items-center gap-8">
+              <button className="btn-icon" onClick={() => setDarkMode(!darkMode)} title={darkMode ? "Modo claro" : "Modo oscuro"} style={{fontSize:18}}>{darkMode ? '☀️' : '🌙'}</button>
               <span style={{fontSize:11, color:'var(--text2)'}}>{currentUser.username}</span>
               <span className={`badge ${isAdmin ? "badge-titular" : "badge-active"}`}>{currentUser.rol}</span>
               <button className="btn btn-secondary btn-sm" onClick={() => setCurrentUser(null)}>Salir</button>
@@ -1788,6 +2247,7 @@ export default function App() {
                   {filteredEscuelas.map(esc => (
                     <EscuelaDetail key={esc.id} esc={esc} viewMode={viewMode} isAdmin={isAdmin}
                       onEdit={() => setEscuelaModal({ isNew: false, data: esc })}
+                      onDelete={() => deleteEscuela(esc.id)}
                       onAddDocente={(escId, titularId) => setDocenteModal({ isNew: true, escuelaId: escId, titularId: titularId || null, data: null })}
                       onEditDocente={(escId, doc, titularId) => setDocenteModal({ isNew: false, escuelaId: escId, titularId: titularId || null, data: doc })}
                       onDeleteDocente={deleteDocente}
@@ -1843,14 +2303,168 @@ export default function App() {
             {/* CALENDARIO */}
             {activeSection === "calendario" && <CalendarioView escuelas={db.escuelas} />}
             
+            {/* VISITAS */}
+            {activeSection === "visitas" && (
+              <div>
+                <div className="flex items-center justify-between mb-16">
+                  <div>
+                    <h1 style={{fontFamily:'Rajdhani', fontSize:28, fontWeight:700, color:'var(--accent)', letterSpacing:2}}>Visitas a Escuelas</h1>
+                    <p style={{color:'var(--text2)', fontSize:13}}>Registro de visitas y observaciones a las escuelas</p>
+                  </div>
+                  {isAdmin && <button className="btn btn-primary" onClick={() => setVisitaModal({ isNew: true, data: null, escuelaId: null })}>➕ Nueva Visita</button>}
+                </div>
+                <div className="card-grid">
+                  {db.escuelas.map(esc => (
+                    <div key={esc.id} className="card">
+                      <div className="card-header">
+                        <span className="card-title">{esc.escuela}</span>
+                        <span style={{fontSize:11, color:'var(--text3)'}}>{esc.de}</span>
+                      </div>
+                      {(!esc.visitas || esc.visitas.length === 0) ? (
+                        <div className="no-data">Sin visitas registradas</div>
+                      ) : (
+                        esc.visitas.map(v => (
+                          <div key={v.id} style={{padding:'12px', borderBottom:'1px solid var(--border)', fontSize:13}}>
+                            <div style={{display:'flex', justifyContent:'space-between', alignItems:'start'}}>
+                              <div>
+                                <div style={{fontFamily:'Rajdhani', fontWeight:700, color:'var(--accent)'}}>📅 {formatDate(v.fecha)}</div>
+                                <div style={{color:'var(--text2)', marginTop:6, fontSize:12}}>{v.observaciones}</div>
+                              </div>
+                              {isAdmin && (
+                                <div className="flex gap-4">
+                                  <button className="btn btn-secondary btn-sm" onClick={() => setVisitaModal({ isNew: false, data: v, escuelaId: esc.id })}>✏️</button>
+                                  <button className="btn btn-danger btn-sm" onClick={() => deleteVisita(esc.id, v.id)}>🗑️</button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                      {isAdmin && (
+                        <button className="btn btn-secondary btn-sm" style={{marginTop:12, width:'100%'}} onClick={() => setVisitaModal({ isNew: true, data: null, escuelaId: esc.id })}>+ Agregar visita</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* PROYECTOS */}
+            {activeSection === "proyectos" && (
+              <div>
+                <div className="flex items-center justify-between mb-16">
+                  <div>
+                    <h1 style={{fontFamily:'Rajdhani', fontSize:28, fontWeight:700, color:'var(--accent)', letterSpacing:2}}>Proyectos Entregados</h1>
+                    <p style={{color:'var(--text2)', fontSize:13}}>Proyectos desarrollados e implementados por los ACDM</p>
+                  </div>
+                  {isAdmin && <button className="btn btn-primary" onClick={() => setProyectoModal({ isNew: true, data: null, escuelaId: null })}>➕ Nuevo Proyecto</button>}
+                </div>
+                <div className="card-grid">
+                  {db.escuelas.map(esc => (
+                    <div key={esc.id} className="card">
+                      <div className="card-header">
+                        <span className="card-title">{esc.escuela}</span>
+                        <span style={{fontSize:11, color:'var(--text3)'}}>{esc.de}</span>
+                      </div>
+                      {(!esc.proyectos || esc.proyectos.length === 0) ? (
+                        <div className="no-data">Sin proyectos registrados</div>
+                      ) : (
+                        esc.proyectos.map(p => (
+                          <div key={p.id} style={{padding:'12px', borderBottom:'1px solid var(--border)', fontSize:13}}>
+                            <div style={{display:'flex', justifyContent:'space-between', alignItems:'start'}}>
+                              <div style={{flex:1}}>
+                                <div style={{fontFamily:'Rajdhani', fontWeight:700, color:'var(--accent)'}}>{p.nombre}</div>
+                                <div style={{color:'var(--text2)', marginTop:4, fontSize:11}}>{p.descripcion}</div>
+                                <div style={{marginTop:6, display:'flex', gap:12, fontSize:11}}>
+                                  <span className={`badge badge-${p.estado === 'Completado' ? 'active' : 'warning'}`}>{p.estado}</span>
+                                  <span style={{color:'var(--text3)'}}>📅 {formatDate(p.fechaInicio)} → {formatDate(p.fechaBaja)}</span>
+                                </div>
+                              </div>
+                              {isAdmin && (
+                                <div className="flex gap-4" style={{marginLeft:8}}>
+                                  <button className="btn btn-secondary btn-sm" onClick={() => setProyectoModal({ isNew: false, data: p, escuelaId: esc.id })}>✏️</button>
+                                  <button className="btn btn-danger btn-sm" onClick={() => deleteProyecto(esc.id, p.id)}>🗑️</button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                      {isAdmin && (
+                        <button className="btn btn-secondary btn-sm" style={{marginTop:12, width:'100%'}} onClick={() => setProyectoModal({ isNew: true, data: null, escuelaId: esc.id })}>+ Agregar proyecto</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* INFORMES */}
+            {activeSection === "informes" && (
+              <div>
+                <div className="flex items-center justify-between mb-16">
+                  <div>
+                    <h1 style={{fontFamily:'Rajdhani', fontSize:28, fontWeight:700, color:'var(--accent)', letterSpacing:2}}>Informes Entregados</h1>
+                    <p style={{color:'var(--text2)', fontSize:13}}>Informes periódicos entregados por los ACDM</p>
+                  </div>
+                  {isAdmin && <button className="btn btn-primary" onClick={() => setInformeModal({ isNew: true, data: null, escuelaId: null })}>➕ Nuevo Informe</button>}
+                </div>
+                <div className="card-grid">
+                  {db.escuelas.map(esc => (
+                    <div key={esc.id} className="card">
+                      <div className="card-header">
+                        <span className="card-title">{esc.escuela}</span>
+                        <span style={{fontSize:11, color:'var(--text3)'}}>{esc.de}</span>
+                      </div>
+                      {(!esc.informes || esc.informes.length === 0) ? (
+                        <div className="no-data">Sin informes registrados</div>
+                      ) : (
+                        esc.informes.map(i => (
+                          <div key={i.id} style={{padding:'12px', borderBottom:'1px solid var(--border)', fontSize:13}}>
+                            <div style={{display:'flex', justifyContent:'space-between', alignItems:'start'}}>
+                              <div style={{flex:1}}>
+                                <div style={{fontFamily:'Rajdhani', fontWeight:700, color:'var(--accent)'}}>{i.titulo}</div>
+                                <div style={{color:'var(--text2)', marginTop:4, fontSize:11}}>{i.observaciones}</div>
+                                <div style={{marginTop:6, display:'flex', gap:12, fontSize:11}}>
+                                  <span className={`badge badge-${i.estado === 'Entregado' ? 'active' : 'warning'}`}>{i.estado}</span>
+                                  <span style={{color:'var(--text3)'}}>📅 {formatDate(i.fechaEntrega)}</span>
+                                </div>
+                              </div>
+                              {isAdmin && (
+                                <div className="flex gap-4" style={{marginLeft:8}}>
+                                  <button className="btn btn-secondary btn-sm" onClick={() => setInformeModal({ isNew: false, data: i, escuelaId: esc.id })}>✏️</button>
+                                  <button className="btn btn-danger btn-sm" onClick={() => deleteInforme(esc.id, i.id)}>🗑️</button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                      {isAdmin && (
+                        <button className="btn btn-secondary btn-sm" style={{marginTop:12, width:'100%'}} onClick={() => setInformeModal({ isNew: true, data: null, escuelaId: esc.id })}>+ Agregar informe</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
             {/* EXPORTAR */}
             {activeSection === "exportar" && (
               <div>
                 <h1 style={{fontFamily:'Rajdhani', fontSize:28, fontWeight:700, color:'var(--accent)', letterSpacing:2, marginBottom:24}}>Exportar</h1>
-                <div className="card">
-                  <div className="card-header"><span className="card-title">Exportar datos</span></div>
-                  <p style={{color:'var(--text2)', marginBottom:16}}>Genera reportes en formato texto exportable (PDF-compatible) con los datos del sistema.</p>
-                  <button className="btn btn-primary" onClick={() => setShowExport(true)}>📄 Generar Reporte</button>
+                <div className="card-grid">
+                  <div className="card">
+                    <div className="card-header"><span className="card-title">Reporte de Datos</span></div>
+                    <p style={{color:'var(--text2)', marginBottom:16, fontSize:13}}>Genera reportes en formato texto, CSV o Excel con los datos del sistema.</p>
+                    <button className="btn btn-primary" onClick={() => setShowExport(true)}>📄 Generar Reporte</button>
+                  </div>
+                  
+                  <div className="card">
+                    <div className="card-header"><span className="card-title">Extraer Mails</span></div>
+                    <p style={{color:'var(--text2)', marginBottom:16, fontSize:13}}>Extrae todos los emails de las escuelas. Puedes copiarlos o descargarlos como archivo.</p>
+                    <button className="btn btn-primary" onClick={() => setShowMailsExtractor(true)}>✉️ Extraer Emails</button>
+                  </div>
                 </div>
               </div>
             )}
@@ -1873,8 +2487,136 @@ export default function App() {
           onSave={(form) => alumnoModal.isNew ? addAlumno(alumnoModal.escuelaId, form) : updateAlumno(alumnoModal.escuelaId, form)}
           onClose={() => setAlumnoModal(null)} />
       )}
+      {visitaModal && (
+        <VisitaModal isNew={visitaModal.isNew} visita={visitaModal.data} escuelaId={visitaModal.escuelaId}
+          onSave={(form, escId) => visitaModal.isNew ? addVisita(escId, form) : updateVisita(escId, form)}
+          onClose={() => setVisitaModal(null)} escuelas={db.escuelas} />
+      )}
+      {proyectoModal && (
+        <ProyectoModal isNew={proyectoModal.isNew} proyecto={proyectoModal.data} escuelaId={proyectoModal.escuelaId}
+          onSave={(form, escId) => proyectoModal.isNew ? addProyecto(escId, form) : updateProyecto(escId, form)}
+          onClose={() => setProyectoModal(null)} escuelas={db.escuelas} />
+      )}
+      {informeModal && (
+        <InformeModal isNew={informeModal.isNew} informe={informeModal.data} escuelaId={informeModal.escuelaId}
+          onSave={(form, escId) => informeModal.isNew ? addInforme(escId, form) : updateInforme(escId, form)}
+          onClose={() => setInformeModal(null)} escuelas={db.escuelas} />
+      )}
       {showExport && <ExportPDF escuelas={db.escuelas} onClose={() => setShowExport(false)} />}
+      {showMailsExtractor && <MailsExtractor escuelas={db.escuelas} onClose={() => setShowMailsExtractor(false)} />}
     </>
+  );
+}
+
+// ============================================================
+// MAILS EXTRACTOR
+// ============================================================
+function MailsExtractor({ escuelas, onClose }) {
+  const [formato, setFormato] = useState("lista");
+  const [copiadoMsg, setCopiadoMsg] = useState("");
+  
+  // Extraer todos los mails
+  const mails = escuelas
+    .filter(esc => esc.mail && esc.mail.trim())
+    .map(esc => ({ mail: esc.mail, escuela: esc.escuela, de: esc.de }));
+  
+  const mailsUnicos = [...new Set(mails.map(m => m.mail))];
+  
+  // Copiar al portapapeles
+  function copiarAlPortapapeles() {
+    const texto = formato === "lista" 
+      ? mailsUnicos.join("\n")
+      : mailsUnicos.join(", ");
+    
+    navigator.clipboard.writeText(texto).then(() => {
+      setCopiadoMsg("✓ Copiado al portapapeles");
+      setTimeout(() => setCopiadoMsg(""), 2000);
+    }).catch(() => {
+      alert("Error al copiar. Por favor intenta de nuevo.");
+    });
+  }
+  
+  // Descargar archivo
+  function descargarArchivo() {
+    const contenido = mails.map(m => `${m.mail},${m.escuela},${m.de}`).join("\n");
+    const encabezado = "Email,Escuela,Distrito Escolar\n";
+    const blob = new Blob([encabezado + contenido], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `emails_acdm_${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  
+  return (
+    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{maxWidth: '600px'}}>
+        <div className="modal-header">
+          <div className="modal-title">✉️ Extractor de Emails</div>
+          <button className="btn-icon" onClick={onClose}>✕</button>
+        </div>
+        
+        <div style={{marginBottom: 16, padding: '12px', background: 'rgba(0,212,255,0.1)', borderRadius: 8, fontSize: 13}}>
+          <strong>Total de emails únicos:</strong> {mailsUnicos.length}
+        </div>
+        
+        <div className="form-group">
+          <label className="form-label">Formato</label>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap: 8}}>
+            <button 
+              className={`btn ${formato === 'lista' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setFormato('lista')}>
+              📋 Listado (línea x línea)
+            </button>
+            <button 
+              className={`btn ${formato === 'comas' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setFormato('comas')}>
+              🔗 Separado por comas
+            </button>
+          </div>
+        </div>
+        
+        <div className="form-group">
+          <label className="form-label">Vista Previa</label>
+          <textarea 
+            className="form-textarea" 
+            value={formato === 'lista' ? mailsUnicos.join("\n") : mailsUnicos.join(", ")}
+            readOnly
+            rows="6"
+            style={{fontFamily: 'monospace', fontSize: 12}}
+          />
+        </div>
+        
+        <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16}}>
+          <button 
+            className="btn btn-primary" 
+            onClick={copiarAlPortapapeles}
+            style={{justifyContent: 'center'}}>
+            {copiadoMsg ? copiadoMsg : "📋 Copiar"}
+          </button>
+          <button 
+            className="btn btn-primary" 
+            onClick={descargarArchivo}
+            style={{justifyContent: 'center'}}>
+            💾 Descargar CSV
+          </button>
+        </div>
+        
+        <div style={{fontSize: 12, color: 'var(--text2)', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: 8}}>
+          <strong>Detalles:</strong><br/>
+          {mails.map((m, i) => (
+            <div key={i} style={{marginTop: 4}}>
+              <span style={{color: 'var(--accent)'}}>{m.mail}</span> <span style={{fontSize: 11, color: 'var(--text3)'}}>— {m.escuela} ({m.de})</span>
+            </div>
+          ))}
+        </div>
+        
+        <div className="flex gap-8 justify-end mt-16">
+          <button className="btn btn-secondary" onClick={onClose}>Cerrar</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
