@@ -1043,7 +1043,7 @@ function Statistics({ escuelas }) {
 function DocenteModal({ docente, titularId, isNew, onSave, onClose }) {
   const [form, setForm] = useState(docente || {
     id: `d${Date.now()}`, cargo: "Titular", nombreApellido: "",
-    estado: "Activo", motivo: "-", diasAutorizados: 0,
+    estado: "Activo", motivo: "-", motivoPersonalizado: "", diasAutorizados: 0,
     fechaInicioLicencia: null, fechaFinLicencia: null, suplentes: [],
     jornada: "Completa"
   });
@@ -1096,6 +1096,9 @@ function DocenteModal({ docente, titularId, isNew, onSave, onClose }) {
             <select className="form-select" value={form.motivo} onChange={e => setForm({...form, motivo: e.target.value})}>
               {MOTIVOS.map(m => <option key={m}>{m}</option>)}
             </select>
+            {form.motivo === "Otro" && (
+              <input type="text" className="form-input" style={{marginTop: 8}} value={form.motivoPersonalizado} onChange={e => setForm({...form, motivoPersonalizado: e.target.value})} placeholder="Especificar artículo (ej: Art. 150 - Nombre del motivo)" />
+            )}
           </div>
         </div>
         {form.estado === "Licencia" && (
@@ -2182,7 +2185,7 @@ export default function App() {
             <button className="btn-icon" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} style={{fontSize:18}}>☰</button>
             <div>
               <div className="header-title">🏫 Sistema ACDM</div>
-              <div className="header-sub">Gestión de Asistentes de Clase para Discapacidad Motriz</div>
+              <div className="header-sub">Gestión de Asistentes Celadores/as para estudiantes con Discapacidad Motora</div>
             </div>
           </div>
           <div className="flex items-center gap-16">
