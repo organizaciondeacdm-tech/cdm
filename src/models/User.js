@@ -1,6 +1,15 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
+const parsePositiveIntEnv = (value, fallback) => {
+  const parsed = parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const MAX_LOGIN_ATTEMPTS = parsePositiveIntEnv(process.env.MAX_LOGIN_ATTEMPTS, 3);
+const LOCK_BASE_MINUTES = parsePositiveIntEnv(process.env.LOGIN_LOCK_BASE_MINUTES, 15);
+const LOCK_MAX_MINUTES = parsePositiveIntEnv(process.env.LOGIN_LOCK_MAX_MINUTES, 240);
+
 const userSchema = new mongoose.Schema({
   username: {
     type: String,
@@ -125,6 +134,13 @@ userSchema.methods.isLocked = function() {
   return !!(this.lockUntil && this.lockUntil > new Date());
 };
 
+userSchema.methods.getLockDurationMs = function(attempts) {
+  const overflow = Math.max(0, attempts - MAX_LOGIN_ATTEMPTS);
+  const multiplier = Math.pow(2, overflow);
+  const lockMinutes = Math.min(LOCK_MAX_MINUTES, LOCK_BASE_MINUTES * multiplier);
+  return lockMinutes * 60 * 1000;
+};
+
 userSchema.methods.incrementLoginAttempts = function() {
   if (this.lockUntil && this.lockUntil < new Date()) {
     return this.updateOne({
@@ -134,10 +150,38 @@ userSchema.methods.incrementLoginAttempts = function() {
   }
   
   const updates = { $inc: { loginAttempts: 1 } };
-  if (this.loginAttempts + 1 >= 5 && !this.isLocked()) {
-    updates.$set = { lockUntil: new Date(Date.now() + 30 * 60 * 1000) }; // 30 minutos
+  if (this.loginAttempts + 1 >= MAX_LOGIN_ATTEMPTS) {
+    updates.$set = {
+      lockUntil: new Date(Date.now() + this.getLockDurationMs(this.loginAttempts + 1))
+    };
   }
   return this.updateOne(updates);
+};
+
+userSchema.methods.registerFailedLoginAttempt = async function() {
+  const now = new Date();
+
+  if (this.lockUntil && this.lockUntil < now) {
+    this.loginAttempts = 0;
+    this.lockUntil = undefined;
+  }
+
+  this.loginAttempts = (this.loginAttempts || 0) + 1;
+
+  let lockUntil = null;
+  if (this.loginAttempts >= MAX_LOGIN_ATTEMPTS) {
+    lockUntil = new Date(now.getTime() + this.getLockDurationMs(this.loginAttempts));
+    this.lockUntil = lockUntil;
+  }
+
+  await this.save();
+
+  return {
+    attempts: this.loginAttempts,
+    remainingAttempts: Math.max(0, MAX_LOGIN_ATTEMPTS - this.loginAttempts),
+    locked: !!(lockUntil && lockUntil > now),
+    lockUntil
+  };
 };
 
 userSchema.methods.hasPermission = function(permission) {
