@@ -27,6 +27,12 @@ class ACDMApiService {
     this.token = localStorage.getItem('acdm_token');
     this.baseURL = API_URL;
     this.offline = false;
+    this.defaultRetry = {
+      maxRetries: 0,
+      baseDelayMs: 300,
+      maxDelayMs: 5000,
+      retryOnStatuses: [429, 500, 502, 503, 504]
+    };
   }
 
   setToken(token) {
@@ -48,8 +54,22 @@ class ACDMApiService {
     return headers;
   }
 
-  async request(endpoint, options = {}) {
+  sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  getRetryDelayMs(attempt, baseDelayMs, maxDelayMs) {
+    const expoDelay = Math.min(maxDelayMs, baseDelayMs * Math.pow(2, attempt - 1));
+    const jitter = Math.floor(Math.random() * 200);
+    return expoDelay + jitter;
+  }
+
+  async request(endpoint, options = {}, retryOptions = {}) {
     const url = `${this.baseURL}${endpoint}`;
+    const retry = {
+      ...this.defaultRetry,
+      ...retryOptions
+    };
     const config = {
       ...options,
       headers: {
@@ -58,34 +78,71 @@ class ACDMApiService {
       },
     };
 
-    try {
-      const response = await fetch(url, config);
-      
-      if (!response.ok) {
-        if (response.status === 401) {
-          // Token expirado
-          this.setToken(null);
-          throw new Error('Token expirado. Por favor, vuelve a iniciar sesión.');
-        }
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.message || `Error ${response.status}`);
-      }
+    let lastError;
+    for (let attempt = 0; attempt <= retry.maxRetries; attempt += 1) {
+      try {
+        const response = await fetch(url, config);
 
-      return await response.json();
-    } catch (error) {
-      console.error('API Error:', error);
-      throw error;
+        if (!response.ok) {
+          const errorBody = await response.json().catch(() => ({}));
+          const backendMessage = errorBody.error || errorBody.message;
+          const error = new Error(backendMessage || `Error ${response.status}`);
+          error.status = response.status;
+          error.payload = errorBody;
+          error.retryAfter = response.headers.get('Retry-After');
+
+          const hasAuthHeader = !!this.token || !!config.headers?.Authorization;
+          const isLoginEndpoint = endpoint.startsWith('/auth/login');
+          if (response.status === 401 && hasAuthHeader && !isLoginEndpoint) {
+            this.setToken(null);
+            throw new Error('Token expirado. Por favor, vuelve a iniciar sesión.');
+          }
+
+          const shouldRetry = attempt < retry.maxRetries && retry.retryOnStatuses.includes(response.status);
+          if (shouldRetry) {
+            const retryAfterSeconds = parseInt(error.retryAfter, 10);
+            const delayMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+              ? retryAfterSeconds * 1000
+              : this.getRetryDelayMs(attempt + 1, retry.baseDelayMs, retry.maxDelayMs);
+            await this.sleep(delayMs);
+            continue;
+          }
+
+          throw error;
+        }
+
+        return await response.json();
+      } catch (error) {
+        const isNetworkError = error?.status === undefined;
+        const shouldRetry = isNetworkError && attempt < retry.maxRetries;
+        lastError = error;
+
+        if (!shouldRetry) {
+          console.error('API Error:', error);
+          throw error;
+        }
+
+        const delayMs = this.getRetryDelayMs(attempt + 1, retry.baseDelayMs, retry.maxDelayMs);
+        await this.sleep(delayMs);
+      }
     }
+
+    throw lastError;
   }
 
   // ============================================================
   // AUTH ENDPOINTS
   // ============================================================
 
-  async login(email, password) {
+  async login(username, password) {
     return this.request('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ username, password }),
+    }, {
+      maxRetries: 4,
+      baseDelayMs: 300,
+      maxDelayMs: 8000,
+      retryOnStatuses: [429, 500, 502, 503, 504]
     });
   }
 

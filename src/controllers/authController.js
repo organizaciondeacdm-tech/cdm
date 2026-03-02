@@ -3,6 +3,10 @@ const User = require('../models/User');
 const { hashPassword, comparePassword } = require('../config/auth');
 const crypto = require('crypto');
 
+const LOGIN_RESPONSE_DELAY_MS = parseInt(process.env.LOGIN_RESPONSE_DELAY_MS, 10) || 400;
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const generateTokens = (userId, rol) => {
   const accessToken = jwt.sign(
     { userId, rol },
@@ -21,7 +25,9 @@ const generateTokens = (userId, rol) => {
 
 const login = async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const rawUsername = req.body?.username ?? req.body?.email ?? '';
+    const username = String(rawUsername).trim().toLowerCase();
+    const password = String(req.body?.password ?? '');
 
     // Validar entrada
     if (!username || !password) {
@@ -40,18 +46,32 @@ const login = async (req, res) => {
     });
 
     if (!user) {
+      await wait(LOGIN_RESPONSE_DELAY_MS);
       return res.status(401).json({
         success: false,
         error: 'Credenciales inválidas'
       });
     }
 
+    if (!user.isActive) {
+      await wait(LOGIN_RESPONSE_DELAY_MS);
+      return res.status(403).json({
+        success: false,
+        error: 'Usuario inactivo'
+      });
+    }
+
     // Verificar si la cuenta está bloqueada
     if (user.isLocked()) {
-      const lockTime = Math.ceil((user.lockUntil - new Date()) / 60000);
+      const lockMs = Math.max(0, user.lockUntil - new Date());
+      const lockTime = Math.ceil(lockMs / 60000);
+      const retryAfterSeconds = Math.max(1, Math.ceil(lockMs / 1000));
+
+      res.set('Retry-After', String(retryAfterSeconds));
       return res.status(423).json({
         success: false,
-        error: `Cuenta bloqueada. Intente nuevamente en ${lockTime} minutos`
+        error: `Cuenta bloqueada temporalmente. Intente nuevamente en ${lockTime} minutos`,
+        retryAfterSeconds
       });
     }
 
@@ -59,10 +79,26 @@ const login = async (req, res) => {
     const isMatch = await comparePassword(password, user.passwordHash);
     
     if (!isMatch) {
-      await user.incrementLoginAttempts();
+      const attemptResult = await user.registerFailedLoginAttempt();
+      await wait(LOGIN_RESPONSE_DELAY_MS);
+
+      if (attemptResult.locked && attemptResult.lockUntil) {
+        const lockMs = Math.max(0, attemptResult.lockUntil - new Date());
+        const lockTime = Math.ceil(lockMs / 60000);
+        const retryAfterSeconds = Math.max(1, Math.ceil(lockMs / 1000));
+
+        res.set('Retry-After', String(retryAfterSeconds));
+        return res.status(423).json({
+          success: false,
+          error: `Cuenta bloqueada temporalmente. Intente nuevamente en ${lockTime} minutos`,
+          retryAfterSeconds
+        });
+      }
+
       return res.status(401).json({
         success: false,
-        error: 'Credenciales inválidas'
+        error: 'Credenciales inválidas',
+        remainingAttempts: attemptResult.remainingAttempts
       });
     }
 
