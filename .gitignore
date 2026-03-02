@@ -10,6 +10,9 @@ coverage/
 dist/
 build/
 
+# Scripts
+install.sh.sh
+
 # Environment
 .env
 .env.local

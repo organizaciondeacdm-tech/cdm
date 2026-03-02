@@ -38,12 +38,23 @@ const login = async (req, res) => {
     }
 
     // Buscar usuario
-    const user = await User.findOne({ 
-      $or: [
-        { username: username.toLowerCase() },
-        { email: username.toLowerCase() }
-      ]
-    });
+    let user;
+    try {
+      user = await User.findOne({ 
+        $or: [
+          { username: username.toLowerCase() },
+          { email: username.toLowerCase() }
+        ]
+      });  // Mongoose maneja timeouts automáticamente
+    } catch (dbError) {
+      console.error('Database error during login:', dbError.message);
+      await wait(LOGIN_RESPONSE_DELAY_MS);
+      return res.status(503).json({
+        success: false,
+        error: 'Base de datos no disponible. Intente más tarde.',
+        retryAfter: 5
+      });
+    }
 
     if (!user) {
       await wait(LOGIN_RESPONSE_DELAY_MS);
@@ -76,7 +87,17 @@ const login = async (req, res) => {
     }
 
     // Verificar contraseña
-    const isMatch = await comparePassword(password, user.passwordHash);
+    let isMatch;
+    try {
+      isMatch = await comparePassword(password, user.passwordHash);
+    } catch (cryptoError) {
+      console.error('Password comparison error:', cryptoError.message);
+      await wait(LOGIN_RESPONSE_DELAY_MS);
+      return res.status(500).json({
+        success: false,
+        error: 'Error al verificar credenciales'
+      });
+    }
     
     if (!isMatch) {
       const attemptResult = await user.registerFailedLoginAttempt();

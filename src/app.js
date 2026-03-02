@@ -12,6 +12,7 @@ require('dotenv').config();
 
 const connectDB = require('./config/database');
 const errorHandler = require('./middleware/errorHandler');
+const { checkMongoDBConnection, mongoErrorHandler, getDBStatus } = require('./middleware/mongoMiddleware');
 const { registrarAccion } = require('./services/auditoriaService');
 
 // Importar rutas
@@ -129,11 +130,12 @@ app.use((req, res, next) => {
 });
 
 // Rutas
-app.use('/api/auth', authRoutes);
-app.use('/api/escuelas', escuelaRoutes);
-app.use('/api/docentes', docenteRoutes);
-app.use('/api/alumnos', alumnoRoutes);
-app.use('/api/reportes', reporteRoutes);
+app.get('/api/db-status', getDBStatus);
+app.use('/api/auth', authRoutes);  // Sin middleware MongoDB para permitir login
+app.use('/api/escuelas', checkMongoDBConnection, escuelaRoutes);
+app.use('/api/docentes', checkMongoDBConnection, docenteRoutes);
+app.use('/api/alumnos', checkMongoDBConnection, alumnoRoutes);
+app.use('/api/reportes', checkMongoDBConnection, reporteRoutes);
 
 // Endpoint de prueba
 app.get('/api/test', (req, res) => {
@@ -283,7 +285,10 @@ if (frontendBuildPath && fs.existsSync(frontendBuildPath)) {
   });
 }
 
-// Manejo de errores
+// Manejo de errores de MongoDB
+app.use(mongoErrorHandler);
+
+// Manejo de errores general
 app.use(errorHandler);
 
 module.exports = app;
