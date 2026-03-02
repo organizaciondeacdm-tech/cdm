@@ -1,3 +1,5 @@
+require('dotenv').config({ path: '.env.local' });
+
 const app = require('./src/app');
 const mongoose = require('mongoose');
 const winston = require('winston');
