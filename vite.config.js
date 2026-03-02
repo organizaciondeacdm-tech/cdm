@@ -4,7 +4,7 @@ import { resolve } from 'path'
 
 export default defineConfig({
   plugins: [react()],
-  root: '.',
+  root: './client',
   server: {
     port: 3000,
     proxy: {
@@ -15,7 +15,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'dist',
+    outDir: '../dist',
     emptyOutDir: true,
     sourcemap: false,
     minify: 'terser',

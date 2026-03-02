@@ -1,15 +1,24 @@
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 
-// Algoritmo de encriptación AES-256-GCM para datos sensibles
-const ENCRYPTION_KEY = crypto.scryptSync(
-  process.env.ENCRYPTION_KEY, 
-  'salt', 
-  32
-);
+// Clave de encriptación (solo si es necesaria)
+let ENCRYPTION_KEY = null;
+if (process.env.ENCRYPTION_KEY && process.env.ENCRYPTION_KEY.length >= 32) {
+  ENCRYPTION_KEY = crypto.scryptSync(
+    process.env.ENCRYPTION_KEY, 
+    'salt', 
+    32
+  );
+}
+
 const IV_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
 
 const encryptSensitiveData = (text) => {
+  if (!ENCRYPTION_KEY) {
+    throw new Error('ENCRYPTION_KEY no configurada correctamente');
+  }
+  
   try {
     const iv = crypto.randomBytes(IV_LENGTH);
     const cipher = crypto.createCipheriv('aes-256-gcm', ENCRYPTION_KEY, iv);
@@ -25,11 +34,16 @@ const encryptSensitiveData = (text) => {
       authTag: authTag.toString('hex')
     };
   } catch (error) {
+    console.error('Error encrypting sensitive data:', error.message);
     throw new Error('Error encrypting sensitive data');
   }
 };
 
 const decryptSensitiveData = (encryptedData) => {
+  if (!ENCRYPTION_KEY) {
+    throw new Error('ENCRYPTION_KEY no configurada correctamente');
+  }
+
   try {
     const decipher = crypto.createDecipheriv(
       'aes-256-gcm',
@@ -44,18 +58,28 @@ const decryptSensitiveData = (encryptedData) => {
     
     return decrypted;
   } catch (error) {
+    console.error('Error decrypting sensitive data:', error.message);
     throw new Error('Error decrypting sensitive data');
   }
 };
 
 const hashPassword = async (password) => {
-  const bcrypt = require('bcryptjs');
-  return await bcrypt.hash(password, parseInt(process.env.BCRYPT_ROUNDS));
+  try {
+    const rounds = parseInt(process.env.BCRYPT_ROUNDS) || 10;
+    return await bcrypt.hash(password, rounds);
+  } catch (error) {
+    console.error('Error hashing password:', error.message);
+    throw new Error('Error hashing password');
+  }
 };
 
 const comparePassword = async (password, hash) => {
-  const bcrypt = require('bcryptjs');
-  return await bcrypt.compare(password, hash);
+  try {
+    return await bcrypt.compare(password, hash);
+  } catch (error) {
+    console.error('Error comparing password:', error.message);
+    throw new Error('Error comparing password');
+  }
 };
 
 module.exports = {
