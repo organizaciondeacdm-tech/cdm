@@ -1,31 +1,26 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "client/index.html",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist",
-        "buildCommand": "npm install && npm run build:frontend"
-      }
-    },
-    {
-      "src": "api/index.js",
-      "use": "@vercel/node"
+  "buildCommand": "npm install && npm run build:frontend",
+  "outputDirectory": "dist",
+  "installCommand": "npm install",
+  "env": {
+    "NODE_ENV": "production",
+    "VERCEL": "true"
+  },
+  "functions": {
+    "api/index.js": {
+      "memory": 1024,
+      "maxDuration": 60
     }
-  ],
-  "routes": [
+  },
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "api/index.js"
+      "source": "/api/:path*",
+      "destination": "/api/index.js"
     },
     {
-      "src": "/(.*?)\\.(js|css|svg|png|jpg|jpeg|gif|ico|woff|woff2)$",
-      "dest": "dist/$1.$2"
-    },
-    {
-      "src": "^/(.*)$",
-      "dest": "dist/index.html"
+      "source": "/:path((?!api).*)*",
+      "destination": "/index.html"
     }
   ]
 }
