@@ -19,4 +19,11 @@ Dockerfile
 .DS_Store
 .env.example
 package-lock.json
-
+playwright.config.js
+playwright-report/
+test-results/
+pyproject.toml
+requirements.txt
+*.py
+src/aad/
+client/src/
