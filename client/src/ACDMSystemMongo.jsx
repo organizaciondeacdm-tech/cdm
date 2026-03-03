@@ -60,28 +60,45 @@ export default function ACDMSystem() {
   // Pantalla de login
   if (!currentUser) {
     return (
-      <div style={styles.loginContainer}>
+      <div className="login-container" style={{...styles.loginContainer, background: 'transparent'}}>
         <div style={styles.loginBox}>
-          <h1>SISTEMA ACDM</h1>
-          <h2>Gestión de Asistentes de Clase</h2>
+          <div style={styles.logoContainer}>
+            <div style={styles.papiwebLogo}>
+              <div style={styles.papiwebText}>PAPIWEB</div>
+              <div style={styles.papiwebSub}>Desarrollos Informáticos</div>
+            </div>
+          </div>
+          <h1 style={styles.loginTitle}>Sistema ACDM</h1>
+          <h2 style={styles.loginSubtitle}>Gestión de Asistentes de Clase</h2>
           <form onSubmit={handleLogin} style={styles.loginForm}>
-            <input
-              type="text"
-              placeholder="Usuario"
-              value={loginForm.username}
-              onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })}
-              style={styles.input}
-            />
-            <input
-              type="password"
-              placeholder="Contraseña"
-              value={loginForm.password}
-              onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
-              style={styles.input}
-            />
-            {loginError && <div style={styles.error}>{loginError}</div>}
-            <button type="submit" style={styles.button}>Ingresar</button>
+            <div style={styles.formGroup}>
+              <label style={styles.formLabel}>Usuario</label>
+              <input
+                type="text"
+                placeholder="admin"
+                value={loginForm.username}
+                onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })}
+                style={styles.input}
+                autoFocus
+              />
+            </div>
+            <div style={styles.formGroup}>
+              <label style={styles.formLabel}>Contraseña</label>
+              <input
+                type="password"
+                placeholder="••••••••"
+                value={loginForm.password}
+                onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
+                style={styles.input}
+              />
+            </div>
+            {loginError && <div style={styles.error}><span>⚠️</span> {loginError}</div>}
+            <button type="submit" style={styles.button}>Ingresar →</button>
           </form>
+          <div style={styles.hintText}>
+            Demo: <span style={styles.hintKey}>admin</span> / <span style={styles.hintKey}>admin2025</span><br/>
+            Acceso rápido: <span style={styles.hintKey}>Ctrl+Alt+A</span>
+          </div>
         </div>
       </div>
     );
@@ -195,54 +212,165 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    height: '100vh',
-    backgroundColor: '#0a0e1a',
+    minHeight: '100vh',
+    backgroundColor: 'transparent',
     color: '#e8f4f8',
-    fontFamily: 'Exo 2, sans-serif'
+    fontFamily: "'Exo 2', sans-serif",
+    position: 'relative',
+    overflow: 'hidden',
+    width: '100%'
   },
   loginBox: {
     backgroundColor: '#111827',
     padding: '40px',
-    borderRadius: '8px',
-    border: '1px solid #1e3a5f',
+    borderRadius: '12px',
+    border: '1px solid #2a4a7f',
     width: '100%',
-    maxWidth: '400px'
+    maxWidth: '400px',
+    boxShadow: '0 20px 60px rgba(0,0,0,0.6), 0 0 40px rgba(0,212,255,0.1)',
+    position: 'relative',
+    zIndex: 10,
+    animation: 'slideIn 0.5s ease'
+  },
+  logoContainer: {
+    display: 'flex',
+    justifyContent: 'center',
+    marginBottom: '28px'
+  },
+  papiwebLogo: {
+    padding: '8px 20px',
+    background: 'linear-gradient(135deg, #1a2540, #0a0e1a)',
+    border: '1px solid #2a4a7f',
+    borderRadius: '6px',
+    position: 'relative',
+    overflow: 'hidden'
+  },
+  papiwebText: {
+    background: 'linear-gradient(135deg, #c0d0e8 0%, #ffffff 30%, #8098b8 50%, #ffffff 70%, #4a6fa5 100%)',
+    WebkitBackgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
+    backgroundClip: 'text',
+    filter: 'drop-shadow(0 0 6px rgba(0,212,255,0.5))',
+    fontSize: '22px',
+    letterSpacing: '3px',
+    fontWeight: 'bold',
+    textAlign: 'center'
+  },
+  papiwebSub: {
+    color: '#4a6fa5',
+    fontSize: '9px',
+    letterSpacing: '1px',
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    marginTop: '2px'
+  },
+  loginTitle: {
+    fontFamily: "'Rajdhani', sans-serif",
+    fontSize: '28px',
+    fontWeight: '700',
+    letterSpacing: '2px',
+    textTransform: 'uppercase',
+    color: '#00d4ff',
+    textAlign: 'center',
+    marginBottom: '4px',
+    marginTop: '0'
+  },
+  loginSubtitle: {
+    fontSize: '11px',
+    color: '#4a6fa5',
+    textAlign: 'center',
+    letterSpacing: '2px',
+    textTransform: 'uppercase',
+    marginBottom: '28px',
+    marginTop: '0',
+    fontWeight: 'normal'
   },
   loginForm: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '15px',
-    marginTop: '20px'
+    gap: '16px',
+    marginTop: '24px'
+  },
+  formGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    marginBottom: '0'
+  },
+  formLabel: {
+    fontSize: '11px',
+    fontWeight: '600',
+    letterSpacing: '1px',
+    color: '#8bacc8',
+    textTransform: 'uppercase',
+    marginBottom: '6px',
+    display: 'block'
   },
   input: {
-    padding: '10px',
-    backgroundColor: '#0f1626',
+    padding: '11px 14px',
+    backgroundColor: 'rgba(15, 22, 38, 0.8)',
     border: '1px solid #1e3a5f',
     color: '#e8f4f8',
-    borderRadius: '4px',
-    fontFamily: 'inherit'
+    borderRadius: '6px',
+    fontFamily: 'inherit',
+    fontSize: '13px',
+    transition: 'all 0.2s ease',
+    outline: 'none'
   },
   button: {
-    padding: '10px',
-    backgroundColor: '#00d4ff',
+    padding: '11px 16px',
+    backgroundColor: '#0099cc',
+    background: 'linear-gradient(135deg, #0099cc, #00d4ff)',
     color: '#0a0e1a',
     border: 'none',
-    borderRadius: '4px',
-    fontWeight: 'bold',
+    borderRadius: '6px',
+    fontWeight: '700',
     cursor: 'pointer',
-    fontFamily: 'inherit'
+    fontFamily: 'inherit',
+    fontSize: '13px',
+    letterSpacing: '0.5px',
+    textTransform: 'uppercase',
+    boxShadow: '0 4px 15px rgba(0,212,255,0.3)',
+    transition: 'all 0.2s ease',
+    marginTop: '8px',
+    width: '100%'
   },
   error: {
     color: '#ff4757',
-    padding: '10px',
-    backgroundColor: 'rgba(255, 71, 87, 0.1)',
-    borderRadius: '4px'
+    padding: '12px 16px',
+    backgroundColor: 'rgba(255, 71, 87, 0.15)',
+    borderRadius: '6px',
+    border: '1px solid rgba(255, 71, 87, 0.4)',
+    fontSize: '13px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    marginBottom: '0',
+    animation: 'slideIn 0.3s ease'
+  },
+  hintText: {
+    fontSize: '11px',
+    color: '#4a6fa5',
+    textAlign: 'center',
+    marginTop: '20px',
+    lineHeight: '1.6'
+  },
+  hintKey: {
+    background: '#0f1626',
+    border: '1px solid #1e3a5f',
+    padding: '2px 8px',
+    borderRadius: '4px',
+    fontFamily: 'monospace',
+    fontSize: '11px',
+    color: '#0099cc',
+    display: 'inline-block',
+    margin: '0 4px',
+    whiteSpace: 'nowrap'
   },
   container: {
     backgroundColor: '#0a0e1a',
     color: '#e8f4f8',
     minHeight: '100vh',
-    fontFamily: 'Exo 2, sans-serif'
+    fontFamily: "'Exo 2', sans-serif"
   },
   header: {
     backgroundColor: '#111827',

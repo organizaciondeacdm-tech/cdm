@@ -403,7 +403,8 @@ const STYLES = `
     color: #0a0e1a;
     box-shadow: 0 4px 15px rgba(0,212,255,0.3);
   }
-  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,212,255,0.4); }
+  .btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,212,255,0.4); }
+  .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: 0 4px 15px rgba(0,212,255,0.1); }
   .btn-secondary { background: var(--card2); color: var(--text); border: 1px solid var(--border2); }
   .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
   .btn-danger { background: rgba(255,71,87,0.2); color: var(--red); border: 1px solid rgba(255,71,87,0.3); }
@@ -458,7 +459,7 @@ const STYLES = `
     display: flex; align-items: flex-start; gap: 12px; font-size: 13px;
     animation: slideIn 0.3s ease;
   }
-  .alert-danger { background: rgba(255,71,87,0.1); border: 1px solid rgba(255,71,87,0.3); color: var(--red); }
+  .alert-danger { background: rgba(255,71,87,0.15); border: 1px solid rgba(255,71,87,0.4); color: var(--red); }
   .alert-warning { background: rgba(255,165,2,0.1); border: 1px solid rgba(255,165,2,0.3); color: var(--yellow); }
   .alert-info { background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.2); color: var(--accent); }
   .alert-success { background: rgba(0,255,136,0.1); border: 1px solid rgba(0,255,136,0.2); color: var(--accent3); }
@@ -565,6 +566,7 @@ const STYLES = `
     width: 400px; position: relative;
     box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 40px rgba(0,212,255,0.1);
     animation: slideIn 0.5s ease;
+    z-index: 10;
   }
   .login-box::before {
     content: ''; position: absolute; top: 0; left: 20%; right: 20%; height: 1px;
@@ -573,8 +575,13 @@ const STYLES = `
   }
   .login-title { font-family: 'Rajdhani', sans-serif; font-size: 28px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); text-align: center; margin-bottom: 4px; }
   .login-sub { font-size: 11px; color: var(--text3); text-align: center; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 28px; }
-  .hint-text { font-size: 11px; color: var(--text3); text-align: center; margin-top: 16px; }
-  .hint-key { background: var(--bg2); border: 1px solid var(--border); padding: 1px 6px; border-radius: 4px; font-family: monospace; font-size: 12px; color: var(--text2); }
+  .login-form { display: flex; flex-direction: column; gap: 16px; margin-top: 24px; }
+  .login-form .form-group { margin-bottom: 0; }
+  .login-form .form-input { width: 100%; padding: 11px 14px; background: rgba(15, 22, 38, 0.8); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; transition: all 0.2s ease; outline: none; }
+  .login-form .form-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,212,255,0.15); background: rgba(15, 22, 38, 0.95); }
+  .login-form .form-input::placeholder { color: var(--text3); }
+  .hint-text { font-size: 11px; color: var(--text3); text-align: center; margin-top: 20px; line-height: 1.6; }
+  .hint-key { background: var(--bg3); border: 1px solid var(--border); padding: 2px 8px; border-radius: 4px; font-family: monospace; font-size: 11px; color: var(--accent2); display: inline-block; margin: 0 4px; white-space: nowrap; }
 
   /* PDF EXPORT */
   .pdf-preview {
@@ -1424,7 +1431,7 @@ function Login({ onLogin }) {
   return (
     <div className="login-container">
       <div className="login-box">
-        <div style={{textAlign:'center', marginBottom:24}}>
+        <div style={{textAlign:'center', marginBottom:28, position:'relative', zIndex:11}}>
           <div style={{marginBottom:12, display:'flex', justifyContent:'center'}}>
             <div className="papiweb-logo" style={{padding:'8px 20px'}}>
               <div className="papiweb-text" style={{fontSize:22, letterSpacing:3}}>PAPIWEB</div>
@@ -1434,21 +1441,23 @@ function Login({ onLogin }) {
           <div className="login-title">Sistema ACDM</div>
           <div className="login-sub">Gestión de Asistentes de Clase</div>
         </div>
-        <div className="form-group">
-          <label className="form-label">Usuario</label>
-          <input className="form-input" value={user} onChange={e => setUser(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin()} placeholder="Usuario" autoFocus />
+        <div className="login-form">
+          <div className="form-group">
+            <label className="form-label">Usuario</label>
+            <input className="form-input" value={user} onChange={e => setUser(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin()} placeholder="admin" autoFocus />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Contraseña</label>
+            <input type="password" className="form-input" value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin()} placeholder="••••••••" />
+          </div>
+          {err && <div className="alert alert-danger" style={{marginBottom:0}}><span>⚠️</span><span>{err}</span></div>}
+          <button className="btn btn-primary" style={{width:'100%', justifyContent:'center', marginTop:8, position:'relative', zIndex:11}} onClick={doLogin} disabled={loading}>
+            {loading ? 'Ingresando...' : 'Ingresar →'}
+          </button>
         </div>
-        <div className="form-group">
-          <label className="form-label">Contraseña</label>
-          <input type="password" className="form-input" value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin()} placeholder="••••••••" />
-        </div>
-        {err && <div className="alert alert-danger" style={{marginBottom:12}}><span>⚠️</span>{err}</div>}
-        <button className="btn btn-primary" style={{width:'100%', justifyContent:'center', marginTop:8}} onClick={doLogin} disabled={loading}>
-          {loading ? 'Ingresando...' : 'Ingresar →'}
-        </button>
         <div className="hint-text">
-          Demo: <span className="hint-key">admin</span> / <span className="hint-key">admin2025</span>
-          <br/>Acceso rápido: <span className="hint-key">Ctrl+Alt+A</span>
+          Demo: <span className="hint-key">admin</span> / <span className="hint-key">admin2025</span><br/>
+          Acceso rápido: <span className="hint-key">Ctrl+Alt+A</span>
         </div>
       </div>
     </div>
