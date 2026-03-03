@@ -191,12 +191,35 @@ app.post('/api/send-alert-email', async (req, res) => {
 
 // Ruta de health check
 app.get('/health', (req, res) => {
+  const mongoStatus = mongoose.connection.readyState;
+  const mongoStatusMap = {
+    0: 'disconnected',
+    1: 'connected',
+    2: 'connecting',
+    3: 'disconnecting'
+  };
+
   res.status(200).json({
     status: 'OK',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-    environment: process.env.VERCEL ? 'vercel' : process.env.NODE_ENV
+    mongodb: {
+      status: mongoStatusMap[mongoStatus] || 'unknown',
+      readyState: mongoStatus,
+      host: mongoose.connection.host || 'N/A',
+      name: mongoose.connection.name || 'N/A',
+      port: mongoose.connection.port || 'N/A',
+      models: Object.keys(mongoose.connection.models).length
+    },
+    environment: process.env.VERCEL ? 'vercel' : process.env.NODE_ENV,
+    node: {
+      version: process.version,
+      platform: process.platform,
+      memory: {
+        used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
+        total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + 'MB'
+      }
+    }
   });
 });
 
