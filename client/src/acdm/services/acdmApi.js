@@ -199,6 +199,52 @@ class AcdmApiService {
     const params = new URLSearchParams({ q: query, tipo }).toString();
     return this.request(`/buscar?${params}`);
   }
+
+  // ==================== AUTENTICACIÓN ====================
+  async login(username, password) {
+    try {
+      const response = await fetch(`${this.baseUrl}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ username, password })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        const error = new Error(data.error || `HTTP ${response.status}`);
+        error.status = response.status;
+        error.message = data.error || error.message;
+        error.payload = data;
+        console.error('Login error:', error.message);
+        throw error;
+      }
+
+      // Guardar token si viene en la respuesta
+      if (data.data?.tokens?.access) {
+        this.setToken(data.data.tokens.access);
+      } else if (data.accessToken) {
+        this.setToken(data.accessToken);
+      }
+
+      return data;
+    } catch (error) {
+      // Re-throw with proper status code if it's a network error
+      if (!error.status) {
+        error.status = 500;
+        error.message = error.message || "Error de conexión con el servidor";
+      }
+      console.error('Login error:', error);
+      throw error;
+    }
+  }
+
+  async logout() {
+    this.token = null;
+    localStorage.removeItem('auth_token');
+  }
 }
 
 export const acdmApi = new AcdmApiService();

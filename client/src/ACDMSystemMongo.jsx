@@ -55,7 +55,14 @@ export default function ACDMSystem() {
     if (token) {
       loadEscuelas();
     }
-  }, [token]);
+  }, [token, loadEscuelas]);
+
+  // Asegurarse de que se cargan escuelas cuando el usuario inicia sesión
+  useEffect(() => {
+    if (currentUser && token && escuelas.length === 0) {
+      loadEscuelas();
+    }
+  }, [currentUser, token, escuelas.length, loadEscuelas]);
 
   // Pantalla de login
   if (!currentUser) {

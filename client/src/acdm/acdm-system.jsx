@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import apiService from "./services/acdmApi.js";
 import { Sidebar } from "./acdm-system-sidebar.jsx";
+import { UserMenu } from "./components/UserMenu.jsx";
+import { useAcdmMongoData } from "../hooks/useAcdmMongoData.js";
 
 // ============================================================
 // CRYPTO UTILS - Simple XOR + Base64 encryption for JSON DB
@@ -239,8 +241,8 @@ const STYLES = `
   .papiweb-logo::before {
     content: '';
     position: absolute; inset: 0;
-    background: linear-gradient(90deg, transparent 0%, rgba(0,212,255,0.15) 50%, transparent 100%);
-    animation: metalShine 3s ease-in-out infinite;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
+    animation: shineEffectMirror 2.5s ease-in-out infinite;
   }
   .papiweb-logo::after {
     content: '';
@@ -267,6 +269,13 @@ const STYLES = `
     animation: ledBlink 1.5s ease-in-out infinite;
   }
 
+  @keyframes shineEffectMirror {
+    0% { transform: translateX(200%); opacity: 0; }
+    25% { opacity: 1; }
+    50% { transform: translateX(0%); opacity: 1; }
+    75% { opacity: 1; }
+    100% { transform: translateX(-200%); opacity: 0; }
+  }
   @keyframes metalShine {
     0%, 100% { transform: translateX(-100%); }
     50% { transform: translateX(100%); }
@@ -2086,9 +2095,28 @@ function Login({ onLogin }) {
 // ============================================================
 // MAIN APP
 // ============================================================
-export default function App() {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [db, setDB] = useState(() => loadDB() || INITIAL_DB);
+export default function App({ currentUser: propCurrentUser, onLogout: propOnLogout } = {}) {
+  const [currentUser, setCurrentUser] = useState(propCurrentUser || null);
+  
+  // Usar MongoDB en lugar de localStorage
+  const { 
+    db, 
+    loading,
+    saveEscuela: mongoSaveEscuela,
+    deleteEscuela: mongoDeleteEscuela,
+    addDocente: mongoAddDocente,
+    updateDocente: mongoUpdateDocente,
+    deleteDocente: mongoDeleteDocente,
+    addAlumno: mongoAddAlumno,
+    updateAlumno: mongoUpdateAlumno,
+    deleteAlumno: mongoDeleteAlumno
+  } = useAcdmMongoData(currentUser);
+  
+  // Fallback a estado local si no hay db de mongo
+  const [localDb, setLocalDb] = useState(() => loadDB() || INITIAL_DB);
+  const activeDb = db || localDb;
+  const setDB = db ? () => {} : setLocalDb; // No hacer nada si usamos MongoDB
+  
   const [activeSection, setActiveSection] = useState("dashboard");
   const [viewMode, setViewMode] = useState("full"); // full | compact | table
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -2112,14 +2140,12 @@ export default function App() {
   
   const isAdmin = currentUser?.rol === "admin";
   
-  // Persist on change (localStorage + backend sync)
+  // Persist local DB on change (solo si no usamos MongoDB)
   useEffect(() => { 
-    if (currentUser) {
-      // Siempre guardar en localStorage como respaldo
-      saveDB(db);
-      // El backend se actualizaría de forma independiente según sea necesario
+    if (currentUser && !db) {
+      saveDB(localDb);
     }
-  }, [db]);
+  }, [localDb, db, currentUser]);
   
   // Persist dark mode preference
   useEffect(() => {
@@ -2246,13 +2272,13 @@ export default function App() {
     updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, informes: esc.informes.filter(i => i.id !== informeId) }));
   }
   
-  const alertCount = db.escuelas.reduce((a, esc) => {
+  const alertCount = activeDb.escuelas.reduce((a, esc) => {
     if (esc.docentes.length === 0) a++;
     esc.docentes.forEach(d => { if (d.estado === "Licencia" && d.fechaFinLicencia && diasRestantes(d.fechaFinLicencia) <= 10) a++; });
     return a;
   }, 0);
   
-  const filteredEscuelas = db.escuelas.filter(e =>
+  const filteredEscuelas = activeDb.escuelas.filter(e =>
     !search || e.escuela.toLowerCase().includes(search.toLowerCase()) ||
     e.de.toLowerCase().includes(search.toLowerCase()) ||
     e.nivel.toLowerCase().includes(search.toLowerCase()) ||
@@ -2261,7 +2287,7 @@ export default function App() {
   );
   
   // Filtrar visitas globalmente
-  const filteredVisitas = db.escuelas.map(esc => ({
+  const filteredVisitas = activeDb.escuelas.map(esc => ({
     ...esc,
     visitas: (!esc.visitas || !search) ? (esc.visitas || []) : esc.visitas.filter(v =>
       v.observaciones.toLowerCase().includes(search.toLowerCase()) ||
@@ -2271,7 +2297,7 @@ export default function App() {
   })).filter(esc => !search || esc.visitas.length > 0);
   
   // Filtrar proyectos globalmente
-  const filteredProyectos = db.escuelas.map(esc => ({
+  const filteredProyectos = activeDb.escuelas.map(esc => ({
     ...esc,
     proyectos: (!esc.proyectos || !search) ? (esc.proyectos || []) : esc.proyectos.filter(p =>
       p.nombre.toLowerCase().includes(search.toLowerCase()) ||
@@ -2282,7 +2308,7 @@ export default function App() {
   })).filter(esc => !search || esc.proyectos.length > 0);
   
   // Filtrar informes globalmente
-  const filteredInformes = db.escuelas.map(esc => ({
+  const filteredInformes = activeDb.escuelas.map(esc => ({
     ...esc,
     informes: (!esc.informes || !search) ? (esc.informes || []) : esc.informes.filter(i =>
       i.titulo.toLowerCase().includes(search.toLowerCase()) ||
@@ -2319,12 +2345,16 @@ export default function App() {
                 <div className="papiweb-sub">Desarrollos Informáticos</div>
               </div>
             </div>
-            <div className="flex items-center gap-8">
-              <button className="btn-icon" onClick={() => setDarkMode(!darkMode)} title={darkMode ? "Modo claro" : "Modo oscuro"} style={{fontSize:18}}>{darkMode ? '☀️' : '🌙'}</button>
-              <span style={{fontSize:11, color:'var(--text2)'}}>{currentUser.username}</span>
-              <span className={`badge ${isAdmin ? "badge-titular" : "badge-active"}`}>{currentUser.rol}</span>
-              <button className="btn btn-secondary btn-sm" onClick={() => setCurrentUser(null)}>Salir</button>
-            </div>
+            <UserMenu 
+              currentUser={currentUser} 
+              isAdmin={isAdmin} 
+              onLogout={() => {
+                setCurrentUser(null);
+                if (propOnLogout) propOnLogout();
+              }}
+              onToggleDarkMode={() => setDarkMode(!darkMode)}
+              darkMode={darkMode}
+            />
           </div>
         </header>
         
@@ -2351,7 +2381,7 @@ export default function App() {
                     <p style={{color:'var(--text2)', fontSize:13}}>Vista general del sistema — {new Date().toLocaleDateString('es-AR', {weekday:'long', year:'numeric', month:'long', day:'numeric'})}</p>
                   </div>
                 </div>
-                <Statistics escuelas={db.escuelas} onNavigate={setActiveSection} />
+                <Statistics escuelas={activeDb.escuelas} onNavigate={setActiveSection} />
               </div>
             )}
             
@@ -2396,7 +2426,7 @@ export default function App() {
               <div>
                 <h1 style={{fontFamily:'Rajdhani', fontSize:28, fontWeight:700, color:'var(--accent)', letterSpacing:2, marginBottom:8}}>Centro de Alertas</h1>
                 <p style={{color:'var(--text2)', fontSize:13, marginBottom:24}}>{alertCount} alerta(s) activa(s)</p>
-                <AlertPanel escuelas={db.escuelas} />
+                <AlertPanel escuelas={activeDb.escuelas} />
                 
                 <div className="card mt-16">
                   <div className="card-header"><span className="card-title">📋 Resumen de Licencias Activas</span></div>
@@ -2404,7 +2434,7 @@ export default function App() {
                     <table>
                       <thead><tr><th>Escuela</th><th>Docente</th><th>Motivo</th><th>Inicio</th><th>Fin</th><th>Días Rest.</th><th>Suplente</th></tr></thead>
                       <tbody>
-                        {db.escuelas.flatMap(esc => esc.docentes.filter(d => d.estado === "Licencia").map(d => (
+                        {activeDb.escuelas.flatMap(esc => esc.docentes.filter(d => d.estado === "Licencia").map(d => (
                           <tr key={`${esc.id}-${d.id}`}>
                             <td style={{maxWidth:180, fontSize:12}}>{esc.escuela}</td>
                             <td style={{fontFamily:'Rajdhani', fontWeight:700}}>{d.nombreApellido}</td>
@@ -2417,7 +2447,7 @@ export default function App() {
                         )))}
                       </tbody>
                     </table>
-                    {db.escuelas.flatMap(e => e.docentes.filter(d => d.estado === "Licencia")).length === 0 && <div className="no-data">No hay licencias activas</div>}
+                    {activeDb.escuelas.flatMap(e => e.docentes.filter(d => d.estado === "Licencia")).length === 0 && <div className="no-data">No hay licencias activas</div>}
                   </div>
                 </div>
               </div>
@@ -2427,12 +2457,12 @@ export default function App() {
             {activeSection === "estadisticas" && (
               <div>
                 <h1 style={{fontFamily:'Rajdhani', fontSize:28, fontWeight:700, color:'var(--accent)', letterSpacing:2, marginBottom:24}}>Estadísticas</h1>
-                <Statistics escuelas={db.escuelas} />
+                <Statistics escuelas={activeDb.escuelas} />
               </div>
             )}
             
             {/* CALENDARIO */}
-            {activeSection === "calendario" && <CalendarioView escuelas={db.escuelas} isAdmin={isAdmin} />}
+            {activeSection === "calendario" && <CalendarioView escuelas={activeDb.escuelas} isAdmin={isAdmin} />}
             
             {/* VISITAS */}
             {activeSection === "visitas" && (
@@ -2624,20 +2654,20 @@ export default function App() {
       {visitaModal && (
         <VisitaModal isNew={visitaModal.isNew} visita={visitaModal.data} escuelaId={visitaModal.escuelaId}
           onSave={(form, escId) => visitaModal.isNew ? addVisita(escId, form) : updateVisita(escId, form)}
-          onClose={() => setVisitaModal(null)} escuelas={db.escuelas} />
+          onClose={() => setVisitaModal(null)} escuelas={activeDb.escuelas} />
       )}
       {proyectoModal && (
         <ProyectoModal isNew={proyectoModal.isNew} proyecto={proyectoModal.data} escuelaId={proyectoModal.escuelaId}
           onSave={(form, escId) => proyectoModal.isNew ? addProyecto(escId, form) : updateProyecto(escId, form)}
-          onClose={() => setProyectoModal(null)} escuelas={db.escuelas} />
+          onClose={() => setProyectoModal(null)} escuelas={activeDb.escuelas} />
       )}
       {informeModal && (
         <InformeModal isNew={informeModal.isNew} informe={informeModal.data} escuelaId={informeModal.escuelaId}
           onSave={(form, escId) => informeModal.isNew ? addInforme(escId, form) : updateInforme(escId, form)}
-          onClose={() => setInformeModal(null)} escuelas={db.escuelas} />
+          onClose={() => setInformeModal(null)} escuelas={activeDb.escuelas} />
       )}
-      {showExport && <ExportPDF escuelas={db.escuelas} onClose={() => setShowExport(false)} />}
-      {showMailsExtractor && <MailsExtractor escuelas={db.escuelas} onClose={() => setShowMailsExtractor(false)} />}
+      {showExport && <ExportPDF escuelas={activeDb.escuelas} onClose={() => setShowExport(false)} />}
+      {showMailsExtractor && <MailsExtractor escuelas={activeDb.escuelas} onClose={() => setShowMailsExtractor(false)} />}
     </>
   );
 }

@@ -187,8 +187,8 @@ const STYLES = `
   .papiweb-logo::before {
     content: '';
     position: absolute; inset: 0;
-    background: linear-gradient(90deg, transparent 0%, rgba(0,212,255,0.15) 50%, transparent 100%);
-    animation: metalShine 3s ease-in-out infinite;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
+    animation: shineEffectMirror 2.5s ease-in-out infinite;
   }
   .papiweb-logo::after {
     content: '';
@@ -215,6 +215,13 @@ const STYLES = `
     animation: ledBlink 1.5s ease-in-out infinite;
   }
 
+  @keyframes shineEffectMirror {
+    0% { transform: translateX(200%); opacity: 0; }
+    25% { opacity: 1; }
+    50% { transform: translateX(0%); opacity: 1; }
+    75% { opacity: 1; }
+    100% { transform: translateX(-200%); opacity: 0; }
+  }
   @keyframes metalShine {
     0%, 100% { transform: translateX(-100%); }
     50% { transform: translateX(100%); }
