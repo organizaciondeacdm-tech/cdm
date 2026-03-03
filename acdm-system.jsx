@@ -1862,6 +1862,9 @@ function CalendarioView({ escuelas }) {
               {escuelas.flatMap(esc => esc.docentes.filter(d => d.fechaInicioLicencia)).length === 0 && (
                 <div className="no-data">Sin licencias registradas</div>
               )}
+            import ReactDOM from 'react-dom/client';
+           const root = ReactDOM.createRoot(document.getElementById('root'));
+           root.render(<App />);
             </div>
           )}
         </div>
