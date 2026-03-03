@@ -41,13 +41,18 @@ const ensureDbConnection = async () => {
 
 // Middleware de conexión a DB (solo para rutas que la necesitan)
 app.use('/api', async (req, res, next) => {
-  // Rutas que NO necesitan DB
-  const publicRoutes = ['/auth/login', '/auth/refresh-token', '/test', '/health'];
+  // Rutas que NO necesitan DB (solo salud y test)
+  const skipDbRoutes = ['/test', '/health'];
   
-  if (publicRoutes.some(route => req.path.includes(route))) {
+  // /auth/login y /auth/refresh-token SÍ necesitan DB para buscar el usuario
+  const needsDb = !skipDbRoutes.some(route => req.path.includes(route));
+  
+  if (!needsDb) {
+    // Rutas que no necesitan DB
     return next();
   }
 
+  // Intentar conectar a DB
   try {
     await ensureDbConnection();
     next();
