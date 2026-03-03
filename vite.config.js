@@ -15,7 +15,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'dist', // Cambiá a 'dist' (relativo a la raíz)
+    outDir: resolve(__dirname, 'dist'),
     emptyOutDir: true,
     sourcemap: false,
     minify: 'terser',
