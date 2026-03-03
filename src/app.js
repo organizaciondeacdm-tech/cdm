@@ -19,6 +19,7 @@ const escuelaRoutes = require('./routes/escuelaRoutes');
 const docenteRoutes = require('./routes/docenteRoutes');
 const alumnoRoutes = require('./routes/alumnoRoutes');
 const reporteRoutes = require('./routes/reporteRoutes');
+const informeRoutes = require('./routes/informeRoutes');
 const { sendEmail } = require('./services/emailService');
 
 const app = express();
@@ -145,6 +146,7 @@ app.use('/api/escuelas', escuelaRoutes);
 app.use('/api/docentes', docenteRoutes);
 app.use('/api/alumnos', alumnoRoutes);
 app.use('/api/reportes', reporteRoutes);
+app.use('/api/informes', informeRoutes);
 
 // Endpoint de prueba
 app.get('/api/test', (req, res) => {

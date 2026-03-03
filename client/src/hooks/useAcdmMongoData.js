@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getApiUrl } from '../utils/apiConfig.js';
 
 /**
  * Hook personalizado para cargar y sincronizar datos ACDM desde MongoDB
@@ -30,7 +31,7 @@ export function useAcdmMongoData(currentUser) {
       const headers = { 'Authorization': `Bearer ${token}` };
 
       // Solo cargar escuelas (contienen alumnos y docentes anidados)
-      const escuelasRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/escuelas`, { headers });
+      const escuelasRes = await fetch(`${getApiUrl()}/api/escuelas`, { headers });
 
       if (!escuelasRes.ok) {
         throw new Error('Error cargando escuelas del servidor');
@@ -87,7 +88,7 @@ export function useAcdmMongoData(currentUser) {
     if (!token) return;
     try {
       const method = form.id && db?.escuelas.some(e => e.id === form.id) ? 'PUT' : 'POST';
-      const url = `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/escuelas`;
+      const url = `${getApiUrl()}/api/escuelas`;
       const endpoint = method === 'PUT' ? `${url}/${form.id}` : url;
 
       const res = await fetch(endpoint, {
@@ -121,7 +122,7 @@ export function useAcdmMongoData(currentUser) {
   const deleteEscuela = useCallback(async (id) => {
     if (!token || !confirm('¿Eliminar escuela?')) return;
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/escuelas/${id}`, {
+      const res = await fetch(`${getApiUrl()}/api/escuelas/${id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -141,7 +142,7 @@ export function useAcdmMongoData(currentUser) {
   const addDocente = useCallback(async (escuelaId, docForm, titularId) => {
     if (!token) return;
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/docentes`, {
+      const res = await fetch(`${getApiUrl()}/api/docentes`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -180,7 +181,7 @@ export function useAcdmMongoData(currentUser) {
   const updateDocente = useCallback(async (escuelaId, docForm, titularId) => {
     if (!token) return;
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/docentes/${docForm.id}`, {
+      const res = await fetch(`${getApiUrl()}/api/docentes/${docForm.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -224,7 +225,7 @@ export function useAcdmMongoData(currentUser) {
   const deleteDocente = useCallback(async (escuelaId, docId, titularId) => {
     if (!token || !confirm('¿Eliminar docente?')) return;
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/docentes/${docId}`, {
+      const res = await fetch(`${getApiUrl()}/api/docentes/${docId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -257,7 +258,7 @@ export function useAcdmMongoData(currentUser) {
   const addAlumno = useCallback(async (escuelaId, alumForm) => {
     if (!token) return;
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/alumnos`, {
+      const res = await fetch(`${getApiUrl()}/api/alumnos`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -287,7 +288,7 @@ export function useAcdmMongoData(currentUser) {
   const updateAlumno = useCallback(async (escuelaId, alumForm) => {
     if (!token) return;
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/alumnos/${alumForm.id}`, {
+      const res = await fetch(`${getApiUrl()}/api/alumnos/${alumForm.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -320,7 +321,7 @@ export function useAcdmMongoData(currentUser) {
   const deleteAlumno = useCallback(async (escuelaId, alumId) => {
     if (!token || !confirm('¿Eliminar alumno?')) return;
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/alumnos/${alumId}`, {
+      const res = await fetch(`${getApiUrl()}/api/alumnos/${alumId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -340,6 +341,93 @@ export function useAcdmMongoData(currentUser) {
     }
   }, [token]);
 
+  // Operaciones CRUD para informes
+  const addInforme = useCallback(async (escuelaId, informeForm) => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${getApiUrl()}/api/informes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ ...informeForm, escuelaId })
+      });
+
+      if (!res.ok) throw new Error('Error agregando informe');
+
+      const data = await res.json();
+      const newInforme = data.data?.informe || informeForm;
+
+      setDb(prev => ({
+        ...prev,
+        escuelas: prev.escuelas.map(esc =>
+          esc.id === escuelaId
+            ? { ...esc, informes: [...(esc.informes || []), newInforme] }
+            : esc
+        )
+      }));
+    } catch (err) {
+      console.error('Error agregando informe:', err);
+    }
+  }, [token, db]);
+
+  const updateInforme = useCallback(async (escuelaId, informeForm) => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${getApiUrl()}/api/informes/${informeForm.id || informeForm._id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ ...informeForm, escuelaId })
+      });
+
+      if (!res.ok) throw new Error('Error actualizando informe');
+
+      const data = await res.json();
+      const updatedInforme = data.data?.informe || informeForm;
+
+      setDb(prev => ({
+        ...prev,
+        escuelas: prev.escuelas.map(esc =>
+          esc.id === escuelaId
+            ? {
+              ...esc,
+              informes: esc.informes.map(i => (i.id === informeForm.id || i._id === informeForm._id) ? updatedInforme : i)
+            }
+            : esc
+        )
+      }));
+    } catch (err) {
+      console.error('Error actualizando informe:', err);
+    }
+  }, [token, db]);
+
+  const deleteInforme = useCallback(async (escuelaId, informeId) => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${getApiUrl()}/api/informes/${informeId}?escuelaId=${escuelaId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (!res.ok) throw new Error('Error eliminando informe');
+
+      setDb(prev => ({
+        ...prev,
+        escuelas: prev.escuelas.map(esc =>
+          esc.id === escuelaId
+            ? { ...esc, informes: esc.informes.filter(i => i.id !== informeId && i._id !== informeId) }
+            : esc
+        )
+      }));
+    } catch (err) {
+      console.error('Error eliminando informe:', err);
+    }
+  }, [token]);
+
   return {
     db,
     loading,
@@ -352,6 +440,9 @@ export function useAcdmMongoData(currentUser) {
     addAlumno,
     updateAlumno,
     deleteAlumno,
+    addInforme,
+    updateInforme,
+    deleteInforme,
     reload: loadAllData
   };
 }
