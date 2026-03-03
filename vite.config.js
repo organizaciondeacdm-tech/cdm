@@ -4,7 +4,7 @@ import { resolve } from 'path'
 
 export default defineConfig({
   plugins: [react()],
-  root: './client',
+  // root: './client', ← ELIMINÁ ESTA LÍNEA O CAMBIALA A root: '.'
   server: {
     port: 3000,
     proxy: {
@@ -15,7 +15,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: '../dist',
+    outDir: 'dist', // Cambiá a 'dist' (relativo a la raíz)
     emptyOutDir: true,
     sourcemap: false,
     minify: 'terser',
