@@ -52,8 +52,13 @@ export function FormRenderer({ template, draft, setDraft, dataSource, onSubmit }
   const handleSubmit = (event) => {
     event.preventDefault();
 
-    const missing = template.fields.filter((field) => field.required && !draft?.[field.name]);
+    // Validate required fields - check for empty strings and null/undefined values
+    const missing = template.fields.filter((field) => {
+      const value = draft?.[field.name];
+      return field.required && (value === null || value === undefined || String(value).trim() === '');
+    });
     if (missing.length > 0) {
+      alert(`Por favor complete los campos requeridos: ${missing.map(f => f.name).join(", ")}`);
       return;
     }
 

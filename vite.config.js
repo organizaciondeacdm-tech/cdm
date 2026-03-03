@@ -3,8 +3,8 @@ import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 
 export default defineConfig({
+  root: './client',
   plugins: [react()],
-  // root: './client', ← ELIMINÁ ESTA LÍNEA O CAMBIALA A root: '.'
   server: {
     port: 3000,
     proxy: {

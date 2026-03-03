@@ -779,11 +779,13 @@ function MiniCalendar({ year, month, rangeStart, rangeEnd, onNavigate }) {
 function DaysRemaining({ fechaFin, diasAutorizados, fechaInicio }) {
   if (!fechaFin) return null;
   const dias = diasRestantes(fechaFin);
+  // Proper classification: danger (0-5 days), warning (6-10 days), ok (>10 days)
   const cls = dias <= 0 ? "days-danger" : dias <= 5 ? "days-danger" : dias <= 10 ? "days-warn" : "days-ok";
   const icon = dias <= 0 ? "🔴" : dias <= 5 ? "⚠️" : dias <= 10 ? "🟡" : "🟢";
+  const label = dias <= 0 ? "VENCIDA" : dias === 1 ? "1 día" : `${dias} días`;
   return (
     <span className={`days-remaining ${cls}`}>
-      {icon} {dias <= 0 ? "VENCIDA" : `${dias} días`}
+      {icon} {label}
     </span>
   );
 }
@@ -1087,11 +1089,21 @@ function Statistics({ escuelas, onNavigate }) {
 // DOCENTE FORM MODAL
 // ============================================================
 function DocenteModal({ docente, titularId, isNew, onSave, onClose }) {
-  const [form, setForm] = useState(docente || {
-    id: `d${Date.now()}`, cargo: "Titular", nombreApellido: "",
-    estado: "Activo", motivo: "-", motivoPersonalizado: "", diasAutorizados: 0,
-    fechaInicioLicencia: null, fechaFinLicencia: null, suplentes: [],
-    jornada: "Completa"
+  // When editing, preserve existing suplentes array; when creating new, initialize empty
+  const [form, setForm] = useState(() => {
+    if (isNew) {
+      return {
+        id: `d${Date.now()}`, cargo: "Titular", nombreApellido: "",
+        estado: "Activo", motivo: "-", motivoPersonalizado: "", diasAutorizados: 0,
+        fechaInicioLicencia: null, fechaFinLicencia: null, suplentes: [],
+        jornada: "Completa"
+      };
+    }
+    // Editing mode - preserve suplentes array
+    return {
+      ...docente,
+      suplentes: docente.suplentes || []
+    };
   });
   
   const MOTIVOS = ["-","Art. 101 - Enfermedad","Art. 102 - Familiar enfermo","Art. 103 - Maternidad","Art. 104 - Accidente de trabajo","Art. 108 - Gremial","Art. 115 - Estudio","Art. 140 - Concurso","Otro"];

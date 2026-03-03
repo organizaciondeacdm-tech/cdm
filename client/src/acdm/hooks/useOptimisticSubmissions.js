@@ -18,14 +18,20 @@ export function useOptimisticSubmissions(apiAdapter, onError) {
 
     try {
       const created = await apiAdapter.createSubmission(payload);
-      if (!created || created.queued) {
-        setRows((current) => current.map((row) => row._id === tempId ? { ...row, status: 'queued' } : row));
-        return;
+      if (!created) {
+        setRows((current) => current.filter((row) => row._id !== tempId));
+        throw new Error("Failed to create submission");
       }
-
-      setRows((current) => current.map((row) => row._id === tempId ? created : row));
+      
+      // Handle both immediate creation and queued responses
+      if (created.queued) {
+        setRows((current) => current.map((row) => row._id === tempId ? { ...row, status: 'queued', _id: created.idempotencyKey || tempId } : row));
+      } else {
+        // Submission was created successfully
+        setRows((current) => current.map((row) => row._id === tempId ? { ...created, status: 'synced' } : row));
+      }
     } catch (error) {
-      setRows((current) => current.filter((row) => row._id !== tempId));
+      setRows((current) => current.map((row) => row._id === tempId ? { ...row, status: 'failed' } : row));
       onError(error.message);
     }
   }, [apiAdapter, onError]);
