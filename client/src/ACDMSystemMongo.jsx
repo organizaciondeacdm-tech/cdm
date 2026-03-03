@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useMongoData } from '../hooks/useMongoData';
+import { useMongoData } from './hooks/useMongoData.js';
 
 /**
  * Componente principal de ACDM - Refactorizado para usar MongoDB
