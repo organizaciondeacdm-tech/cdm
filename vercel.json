@@ -2,7 +2,7 @@
   "version": 2,
   "buildCommand": "npm run build",
   "env": {
-    "VITE_API_URL": "@vite_api_url"
+    "VITE_API_URL": ""
   },
   "builds": [
     {
@@ -35,11 +35,35 @@
       "dest": "/vite.svg"
     },
     {
+      "src": "/favicon.svg",
+      "dest": "/favicon.svg"
+    },
+    {
       "handle": "filesystem"
     },
     {
-      "src": "/.*",
+      "src": "/(.*)",
       "dest": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Credentials",
+          "value": "true"
+        }
+      ]
     }
   ]
 }

@@ -2,7 +2,7 @@
  * Detecta automáticamente la URL base de la API según el entorno
  */
 export function getApiUrl() {
-  // En Vercel, usar variables de entorno
+  // En Vercel, usar variables de entorno si está configurada
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
   }
@@ -13,24 +13,24 @@ export function getApiUrl() {
   }
 
   // En producción sin variable de entorno configurada
-  // Intentar usar la misma URL que el frontend
   if (typeof window !== 'undefined') {
     const protocol = window.location.protocol;
     const hostname = window.location.hostname;
+    const port = window.location.port;
     
-    // Si es Vercel, construir URL del backend
+    // Si es Vercel (*.vercel.app), usar la misma URL base
     if (hostname.includes('vercel.app')) {
-      // Reemplazar frontend subdomain por backend
-      return `${protocol}//cdm-backend.vercel.app`;
+      // En Vercel, el backend está en el mismo dominio bajo /api
+      return window.location.origin;
     }
     
-    // Si es localhost, usar localhost
+    // Si es localhost, usar localhost:5000
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       return 'http://localhost:5000';
     }
     
-    // Fallback: mismo dominio
-    return `${protocol}//${hostname}`;
+    // Para otros dominios, usar el mismo origen
+    return window.location.origin;
   }
 
   // Default
