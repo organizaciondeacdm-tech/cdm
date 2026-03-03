@@ -1,9 +1,10 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import ACDMSystemMongo from './ACDMSystemMongo.jsx'
+import AppWithAuth from './AppWithAuth.jsx'
+import './ACDMSystemMongo.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <ACDMSystemMongo />
+    <AppWithAuth />
   </React.StrictMode>,
 )
