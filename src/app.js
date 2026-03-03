@@ -191,12 +191,15 @@ app.post('/api/send-alert-email', async (req, res) => {
 
 // Ruta de health check
 app.get('/health', async (req, res) => {
+  let connectionError = null;
+  
   try {
     // Intentar conectar a DB si no está conectada
     if (mongoose.connection.readyState === 0) {
       await ensureDbConnection();
     }
   } catch (error) {
+    connectionError = error.message;
     console.error('Health check: No se pudo conectar a MongoDB:', error.message);
   }
 
@@ -208,7 +211,7 @@ app.get('/health', async (req, res) => {
     3: 'disconnecting'
   };
 
-  res.status(200).json({
+  const response = {
     status: 'OK',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
@@ -229,7 +232,14 @@ app.get('/health', async (req, res) => {
         total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + 'MB'
       }
     }
-  });
+  };
+
+  // Agregar error si existe
+  if (connectionError) {
+    response.mongodb.error = connectionError;
+  }
+
+  res.status(200).json(response);
 });
 
 // Ruta raíz
