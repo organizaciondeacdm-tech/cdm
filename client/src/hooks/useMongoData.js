@@ -28,7 +28,8 @@ export function useMongoData() {
       });
       if (!response.ok) throw new Error('Error al cargar escuelas');
       const data = await response.json();
-      setEscuelas(data.data || []);
+      // El endpoint retorna data.escuelas dentro de data
+      setEscuelas(data.data?.escuelas || []);
     } catch (err) {
       setError(err.message);
       console.error('Error cargando escuelas:', err);
@@ -198,12 +199,18 @@ export function useMongoData() {
         body: JSON.stringify({ username, password })
       });
 
-      if (!response.ok) throw new Error('Credenciales inválidas');
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Credenciales inválidas');
+      }
       const data = await response.json();
       
-      // Guardar token
-      localStorage.setItem('authToken', data.data.token);
-      setToken(data.data.token);
+      // Guardar token (backend retorna en data.tokens.access)
+      const token = data.data?.tokens?.access;
+      if (!token) throw new Error('No se recibió token');
+      
+      localStorage.setItem('authToken', token);
+      setToken(token);
       
       return data.data.user;
     } catch (err) {
