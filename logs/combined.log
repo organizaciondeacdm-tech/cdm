@@ -1,12 +1,4 @@
+{"level":"info","message":"Connecting to MongoDB: mongodb://acdm_user:****@localhost:27018/acdm_db?authSource=acdm_db"}
 {"level":"info","message":"MongoDB Connected: localhost"}
-{"level":"info","message":"MongoDB Connected: localhost"}
-{"level":"info","message":"MongoDB Connected: localhost"}
-{"level":"info","message":"MongoDB Connected: localhost"}
-{"level":"info","message":"MongoDB Connected: localhost"}
-{"level":"info","message":"MongoDB Connected: localhost"}
-{"level":"info","message":"MongoDB Connected: localhost"}
-{"level":"info","message":"MongoDB Connected: localhost"}
-{"level":"info","message":"MongoDB Connected: localhost"}
-{"level":"info","message":"MongoDB Connected: localhost"}
-{"level":"info","message":"MongoDB Connected: localhost"}
+{"level":"info","message":"Connecting to MongoDB: mongodb://acdm_user:****@localhost:27018/acdm_db?authSource=acdm_db"}
 {"level":"info","message":"MongoDB Connected: localhost"}
