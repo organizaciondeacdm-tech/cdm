@@ -70,9 +70,7 @@ const connectDB = async () => {
       minPoolSize: 2,
       family: 4,
       retryWrites: true,
-      w: 'majority',
-      retryAttempts: 5,
-      retryDelay: 1000
+      w: 'majority'
     });
 
     logger.info(`MongoDB Connected: ${conn.connection.host}`);
