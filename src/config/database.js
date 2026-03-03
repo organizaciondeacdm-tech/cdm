@@ -56,6 +56,10 @@ const connectDB = async () => {
       throw new Error('MONGODB_URI environment variable is required');
     }
 
+    // Log la URI (sin credenciales completas)
+    const uriLog = mongoUri.replace(/:[^:@]*@/, ':****@');
+    logger.info(`Connecting to MongoDB: ${uriLog}`);
+
     const conn = await mongoose.connect(mongoUri, {
       useNewUrlParser: true,
       useUnifiedTopology: true,

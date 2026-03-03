@@ -190,7 +190,16 @@ app.post('/api/send-alert-email', async (req, res) => {
 });
 
 // Ruta de health check
-app.get('/health', (req, res) => {
+app.get('/health', async (req, res) => {
+  try {
+    // Intentar conectar a DB si no está conectada
+    if (mongoose.connection.readyState === 0) {
+      await ensureDbConnection();
+    }
+  } catch (error) {
+    console.error('Health check: No se pudo conectar a MongoDB:', error.message);
+  }
+
   const mongoStatus = mongoose.connection.readyState;
   const mongoStatusMap = {
     0: 'disconnected',
