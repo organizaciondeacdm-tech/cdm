@@ -49,7 +49,7 @@ const connectDB = async () => {
       return mongoose.connection;
     }
 
-    const mongoUri = process.env.MONGODB_URI || 'mongodb+srv://Papiweb:aUTxJGHTXLor5Zzu@cluster0.lpmkykh.mongodb.net/acdm_db?retryWrites=true&w=majority';
+    const mongoUri = process.env.MONGODB_URI;
     
     if (!mongoUri) {
       logger.error('MONGODB_URI not defined in environment variables');

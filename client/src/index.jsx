@@ -1,9 +1,9 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import App from './acdm/acdm-system.jsx'
+import ACDMSystemMongo from './ACDMSystemMongo.jsx'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    <ACDMSystemMongo />
   </React.StrictMode>,
 )
