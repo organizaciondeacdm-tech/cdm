@@ -1,62 +1,48 @@
-const winston = require('winston');
-
-const logger = winston.createLogger({
-  level: 'error',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'logs/combined.log' })
-  ]
-});
+const logger = require('../config/logger');
 
 const errorHandler = (err, req, res, next) => {
-  let error = { ...err };
-  error.message = err.message;
-
-  logger.error({
+  // Loggear el error usando SOLO console (no archivos)
+  console.error({
     message: err.message,
     stack: err.stack,
+    url: req.originalUrl,
     method: req.method,
-    url: req.url,
-    user: req.user?._id,
-    ip: req.ip
+    ip: req.ip,
+    user: req.user?.id
   });
 
-  // Mongoose duplicate key
-  if (err.code === 11000) {
-    const field = Object.keys(err.keyPattern)[0];
-    const message = `El valor para ${field} ya existe`;
-    error = { statusCode: 400, message };
+  // Determinar el tipo de error
+  let statusCode = err.statusCode || 500;
+  let message = err.message || 'Error interno del servidor';
+
+  // Errores específicos de MongoDB
+  if (err.name === 'MongoServerError' && err.code === 11000) {
+    statusCode = 400;
+    message = 'Ya existe un registro con esos datos';
   }
 
-  // Mongoose validation error
   if (err.name === 'ValidationError') {
-    const message = Object.values(err.errors).map(val => val.message).join(', ');
-    error = { statusCode: 400, message };
+    statusCode = 400;
+    message = Object.values(err.errors).map(e => e.message).join(', ');
   }
 
-  // Mongoose cast error
   if (err.name === 'CastError') {
-    const message = `ID inválido: ${err.value}`;
-    error = { statusCode: 400, message };
+    statusCode = 400;
+    message = 'ID inválido';
   }
 
-  // JWT errors
-  if (err.name === 'JsonWebTokenError') {
-    error = { statusCode: 401, message: 'Token inválido' };
-  }
-
-  if (err.name === 'TokenExpiredError') {
-    error = { statusCode: 401, message: 'Token expirado' };
-  }
-
-  res.status(error.statusCode || 500).json({
+  // En producción, no enviar detalles del error
+  const response = {
     success: false,
-    error: error.message || 'Error del servidor'
-  });
+    error: message
+  };
+
+  if (process.env.NODE_ENV === 'development') {
+    response.stack = err.stack;
+    response.details = err;
+  }
+
+  res.status(statusCode).json(response);
 };
 
 module.exports = errorHandler;
