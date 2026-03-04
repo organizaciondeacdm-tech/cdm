@@ -108,12 +108,14 @@ app.use(cors({
   optionsSuccessStatus: 200
 }));
 
-// Rate limiting
+// Rate limiting (disabled in test/development environments)
+const isTestEnv = process.env.NODE_ENV === 'test' || process.env.E2E_DISABLE_RATE_LIMIT === '1';
 const limiter = rateLimit({
   windowMs: (parseInt(process.env.RATE_LIMIT_WINDOW) || 15) * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX) || 100,
+  max: isTestEnv ? 10_000 : (parseInt(process.env.RATE_LIMIT_MAX) || 100),
   message: 'Demasiadas peticiones, intente nuevamente más tarde',
-  keyGenerator: (req) => req.headers['x-forwarded-for'] || req.ip || 'default'
+  keyGenerator: (req) => req.headers['x-forwarded-for'] || req.ip || 'default',
+  skip: () => isTestEnv
 });
 app.use('/api', limiter);
 

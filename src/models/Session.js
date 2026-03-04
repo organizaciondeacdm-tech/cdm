@@ -1,4 +1,11 @@
 const mongoose = require('mongoose');
+const crypto = require('crypto');
+
+const SESSION_TOKEN_HASH_SECRET = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET || 'session-token-hash-secret';
+const hashToken = (token = '') => crypto
+  .createHmac('sha256', SESSION_TOKEN_HASH_SECRET)
+  .update(String(token))
+  .digest('hex');
 
 const sessionSchema = new mongoose.Schema({
   userId: {
@@ -95,13 +102,19 @@ sessionSchema.statics.getActiveSessions = function(userId) {
 
 // Método estático para validar token de acceso
 sessionSchema.statics.validateAccessToken = async function(accessToken) {
+  const tokenHash = hashToken(accessToken);
   const session = await this.findOne({
-    accessToken,
+    $or: [{ accessToken: tokenHash }, { accessToken }],
     isActive: true,
     expiresAt: { $gt: new Date() }
   }).populate('userId', 'username email rol permisos isActive');
 
   if (!session) return null;
+
+  // Migración transparente de tokens legacy en texto plano
+  if (session.accessToken !== tokenHash) {
+    session.accessToken = tokenHash;
+  }
 
   // Actualizar última actividad
   await session.updateActivity();
@@ -111,12 +124,22 @@ sessionSchema.statics.validateAccessToken = async function(accessToken) {
 
 // Método estático para validar token de refresh
 sessionSchema.statics.validateRefreshToken = async function(refreshToken) {
-  return this.findOne({
-    refreshToken,
+  const tokenHash = hashToken(refreshToken);
+  const session = await this.findOne({
+    $or: [{ refreshToken: tokenHash }, { refreshToken }],
     isActive: true,
     refreshExpiresAt: { $gt: new Date() }
   }).populate('userId', 'username email rol permisos isActive');
+
+  if (session && session.refreshToken !== tokenHash) {
+    session.refreshToken = tokenHash;
+    await session.save();
+  }
+
+  return session;
 };
+
+sessionSchema.statics.hashToken = hashToken;
 
 // Método estático para revocar todas las sesiones de un usuario
 sessionSchema.statics.revokeAllUserSessions = function(userId) {

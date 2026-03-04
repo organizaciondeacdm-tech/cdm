@@ -30,10 +30,13 @@ export default defineConfig({
   ],
   webServer: skipWebServer ? undefined : [
     {
-      command: 'node server.js',
+      command: 'E2E_DISABLE_RATE_LIMIT=1 node server.js',
       url: `${apiUrl}/health`,
       reuseExistingServer: true,
-      timeout: 120 * 1000
+      timeout: 120 * 1000,
+      env: {
+        E2E_DISABLE_RATE_LIMIT: '1'
+      }
     },
     {
       command: 'npm run dev:frontend -- --host 127.0.0.1',

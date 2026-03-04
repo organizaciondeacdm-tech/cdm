@@ -16,15 +16,17 @@ const {
 const { authMiddleware } = require('../middleware/auth');
 const { validateUser } = require('../middleware/validation');
 
+const isTestEnv = process.env.NODE_ENV === 'test' || process.env.E2E_DISABLE_RATE_LIMIT === '1';
 const loginLimiter = rateLimit({
   windowMs: (parseInt(process.env.LOGIN_RATE_LIMIT_WINDOW_MINUTES, 10) || 15) * 60 * 1000,
-  max: parseInt(process.env.LOGIN_RATE_LIMIT_MAX, 10) || 20,
+  max: isTestEnv ? 10_000 : (parseInt(process.env.LOGIN_RATE_LIMIT_MAX, 10) || 20),
   standardHeaders: true,
   legacyHeaders: false,
   message: {
     success: false,
     error: 'Demasiados intentos de inicio de sesión. Intente nuevamente más tarde.'
-  }
+  },
+  skip: () => isTestEnv
 });
 
 router.post('/login', loginLimiter, login);

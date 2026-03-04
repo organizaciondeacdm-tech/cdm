@@ -116,7 +116,8 @@ userSchema.pre('save', async function(next) {
   if (!this.isModified('passwordHash')) return next();
   
   try {
-    const salt = await bcrypt.genSalt(parseInt(process.env.BCRYPT_ROUNDS));
+    const rounds = parseInt(process.env.BCRYPT_ROUNDS, 10);
+    const salt = await bcrypt.genSalt(Number.isFinite(rounds) && rounds > 0 ? rounds : 10);
     this.passwordHash = await bcrypt.hash(this.passwordHash, salt);
     this.passwordChangedAt = new Date();
     next();

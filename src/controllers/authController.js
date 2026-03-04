@@ -32,9 +32,12 @@ const generateTokens = (userId, rol) => {
   console.log('generateTokens called with:', { userId: userId.toString(), rol });
 
   try {
+    const accessJti = crypto.randomBytes(16).toString('hex');
+    const refreshJti = crypto.randomBytes(16).toString('hex');
+
     console.log('Generating access token...');
     const accessToken = jwt.sign(
-      { userId, rol },
+      { userId, rol, jti: accessJti },
       JwtKeyManager.getJwtSecret(),
       { expiresIn: process.env.JWT_EXPIRE }
     );
@@ -44,7 +47,7 @@ const generateTokens = (userId, rol) => {
     try {
       console.log('Generating refresh token...');
       refreshToken = jwt.sign(
-        { userId, type: 'refresh' },
+        { userId, type: 'refresh', jti: refreshJti },
         JwtKeyManager.getJwtRefreshSecret(),
         { expiresIn: process.env.JWT_REFRESH_EXPIRE }
       );
@@ -53,7 +56,7 @@ const generateTokens = (userId, rol) => {
       console.error('Error generating refresh token:', refreshError);
       // Si falla el refresh token, usar la misma clave que el access token
       refreshToken = jwt.sign(
-        { userId, type: 'refresh' },
+        { userId, type: 'refresh', jti: refreshJti },
         JwtKeyManager.getJwtSecret(),
         { expiresIn: process.env.JWT_REFRESH_EXPIRE }
       );
@@ -300,12 +303,12 @@ const refreshToken = async (req, res) => {
     // Generar nuevos tokens
     const { accessToken, refreshToken: newRefreshToken } = generateTokens(session.userId._id, session.userId.rol);
 
-    // Invalidar la sesión anterior
-    await SessionService.invalidateSession(session._id);
-
     // Crear nueva sesión
     const deviceInfo = SessionService.parseDeviceInfo(req);
     await SessionService.createSession(session.userId, accessToken, newRefreshToken, deviceInfo);
+    
+    // Invalidar la sesión anterior después de asegurar la nueva
+    await SessionService.invalidateSession(session._id);
 
     res.json({
       success: true,

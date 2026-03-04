@@ -14,12 +14,12 @@
     "sync:env": "node scripts/sync-env-to-mongo.js",
     "sync:vercel": "node scripts/seed-vercel-env.js",
     "backup": "node src/services/backupService.js",
-    "test": "playwright test",
-    "test:e2e:all": "playwright test",
-    "test:e2e:existing": "E2E_SKIP_WEBSERVER=1 playwright test",
+    "test": "E2E_DISABLE_RATE_LIMIT=1 playwright test",
+    "test:e2e:all": "E2E_DISABLE_RATE_LIMIT=1 playwright test",
+    "test:e2e:existing": "E2E_SKIP_WEBSERVER=1 E2E_DISABLE_RATE_LIMIT=1 playwright test",
     "test:e2e:list": "playwright test --list",
-    "test:ui": "playwright test --ui",
-    "test:debug": "playwright test --debug",
+    "test:ui": "E2E_DISABLE_RATE_LIMIT=1 playwright test --ui",
+    "test:debug": "E2E_DISABLE_RATE_LIMIT=1 playwright test --debug",
     "test:report": "playwright show-report"
   },
   "dependencies": {
