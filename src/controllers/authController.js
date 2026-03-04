@@ -124,12 +124,17 @@ const login = async (req, res) => {
     }
 
     // Resetear intentos fallidos
+    const updateData = {
+      loginAttempts: 0,
+      lastLogin: new Date()
+    };
+    
+    if (req.ip) {
+      updateData.lastIP = req.ip;
+    }
+    
     await user.updateOne({
-      $set: {
-        loginAttempts: 0,
-        lastLogin: new Date(),
-        lastIP: req.ip
-      },
+      $set: updateData,
       $unset: { lockUntil: 1 }
     });
 
@@ -137,14 +142,19 @@ const login = async (req, res) => {
     const { accessToken, refreshToken } = generateTokens(user._id, user.rol);
 
     // Guardar refresh token
-    const refreshTokenExpiry = new Date();
-    refreshTokenExpiry.setDate(refreshTokenExpiry.getDate() + 30);
+    try {
+      const refreshTokenExpiry = new Date();
+      refreshTokenExpiry.setDate(refreshTokenExpiry.getDate() + 30);
 
-    user.refreshToken = {
-      token: refreshToken,
-      expiresAt: refreshTokenExpiry
-    };
-    await user.save();
+      user.refreshToken = {
+        token: refreshToken,
+        expiresAt: refreshTokenExpiry
+      };
+      await user.save();
+    } catch (saveError) {
+      console.error('Error saving refresh token:', saveError.message);
+      // No fallar el login por esto
+    }
 
     res.json({
       success: true,
