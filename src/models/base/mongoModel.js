@@ -9,6 +9,7 @@ const toObjectId = (value) => {
   if (value === undefined) return new ObjectId();
   if (value == null) return value;
   if (value instanceof ObjectId) return value;
+  if (typeof value === 'object' && value._id) return toObjectId(value._id);
   if (typeof value === 'string' && /^[a-f0-9]{24}$/i.test(value)) return new ObjectId(value);
   return value;
 };
