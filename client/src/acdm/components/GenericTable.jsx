@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { GenericForm } from './GenericForm';
+import { AlertMessage } from './AlertMessage';
 import PapiwebSpinner from '../../PapiwebSpinner.jsx';
 
 
@@ -34,6 +35,7 @@ export function GenericTable({
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState(null);
+  const [feedback, setFeedback] = useState(null);
   const [localData, setLocalData] = useState(data);
 
   // Actualizar localData cuando cambia data
@@ -180,11 +182,14 @@ export function GenericTable({
   const handleSave = async () => {
     setSyncing(true);
     setError(null);
+    setFeedback(null);
     try {
       if (editingId) {
         await onEdit(editingId, formData);
+        setFeedback({ id: Date.now(), type: 'success', message: 'Registro actualizado correctamente.' });
       } else {
         await onAdd(formData);
+        setFeedback({ id: Date.now(), type: 'success', message: 'Alta realizada correctamente.' });
       }
 
       if (enableRemoteSync && onFetch) {
@@ -195,6 +200,11 @@ export function GenericTable({
       setFormData({});
     } catch (err) {
       setError(err.message || 'Error al guardar');
+      setFeedback({
+        id: Date.now(),
+        type: 'error',
+        message: err.message || 'Error al guardar'
+      });
       console.error('Error saving:', err);
     } finally {
       setSyncing(false);
@@ -210,14 +220,22 @@ export function GenericTable({
   const handleDeleteConfirmed = async (id) => {
     setSyncing(true);
     setError(null);
+    setFeedback(null);
     try {
-      await onDelete(id);
+      const deleted = await onDelete(id);
+      if (deleted === false) return;
+      setFeedback({ id: Date.now(), type: 'success', message: 'Registro eliminado correctamente.' });
 
       if (enableRemoteSync && onFetch) {
         await loadRemoteData();
       }
     } catch (err) {
       setError(err.message || 'Error al eliminar');
+      setFeedback({
+        id: Date.now(),
+        type: 'error',
+        message: err.message || 'Error al eliminar'
+      });
       console.error('Error deleting:', err);
     } finally {
       setSyncing(false);
@@ -243,8 +261,17 @@ export function GenericTable({
 
   return (
     <div>
+      {feedback && (
+        <AlertMessage
+          key={feedback.id}
+          type={feedback.type}
+          message={feedback.message}
+          onClose={() => setFeedback(null)}
+        />
+      )}
+
       {/* Mensajes de error */}
-      {error && (
+      {error && !feedback && (
         <div style={{
           marginBottom: '16px',
           padding: '12px 16px',

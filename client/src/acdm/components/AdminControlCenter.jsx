@@ -11,7 +11,16 @@ const EMPTY_USER_FORM = {
   permisos: []
 };
 
-export function AdminControlCenter({ section, currentUser }) {
+const SECTION_TITLES = {
+  "admin-users": "Usuarios",
+  "admin-sessions": "Sesiones",
+  "admin-roles": "Roles",
+  "admin-permissions": "Permisos",
+  "admin-traffic": "Tráfico en tiempo real",
+  "admin-security": "Seguridad IP"
+};
+
+export function AdminControlCenter({ section, currentUser, onNavigateSection }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -26,9 +35,20 @@ export function AdminControlCenter({ section, currentUser }) {
 
   const [realtime, setRealtime] = useState(null);
   const [history, setHistory] = useState([]);
+  const [trafficLastUpdatedAt, setTrafficLastUpdatedAt] = useState(null);
+  const [trafficAutoRefresh, setTrafficAutoRefresh] = useState(true);
+  const [trafficRefreshMs, setTrafficRefreshMs] = useState(3000);
+  const [trafficHistoryLimit, setTrafficHistoryLimit] = useState(200);
+  const [trafficSearch, setTrafficSearch] = useState("");
+  const [trafficMethod, setTrafficMethod] = useState("all");
+  const [trafficStatus, setTrafficStatus] = useState("all");
+  const [trafficOnlyBlocked, setTrafficOnlyBlocked] = useState(false);
+  const [trafficActionIp, setTrafficActionIp] = useState("");
+
   const [bans, setBans] = useState([]);
   const [rules, setRules] = useState(null);
   const [cleanupResult, setCleanupResult] = useState(null);
+  const [notice, setNotice] = useState("");
 
   const [banForm, setBanForm] = useState({ ip: "", minutes: 60, reason: "", permanent: false });
 
@@ -55,13 +75,15 @@ export function AdminControlCenter({ section, currentUser }) {
     setSessions(Array.isArray(sessionsRes?.data) ? sessionsRes.data : []);
   };
 
-  const loadTraffic = async () => {
+  const loadTraffic = async (options = {}) => {
+    const limit = Number(options.limit ?? trafficHistoryLimit) || 200;
     const [rtRes, histRes] = await Promise.all([
       apiService.getSecurityTrafficRealtime(),
-      apiService.getSecurityTrafficHistory(200)
+      apiService.getSecurityTrafficHistory(limit)
     ]);
     setRealtime(rtRes?.data || null);
     setHistory(Array.isArray(histRes?.data) ? histRes.data : []);
+    setTrafficLastUpdatedAt(new Date());
   };
 
   const loadSecurity = async () => {
@@ -86,7 +108,7 @@ export function AdminControlCenter({ section, currentUser }) {
       }
 
       if (["admin-traffic"].includes(section)) {
-        await loadTraffic();
+        await Promise.all([loadTraffic(), loadSecurity()]);
       }
 
       if (["admin-security"].includes(section)) {
@@ -104,12 +126,17 @@ export function AdminControlCenter({ section, currentUser }) {
   }, [section]);
 
   useEffect(() => {
-    if (section !== "admin-traffic") return;
+    if (section !== "admin-traffic" || !trafficAutoRefresh) return;
     const timer = setInterval(() => {
-      loadTraffic().catch(() => {});
-    }, 3000);
+      loadTraffic({ limit: trafficHistoryLimit }).catch(() => {});
+    }, trafficRefreshMs);
     return () => clearInterval(timer);
-  }, [section]);
+  }, [section, trafficAutoRefresh, trafficRefreshMs, trafficHistoryLimit]);
+
+  useEffect(() => {
+    if (section !== "admin-traffic") return;
+    loadTraffic({ limit: trafficHistoryLimit }).catch(() => {});
+  }, [section, trafficHistoryLimit]);
 
   const startEditUser = (user) => {
     setEditingUserId(user._id);
@@ -256,6 +283,104 @@ export function AdminControlCenter({ section, currentUser }) {
     }
   };
 
+  const isEventBlocked = (ev) => {
+    return Boolean(ev?.blocked || ev?.isBlocked || Number(ev?.statusCode) === 429);
+  };
+
+  const trafficFilteredHistory = useMemo(() => {
+    const query = trafficSearch.trim().toLowerCase();
+    return history
+      .slice()
+      .reverse()
+      .filter((ev) => {
+        if (query) {
+          const ip = String(ev?.ip || "").toLowerCase();
+          const path = String(ev?.path || "").toLowerCase();
+          if (!ip.includes(query) && !path.includes(query)) return false;
+        }
+
+        if (trafficMethod !== "all" && String(ev?.method || "").toUpperCase() !== trafficMethod) {
+          return false;
+        }
+
+        const statusCode = Number(ev?.statusCode || 0);
+        if (trafficStatus === "2xx" && !(statusCode >= 200 && statusCode < 300)) return false;
+        if (trafficStatus === "4xx" && !(statusCode >= 400 && statusCode < 500)) return false;
+        if (trafficStatus === "5xx" && !(statusCode >= 500 && statusCode < 600)) return false;
+        if (trafficStatus === "429" && statusCode !== 429) return false;
+
+        if (trafficOnlyBlocked && !isEventBlocked(ev)) return false;
+        return true;
+      });
+  }, [history, trafficMethod, trafficOnlyBlocked, trafficSearch, trafficStatus]);
+
+  const trafficStats = useMemo(() => {
+    const sample = trafficFilteredHistory;
+    const total = sample.length;
+    const blocked = sample.filter(isEventBlocked).length;
+    const avgMs = total > 0
+      ? Math.round(sample.reduce((acc, ev) => acc + Number(ev?.durationMs || 0), 0) / total)
+      : 0;
+    return { total, blocked, avgMs };
+  }, [trafficFilteredHistory]);
+
+  const banIpFromTraffic = async (ip) => {
+    if (!ip) return;
+    if (!window.confirm(`¿Banear IP ${ip}?`)) return;
+
+    try {
+      setTrafficActionIp(ip);
+      setError("");
+      await apiService.banIp({ ip, minutes: 60, reason: "Ban manual desde Tráfico", permanent: false });
+      setNotice(`IP ${ip} bloqueada por 60 minutos.`);
+      await Promise.all([loadTraffic({ limit: trafficHistoryLimit }), loadSecurity()]);
+    } catch (err) {
+      setError(err.message || "No se pudo bloquear la IP");
+    } finally {
+      setTrafficActionIp("");
+    }
+  };
+
+  const unbanIpFromTraffic = async (ip) => {
+    if (!ip) return;
+    try {
+      setTrafficActionIp(ip);
+      setError("");
+      await apiService.unbanIp(ip);
+      setNotice(`IP ${ip} desbloqueada.`);
+      await Promise.all([loadTraffic({ limit: trafficHistoryLimit }), loadSecurity()]);
+    } catch (err) {
+      setError(err.message || "No se pudo desbloquear la IP");
+    } finally {
+      setTrafficActionIp("");
+    }
+  };
+
+  const exportTrafficCsv = () => {
+    const headers = ["timestamp", "ip", "path", "method", "statusCode", "durationMs", "blocked"];
+    const rows = trafficFilteredHistory.map((ev) => ([
+      new Date(ev?.ts || Date.now()).toISOString(),
+      ev?.ip || "",
+      ev?.path || "",
+      ev?.method || "",
+      ev?.statusCode ?? "",
+      ev?.durationMs ?? "",
+      isEventBlocked(ev) ? "1" : "0"
+    ]));
+
+    const csv = [headers, ...rows]
+      .map((row) => row.map((v) => `"${String(v).replaceAll('"', '""')}"`).join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `traffic-${new Date().toISOString().replace(/[:.]/g, "-")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (loading) {
     return <div className="card">Cargando {section}...</div>;
   }
@@ -264,12 +389,40 @@ export function AdminControlCenter({ section, currentUser }) {
     <div>
       <div className="flex items-center justify-between mb-16">
         <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2 }}>
-          Admin: {section}
+          Admin: {SECTION_TITLES[section] || section}
         </h1>
         <button className="btn btn-secondary" onClick={loadData}>↻ Recargar</button>
       </div>
 
+      {(section === "admin-traffic" || section === "admin-security") && (
+        <div className="card mb-16">
+          <div className="flex gap-8" style={{ flexWrap: "wrap" }}>
+            <button
+              className="btn btn-secondary btn-sm"
+              style={{
+                background: section === "admin-traffic" ? "rgba(0,212,255,0.15)" : undefined,
+                borderColor: section === "admin-traffic" ? "var(--accent)" : undefined
+              }}
+              onClick={() => onNavigateSection?.("admin-traffic")}
+            >
+              📡 Tráfico RT
+            </button>
+            <button
+              className="btn btn-secondary btn-sm"
+              style={{
+                background: section === "admin-security" ? "rgba(0,212,255,0.15)" : undefined,
+                borderColor: section === "admin-security" ? "var(--accent)" : undefined
+              }}
+              onClick={() => onNavigateSection?.("admin-security")}
+            >
+              🚫 Seguridad IP
+            </button>
+          </div>
+        </div>
+      )}
+
       {error && <div className="alert alert-danger mb-16"><span>⚠️</span>{error}</div>}
+      {notice && <div className="alert alert-success mb-16"><span>✅</span>{notice}</div>}
 
       {section === "admin-users" && (
         <div className="card-grid" style={{ gridTemplateColumns: '1fr 2fr' }}>
@@ -398,6 +551,60 @@ export function AdminControlCenter({ section, currentUser }) {
       )}
 
       {section === "admin-traffic" && (
+        <>
+          <div className="card mb-16">
+            <div className="card-header"><span className="card-title">Controles de Tráfico</span></div>
+            <div className="flex gap-8" style={{ flexWrap: "wrap", alignItems: "center" }}>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => setTrafficAutoRefresh((v) => !v)}
+              >
+                {trafficAutoRefresh ? "⏸ Auto-refresh ON" : "▶ Auto-refresh OFF"}
+              </button>
+              <select className="form-select" style={{ width: 160 }} value={trafficRefreshMs} onChange={(e) => setTrafficRefreshMs(Number(e.target.value))}>
+                <option value={2000}>Cada 2s</option>
+                <option value={3000}>Cada 3s</option>
+                <option value={5000}>Cada 5s</option>
+                <option value={10000}>Cada 10s</option>
+              </select>
+              <select className="form-select" style={{ width: 180 }} value={trafficHistoryLimit} onChange={(e) => setTrafficHistoryLimit(Number(e.target.value))}>
+                <option value={100}>Histórico 100</option>
+                <option value={200}>Histórico 200</option>
+                <option value={500}>Histórico 500</option>
+                <option value={1000}>Histórico 1000</option>
+              </select>
+              <input className="form-input" style={{ width: 220 }} placeholder="Filtrar IP o ruta..." value={trafficSearch} onChange={(e) => setTrafficSearch(e.target.value)} />
+              <select className="form-select" style={{ width: 140 }} value={trafficMethod} onChange={(e) => setTrafficMethod(e.target.value)}>
+                <option value="all">Método: Todos</option>
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+                <option value="PUT">PUT</option>
+                <option value="DELETE">DELETE</option>
+                <option value="PATCH">PATCH</option>
+              </select>
+              <select className="form-select" style={{ width: 140 }} value={trafficStatus} onChange={(e) => setTrafficStatus(e.target.value)}>
+                <option value="all">Status: Todos</option>
+                <option value="2xx">2xx</option>
+                <option value="4xx">4xx</option>
+                <option value="5xx">5xx</option>
+                <option value="429">Solo 429</option>
+              </select>
+              <label style={{ fontSize: 12 }}>
+                <input type="checkbox" checked={trafficOnlyBlocked} onChange={(e) => setTrafficOnlyBlocked(e.target.checked)} /> Solo bloqueadas
+              </label>
+              <button className="btn btn-secondary btn-sm" onClick={exportTrafficCsv}>CSV</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => {
+                setTrafficSearch("");
+                setTrafficMethod("all");
+                setTrafficStatus("all");
+                setTrafficOnlyBlocked(false);
+              }}>Limpiar filtros</button>
+            </div>
+            <div style={{ marginTop: 10, fontSize: 12, color: "var(--text2)" }}>
+              Última actualización: {trafficLastUpdatedAt ? trafficLastUpdatedAt.toLocaleTimeString("es-AR") : "sin datos"} | Eventos visibles: {trafficStats.total} | Bloqueados: {trafficStats.blocked} | Latencia media: {trafficStats.avgMs} ms
+            </div>
+          </div>
+
         <div className="card-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
           <div className="card">
             <div className="card-header"><span className="card-title">Tráfico en tiempo real</span></div>
@@ -406,10 +613,22 @@ export function AdminControlCenter({ section, currentUser }) {
             <p>IPs activas: <strong>{realtime?.activeIps || 0}</strong></p>
             <div className="table-wrap" style={{ maxHeight: 260 }}>
               <table>
-                <thead><tr><th>IP</th><th>Total</th><th>429</th><th>Bloqueada</th></tr></thead>
+                <thead><tr><th>IP</th><th>Total</th><th>429</th><th>Bloqueada</th><th>Acción</th></tr></thead>
                 <tbody>
                   {(realtime?.topIps || []).map((ip) => (
-                    <tr key={ip.ip}><td>{ip.ip}</td><td>{ip.total}</td><td>{ip.blocked}</td><td>{ip.isBlocked ? 'Sí' : 'No'}</td></tr>
+                    <tr key={ip.ip}>
+                      <td>{ip.ip}</td>
+                      <td>{ip.total}</td>
+                      <td>{ip.blocked}</td>
+                      <td>{ip.isBlocked ? 'Sí' : 'No'}</td>
+                      <td>
+                        {ip.isBlocked ? (
+                          <button className="btn btn-secondary btn-sm" disabled={trafficActionIp === ip.ip} onClick={() => unbanIpFromTraffic(ip.ip)}>Desbloquear</button>
+                        ) : (
+                          <button className="btn btn-danger btn-sm" disabled={trafficActionIp === ip.ip} onClick={() => banIpFromTraffic(ip.ip)}>Banear</button>
+                        )}
+                      </td>
+                    </tr>
                   ))}
                 </tbody>
               </table>
@@ -420,9 +639,9 @@ export function AdminControlCenter({ section, currentUser }) {
             <div className="card-header"><span className="card-title">Histórico reciente</span></div>
             <div className="table-wrap" style={{ maxHeight: 360 }}>
               <table>
-                <thead><tr><th>Hora</th><th>IP</th><th>Ruta</th><th>Mét.</th><th>Status</th><th>ms</th></tr></thead>
+                <thead><tr><th>Hora</th><th>IP</th><th>Ruta</th><th>Mét.</th><th>Status</th><th>ms</th><th></th></tr></thead>
                 <tbody>
-                  {history.slice().reverse().map((ev, idx) => (
+                  {trafficFilteredHistory.map((ev, idx) => (
                     <tr key={`${ev.ts}-${idx}`}>
                       <td>{new Date(ev.ts).toLocaleTimeString('es-AR')}</td>
                       <td>{ev.ip}</td>
@@ -430,6 +649,9 @@ export function AdminControlCenter({ section, currentUser }) {
                       <td>{ev.method}</td>
                       <td>{ev.statusCode}</td>
                       <td>{ev.durationMs}</td>
+                      <td>
+                        <button className="btn btn-danger btn-sm" disabled={trafficActionIp === ev.ip} onClick={() => banIpFromTraffic(ev.ip)}>Banear</button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -437,6 +659,7 @@ export function AdminControlCenter({ section, currentUser }) {
             </div>
           </div>
         </div>
+        </>
       )}
 
       {section === "admin-security" && (

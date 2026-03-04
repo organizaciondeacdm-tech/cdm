@@ -1,3 +1,4 @@
+import { useState } from "react";
 import STYLES from "./styles/styles.jsx";
 import './styles/acdm.css';
 import { AcdmProvider, useAcdmContext } from "./context/AcdmContext.jsx";
@@ -18,12 +19,14 @@ import { InformeModal } from "./components/InformeModal.jsx";
 import { SecretAdminPanel } from "./components/SecretAdminPanel.jsx";
 import { AdminControlCenter } from "./components/AdminControlCenter.jsx";
 import { DaysRemaining } from "./components/DaysRemaining.jsx";
+import { AlertMessage } from "./components/AlertMessage.jsx";
 import { FormulariosSection } from "./sections/FormulariosSection.jsx";
 import { formatDate } from "./utils/dateUtils.js";
 
 function AcdmContent() {
+  const [feedback, setFeedback] = useState(null);
   const {
-    currentUser, setCurrentUser, activeSection, setActiveSection, search, viewMode, setViewMode, isAdmin,
+    currentUser, setCurrentUser, activeSection, setActiveSection, search, viewMode, setViewMode, isAdmin, canManageOperationalSections,
     escuelas, loading,
     saveEscuela, deleteEscuela,
     addDocente, updateDocente, deleteDocente,
@@ -41,6 +44,20 @@ function AcdmContent() {
     showMailsExtractor, setShowMailsExtractor,
     showHiddenAdmin
   } = useAcdmContext();
+
+  const notifyDeleteResult = async (deleteFn, args, successMessage) => {
+    try {
+      const deleted = await deleteFn(...args);
+      if (!deleted) return;
+      setFeedback({ id: Date.now(), type: 'success', message: successMessage });
+    } catch (err) {
+      setFeedback({
+        id: Date.now(),
+        type: 'error',
+        message: err?.message || 'No se pudo eliminar el registro.'
+      });
+    }
+  };
 
   if (!currentUser) return <><style>{STYLES}</style><Login onLogin={setCurrentUser} /></>;
 
@@ -84,6 +101,14 @@ function AcdmContent() {
   return (
     <>
       <style>{STYLES}</style>
+      {feedback && (
+        <AlertMessage
+          key={feedback.id}
+          type={feedback.type}
+          message={feedback.message}
+          onClose={() => setFeedback(null)}
+        />
+      )}
       <AcdmLayout>
         {activeSection === "dashboard" && (
           <div>
@@ -109,23 +134,23 @@ function AcdmContent() {
                   <button className={`view-btn ${viewMode === "full" ? "active" : ""}`} onClick={() => setViewMode("full")}>Completo</button>
                   <button className={`view-btn ${viewMode === "compact" ? "active" : ""}`} onClick={() => setViewMode("compact")}>Compacto</button>
                 </div>
-                {isAdmin && <button className="btn btn-primary" onClick={() => setEscuelaModal({ isNew: true, data: null })}>➕ Nueva Escuela</button>}
+                {canManageOperationalSections && <button className="btn btn-primary" onClick={() => setEscuelaModal({ isNew: true, data: null })}>➕ Nueva Escuela</button>}
               </div>
             </div>
 
-            {filteredEscuelas.length === 0 && <div className="no-data card">No se encontraron escuelas. {isAdmin && <button className="btn btn-primary btn-sm" style={{ marginLeft: 8 }} onClick={() => setEscuelaModal({ isNew: true, data: null })}>Crear primera escuela</button>}</div>}
+            {filteredEscuelas.length === 0 && <div className="no-data card">No se encontraron escuelas. {canManageOperationalSections && <button className="btn btn-primary btn-sm" style={{ marginLeft: 8 }} onClick={() => setEscuelaModal({ isNew: true, data: null })}>Crear primera escuela</button>}</div>}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {filteredEscuelas.map(esc => (
-                <EscuelaDetail key={esc.id} esc={esc} viewMode={viewMode} isAdmin={isAdmin}
+                <EscuelaDetail key={esc.id} esc={esc} viewMode={viewMode} isAdmin={canManageOperationalSections}
                   onEdit={() => setEscuelaModal({ isNew: false, data: esc })}
-                  onDelete={() => deleteEscuela(esc.id)}
+                  onDelete={() => notifyDeleteResult(deleteEscuela, [esc.id], 'Escuela eliminada correctamente.')}
                   onAddDocente={(escId, titularId) => setDocenteModal({ isNew: true, escuelaId: escId, titularId: titularId || null, data: null })}
                   onEditDocente={(escId, doc, titularId) => setDocenteModal({ isNew: false, escuelaId: escId, titularId: titularId || null, data: doc })}
-                  onDeleteDocente={deleteDocente}
+                  onDeleteDocente={(escId, docId) => notifyDeleteResult(deleteDocente, [escId, docId], 'Docente eliminado correctamente.')}
                   onAddAlumno={(escId) => setAlumnoModal({ isNew: true, escuelaId: escId, data: null })}
                   onEditAlumno={(escId, alumno) => setAlumnoModal({ isNew: false, escuelaId: escId, data: alumno })}
-                  onDeleteAlumno={deleteAlumno}
+                  onDeleteAlumno={(escId, alumnoId) => notifyDeleteResult(deleteAlumno, [escId, alumnoId], 'Alumno eliminado correctamente.')}
                 />
               ))}
             </div>
@@ -178,7 +203,7 @@ function AcdmContent() {
                 <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2 }}>Visitas a Escuelas</h1>
                 <p style={{ color: 'var(--text2)', fontSize: 13 }}>Registro de visitas y observaciones a las escuelas</p>
               </div>
-              {isAdmin && <button className="btn btn-primary" onClick={() => setVisitaModal({ isNew: true, data: null, escuelaId: null })}>➕ Nueva Visita</button>}
+              {canManageOperationalSections && <button className="btn btn-primary" onClick={() => setVisitaModal({ isNew: true, data: null, escuelaId: null })}>➕ Nueva Visita</button>}
             </div>
             {filteredVisitas.length === 0 && search && <div className="no-data card">No se encontraron visitas para "{search}"</div>}
             <div className="card-grid">
@@ -198,17 +223,17 @@ function AcdmContent() {
                             <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, color: 'var(--accent)' }}>📅 {formatDate(v.fecha)}</div>
                             <div style={{ color: 'var(--text2)', marginTop: 6, fontSize: 12 }}>{v.observaciones}</div>
                           </div>
-                          {isAdmin && (
+                          {canManageOperationalSections && (
                             <div className="flex gap-4">
                               <button className="btn btn-secondary btn-sm" onClick={() => setVisitaModal({ isNew: false, data: v, escuelaId: esc.id })}>✏️</button>
-                              <button className="btn btn-danger btn-sm" onClick={() => deleteVisita(esc.id, v.id)}>🗑️</button>
+                              <button className="btn btn-danger btn-sm" onClick={() => notifyDeleteResult(deleteVisita, [esc.id, v.id], 'Visita eliminada correctamente.')}>🗑️</button>
                             </div>
                           )}
                         </div>
                       </div>
                     ))
                   )}
-                  {isAdmin && (
+                  {canManageOperationalSections && (
                     <button className="btn btn-secondary btn-sm" style={{ marginTop: 12, width: '100%' }} onClick={() => setVisitaModal({ isNew: true, data: null, escuelaId: esc.id })}>+ Agregar visita</button>
                   )}
                 </div>
@@ -224,7 +249,7 @@ function AcdmContent() {
                 <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2 }}>Proyectos Entregados</h1>
                 <p style={{ color: 'var(--text2)', fontSize: 13 }}>Proyectos desarrollados e implementados por los ACDM</p>
               </div>
-              {isAdmin && <button className="btn btn-primary" onClick={() => setProyectoModal({ isNew: true, data: null, escuelaId: null })}>➕ Nuevo Proyecto</button>}
+              {canManageOperationalSections && <button className="btn btn-primary" onClick={() => setProyectoModal({ isNew: true, data: null, escuelaId: null })}>➕ Nuevo Proyecto</button>}
             </div>
             {filteredProyectos.length === 0 && search && <div className="no-data card">No se encontraron proyectos para "{search}"</div>}
             <div className="card-grid">
@@ -248,17 +273,17 @@ function AcdmContent() {
                               <span style={{ color: 'var(--text3)' }}>📅 {formatDate(p.fechaInicio)} → {formatDate(p.fechaBaja)}</span>
                             </div>
                           </div>
-                          {isAdmin && (
+                          {canManageOperationalSections && (
                             <div className="flex gap-4" style={{ marginLeft: 8 }}>
                               <button className="btn btn-secondary btn-sm" onClick={() => setProyectoModal({ isNew: false, data: p, escuelaId: esc.id })}>✏️</button>
-                              <button className="btn btn-danger btn-sm" onClick={() => deleteProyecto(esc.id, p.id)}>🗑️</button>
+                              <button className="btn btn-danger btn-sm" onClick={() => notifyDeleteResult(deleteProyecto, [esc.id, p.id], 'Proyecto eliminado correctamente.')}>🗑️</button>
                             </div>
                           )}
                         </div>
                       </div>
                     ))
                   )}
-                  {isAdmin && (
+                  {canManageOperationalSections && (
                     <button className="btn btn-secondary btn-sm" style={{ marginTop: 12, width: '100%' }} onClick={() => setProyectoModal({ isNew: true, data: null, escuelaId: esc.id })}>+ Agregar proyecto</button>
                   )}
                 </div>
@@ -274,7 +299,7 @@ function AcdmContent() {
                 <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2 }}>Informes Entregados</h1>
                 <p style={{ color: 'var(--text2)', fontSize: 13 }}>Informes periódicos entregados por los ACDM</p>
               </div>
-              {isAdmin && <button className="btn btn-primary" onClick={() => setInformeModal({ isNew: true, data: null, escuelaId: null })}>➕ Nuevo Informe</button>}
+              {canManageOperationalSections && <button className="btn btn-primary" onClick={() => setInformeModal({ isNew: true, data: null, escuelaId: null })}>➕ Nuevo Informe</button>}
             </div>
             {filteredInformes.length === 0 && search && <div className="no-data card">No se encontraron informes para "{search}"</div>}
             <div className="card-grid">
@@ -298,17 +323,17 @@ function AcdmContent() {
                               <span style={{ color: 'var(--text3)' }}>📅 {formatDate(i.fechaEntrega)}</span>
                             </div>
                           </div>
-                          {isAdmin && (
+                          {canManageOperationalSections && (
                             <div className="flex gap-4" style={{ marginLeft: 8 }}>
                               <button className="btn btn-secondary btn-sm" onClick={() => setInformeModal({ isNew: false, data: i, escuelaId: esc.id })}>✏️</button>
-                              <button className="btn btn-danger btn-sm" onClick={() => deleteInforme(esc.id, i.id)}>🗑️</button>
+                              <button className="btn btn-danger btn-sm" onClick={() => notifyDeleteResult(deleteInforme, [esc.id, i.id], 'Informe eliminado correctamente.')}>🗑️</button>
                             </div>
                           )}
                         </div>
                       </div>
                     ))
                   )}
-                  {isAdmin && (
+                  {canManageOperationalSections && (
                     <button className="btn btn-secondary btn-sm" style={{ marginTop: 12, width: '100%' }} onClick={() => setInformeModal({ isNew: true, data: null, escuelaId: esc.id })}>+ Agregar informe</button>
                   )}
                 </div>
@@ -345,27 +370,27 @@ function AcdmContent() {
         )}
 
         {activeSection === "admin-users" && isAdmin && (
-          <AdminControlCenter section="admin-users" currentUser={currentUser} />
+          <AdminControlCenter section="admin-users" currentUser={currentUser} onNavigateSection={setActiveSection} />
         )}
 
         {activeSection === "admin-sessions" && isAdmin && (
-          <AdminControlCenter section="admin-sessions" currentUser={currentUser} />
+          <AdminControlCenter section="admin-sessions" currentUser={currentUser} onNavigateSection={setActiveSection} />
         )}
 
         {activeSection === "admin-roles" && isAdmin && (
-          <AdminControlCenter section="admin-roles" currentUser={currentUser} />
+          <AdminControlCenter section="admin-roles" currentUser={currentUser} onNavigateSection={setActiveSection} />
         )}
 
         {activeSection === "admin-permissions" && isAdmin && (
-          <AdminControlCenter section="admin-permissions" currentUser={currentUser} />
+          <AdminControlCenter section="admin-permissions" currentUser={currentUser} onNavigateSection={setActiveSection} />
         )}
 
         {activeSection === "admin-traffic" && isAdmin && (
-          <AdminControlCenter section="admin-traffic" currentUser={currentUser} />
+          <AdminControlCenter section="admin-traffic" currentUser={currentUser} onNavigateSection={setActiveSection} />
         )}
 
         {activeSection === "admin-security" && isAdmin && (
-          <AdminControlCenter section="admin-security" currentUser={currentUser} />
+          <AdminControlCenter section="admin-security" currentUser={currentUser} onNavigateSection={setActiveSection} />
         )}
       </AcdmLayout>
 
