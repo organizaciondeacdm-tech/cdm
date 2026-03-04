@@ -8,6 +8,7 @@ const JwtKeyManager = require('../utils/jwtKeyManager');
 const SessionService = require('../services/sessionService');
 const AuthThrottle = require('../models/AuthThrottle');
 const { isPrivilegedRole } = require('../services/privilegedRoleService');
+const { normalizeRole, normalizePermission } = require('../utils/accessControlCrypto');
 
 const LOGIN_RESPONSE_DELAY_MS = parseInt(process.env.LOGIN_RESPONSE_DELAY_MS, 10) || 400;
 const AUTH_FAILURE_MAX_ATTEMPTS = parseInt(process.env.AUTH_FAILURE_MAX_ATTEMPTS, 10) || 10;
@@ -200,17 +201,29 @@ const clearUnknownIpFailures = async (userId, ip) => {
   await AuthThrottle.deleteOne({ key });
 };
 
+const hasAdminAclPermissions = (perms = []) => {
+  const set = new Set((Array.isArray(perms) ? perms : []).map((perm) => normalizePermission(perm)));
+  return (
+    set.has('*') ||
+    set.has('gestionar_usuarios') ||
+    set.has('gestionar_roles_permisos') ||
+    set.has('gestionar_seguridad') ||
+    set.has('ver_sesiones_admin')
+  );
+};
+
 const canManageSessions = async (user) => {
-  const role = String(user?.rol || '');
+  const role = normalizeRole(user?.rol || '');
   const permisos = Array.isArray(user?.permisos) ? user.permisos : [];
-  return (await isPrivilegedRole(role)) || permisos.includes('*');
+  return (await isPrivilegedRole(role)) || hasAdminAclPermissions(permisos);
 };
 
 const serializeAuthUser = async (user) => {
   if (!user) return null;
-  const role = String(user?.rol || '');
+  const role = normalizeRole(user?.rol || '');
   const permisos = Array.isArray(user?.permisos) ? user.permisos : [];
   const hasPrivilegedRole = await isPrivilegedRole(role);
+  const hasAdminPermissions = hasAdminAclPermissions(permisos);
   return {
     _id: user._id,
     username: user.username,
@@ -219,7 +232,7 @@ const serializeAuthUser = async (user) => {
     apellido: user.apellido,
     rol: role,
     permisos,
-    isPrivilegedRole: hasPrivilegedRole || permisos.includes('*')
+    isPrivilegedRole: hasPrivilegedRole || hasAdminPermissions
   };
 };
 
@@ -852,7 +865,7 @@ const getAllActiveSessions = async (req, res) => {
     console.error('Error getting all active sessions:', error);
     res.status(500).json({
       success: false,
-      error: 'Error al obtener todas las sesiones activas'
+      error: 'Error al obtener todas las sesiones'
     });
   }
 };

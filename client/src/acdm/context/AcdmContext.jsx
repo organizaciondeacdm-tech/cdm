@@ -64,7 +64,12 @@ export function AcdmProvider({ children, currentUser: propCurrentUser, onLogout:
         (Array.isArray(currentUser?.permisos) ? currentUser.permisos : [])
             .map((permiso) => String(permiso || "").trim().toLowerCase())
     );
-    const isAdmin = currentUser?.isPrivilegedRole === true;
+    const hasAdminPermissions = permisosSet.has("*")
+        || permisosSet.has("gestionar_usuarios")
+        || permisosSet.has("gestionar_roles_permisos")
+        || permisosSet.has("gestionar_seguridad")
+        || permisosSet.has("ver_sesiones_admin");
+    const isAdmin = currentUser?.isPrivilegedRole === true || hasAdminPermissions;
     const canManageOperationalSections = isAdmin
         || role === "supervisor"
         || permisosSet.has("*")

@@ -45,9 +45,28 @@ const Alumno = require('./models/Alumno');
 const securityMonitorService = require('./services/securityMonitorService');
 const RolePolicy = require('./models/RolePolicy');
 const { isPrivilegedRole } = require('./services/privilegedRoleService');
+const { normalizeRole, normalizePermission } = require('./utils/accessControlCrypto');
 
 const app = express();
 const PUBLIC_RUNTIME_ENV_KEYS = ['VITE_API_URL', 'VITE_AUTH_STORAGE_SECRET'];
+const STATIC_PERMISSION_CATALOG = [
+  '*',
+  'crear_escuela',
+  'editar_escuela',
+  'eliminar_escuela',
+  'crear_docente',
+  'editar_docente',
+  'eliminar_docente',
+  'crear_alumno',
+  'editar_alumno',
+  'eliminar_alumno',
+  'exportar_datos',
+  'ver_reportes',
+  'gestionar_usuarios',
+  'gestionar_roles_permisos',
+  'gestionar_seguridad',
+  'ver_sesiones_admin'
+].map((permission) => normalizePermission(permission)).filter(Boolean);
 
 // Variable global para la conexión (patrón Singleton)
 let connectionPromise = null;
@@ -377,12 +396,19 @@ const requireAdmin = async (req, res, next) => {
       return deny();
     }
 
-    const role = String(user.rol || '').trim().toLowerCase();
+    const role = normalizeRole(user.rol || '');
     const permisos = Array.isArray(user.permisos) ? user.permisos : [];
-    const permisosSet = new Set(permisos.map((p) => String(p || '').trim()));
+    const permisosSet = new Set(permisos.map((p) => normalizePermission(p)));
     const hasAdminPrivileges = await isPrivilegedRole(role);
+    const hasAdminPermissions = (
+      permisosSet.has('*') ||
+      permisosSet.has('gestionar_usuarios') ||
+      permisosSet.has('gestionar_roles_permisos') ||
+      permisosSet.has('gestionar_seguridad') ||
+      permisosSet.has('ver_sesiones_admin')
+    );
 
-    if (hasAdminPrivileges || permisosSet.has('*')) {
+    if (hasAdminPrivileges || hasAdminPermissions) {
       return next();
     }
 
@@ -392,22 +418,44 @@ const requireAdmin = async (req, res, next) => {
   }
 };
 
-const getPermissionCatalog = () => {
-  const permisosPath = User.schema.path('permisos');
-  const caster = permisosPath && permisosPath.caster;
-  return (caster?.enumValues || []).filter(Boolean);
+const getPermissionCatalog = async () => {
+  const fromStatic = [...STATIC_PERMISSION_CATALOG];
+
+  await RolePolicy.ensureDefaults();
+  const policies = await RolePolicy.getAllPolicies();
+  const fromPolicies = (Array.isArray(policies) ? policies : [])
+    .flatMap((policy) => (Array.isArray(policy?.defaultPermissions) ? policy.defaultPermissions : []))
+    .map((permission) => normalizePermission(permission))
+    .filter(Boolean);
+
+  const users = await User.find({}).select('permisos').lean();
+  const fromUsers = (Array.isArray(users) ? users : [])
+    .flatMap((row) => (Array.isArray(row?.permisos) ? row.permisos : []))
+    .map((permission) => normalizePermission(permission))
+    .filter(Boolean);
+
+  return Array.from(new Set([...fromStatic, ...fromPolicies, ...fromUsers]));
 };
 
 const getRoleDefaultPermissions = async (role) => {
-  const policy = await RolePolicy.getByRole(role);
+  const policy = await RolePolicy.getByRole(normalizeRole(role));
   return Array.isArray(policy?.defaultPermissions) ? policy.defaultPermissions : [];
+};
+
+const sanitizePermissions = (rawPermissions, permissionCatalogSet) => {
+  const source = Array.isArray(rawPermissions) ? rawPermissions : [];
+  const normalized = source
+    .map((permission) => normalizePermission(permission))
+    .filter(Boolean);
+  return Array.from(new Set(normalized))
+    .filter((permission) => permission === '*' || permissionCatalogSet.has(permission));
 };
 
 // Listar usuarios
 app.get('/api/admin/users', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const users = await User.find({}).select('-passwordHash').lean();
-    res.json({ success: true, data: users });
+    const users = await User.find({}).select('-passwordHash');
+    res.json({ success: true, data: users.map((user) => user.toObject()) });
   } catch (e) {
     res.status(500).json({ success: false, error: 'Error al listar usuarios' });
   }
@@ -416,9 +464,9 @@ app.get('/api/admin/users', authMiddleware, requireAdmin, async (req, res) => {
 // Obtener usuario por ID
 app.get('/api/admin/users/:id', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('-passwordHash').lean();
+    const user = await User.findById(req.params.id).select('-passwordHash');
     if (!user) return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
-    res.json({ success: true, data: user });
+    res.json({ success: true, data: user.toObject() });
   } catch (e) {
     res.status(500).json({ success: false, error: 'Error al obtener usuario' });
   }
@@ -433,17 +481,24 @@ app.post('/api/admin/users', authMiddleware, requireAdmin, async (req, res) => {
     }
     const existing = await User.findOne({ $or: [{ username }, { email }] });
     if (existing) return res.status(400).json({ success: false, error: 'Usuario o email ya existe' });
-    const targetRole = rol || 'viewer';
-    const permissionCatalog = new Set(getPermissionCatalog());
+    const targetRole = normalizeRole(rol || 'viewer');
+    const permissionCatalog = new Set(await getPermissionCatalog());
     const roleDefaultPermissions = await getRoleDefaultPermissions(targetRole);
-    const normalizedPerms = (Array.isArray(permisos) && permisos.length > 0 ? permisos : roleDefaultPermissions)
-      .filter((p) => p === '*' || permissionCatalog.has(p));
+    const normalizedPerms = sanitizePermissions(
+      Array.isArray(permisos) && permisos.length > 0 ? permisos : roleDefaultPermissions,
+      permissionCatalog
+    );
 
     const user = await User.create({
-      username, passwordHash: password, email, nombre, apellido,
+      username: String(username).trim().toLowerCase(),
+      passwordHash: password,
+      email: String(email).trim().toLowerCase(),
+      nombre,
+      apellido,
       rol: targetRole, permisos: normalizedPerms
     });
-    const { passwordHash: _, ...safe } = user.toObject();
+    const safe = user.toObject();
+    delete safe.passwordHash;
     res.status(201).json({ success: true, data: safe, message: 'Usuario creado exitosamente' });
   } catch (e) {
     res.status(500).json({ success: false, error: 'Error al crear usuario' });
@@ -453,15 +508,42 @@ app.post('/api/admin/users', authMiddleware, requireAdmin, async (req, res) => {
 // Actualizar usuario
 app.put('/api/admin/users/:id', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const { password, ...rest } = req.body;
-    const update = { ...rest };
-    if (update.rol && (!Array.isArray(update.permisos) || update.permisos.length === 0)) {
-      update.permisos = await getRoleDefaultPermissions(update.rol);
+    const current = await User.findById(req.params.id).select('_id');
+    if (!current) return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
+
+    const payload = req.body || {};
+    const update = {};
+
+    if (payload.username !== undefined) update.username = String(payload.username || '').trim().toLowerCase();
+    if (payload.email !== undefined) update.email = String(payload.email || '').trim().toLowerCase();
+    if (payload.nombre !== undefined) update.nombre = payload.nombre;
+    if (payload.apellido !== undefined) update.apellido = payload.apellido;
+    if (payload.password) update.passwordHash = payload.password;
+
+    const permissionCatalog = new Set(await getPermissionCatalog());
+    const requestedRole = payload.rol !== undefined ? normalizeRole(payload.rol || 'viewer') : null;
+    const hasPermisosInPayload = Array.isArray(payload.permisos);
+
+    if (requestedRole) {
+      update.rol = requestedRole;
+      if (!hasPermisosInPayload) {
+        const rolePerms = await getRoleDefaultPermissions(requestedRole);
+        update.permisos = sanitizePermissions(rolePerms, permissionCatalog);
+      }
     }
-    if (password) update.passwordHash = password;
-    const user = await User.findByIdAndUpdate(req.params.id, { $set: update }, { new: true }).select('-passwordHash');
+
+    if (hasPermisosInPayload) {
+      update.permisos = sanitizePermissions(payload.permisos, permissionCatalog);
+    }
+
+    if (Object.keys(update).length === 0) {
+      return res.status(400).json({ success: false, error: 'No hay campos para actualizar' });
+    }
+
+    await User.updateOne({ _id: req.params.id }, { $set: update });
+    const user = await User.findById(req.params.id).select('-passwordHash');
     if (!user) return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
-    res.json({ success: true, data: user, message: 'Usuario actualizado exitosamente' });
+    res.json({ success: true, data: user.toObject(), message: 'Usuario actualizado exitosamente' });
   } catch (e) {
     res.status(500).json({ success: false, error: 'Error al actualizar usuario' });
   }
@@ -487,7 +569,7 @@ app.get('/api/admin/roles', authMiddleware, requireAdmin, async (_req, res) => {
     await RolePolicy.ensureDefaults();
     const users = await User.find({}).select('rol').lean();
     const byRole = users.reduce((acc, row) => {
-      const role = String(row?.rol || '').trim().toLowerCase();
+      const role = normalizeRole(row?.rol || '');
       if (!role) return acc;
       acc[role] = (acc[role] || 0) + 1;
       return acc;
@@ -508,18 +590,15 @@ app.get('/api/admin/roles', authMiddleware, requireAdmin, async (_req, res) => {
 
 app.put('/api/admin/roles/:role/permisos', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const role = String(req.params.role || '').trim();
+    const role = normalizeRole(req.params.role || '');
     await RolePolicy.ensureDefaults();
     const currentPolicy = await RolePolicy.getByRole(role);
     if (!currentPolicy) {
       return res.status(400).json({ success: false, error: 'Rol inválido' });
     }
 
-    const catalog = new Set(getPermissionCatalog());
-    const rawPerms = Array.isArray(req.body?.permisos) ? req.body.permisos : [];
-    const nextPerms = rawPerms
-      .map((p) => String(p || '').trim())
-      .filter((p) => p === '*' || catalog.has(p));
+    const catalog = new Set(await getPermissionCatalog());
+    const nextPerms = sanitizePermissions(req.body?.permisos, catalog);
 
     await RolePolicy.updateOne(
       { $or: [{ roleLookup: RolePolicy.getRoleLookup(role) }, { role }] },
@@ -546,12 +625,12 @@ app.put('/api/admin/roles/:role/permisos', authMiddleware, requireAdmin, async (
 
 app.get('/api/admin/permisos', authMiddleware, requireAdmin, async (_req, res) => {
   try {
-    const catalog = getPermissionCatalog();
+    const catalog = await getPermissionCatalog();
     const users = await User.find({}).select('permisos').lean();
     const byPerm = users.reduce((acc, row) => {
       const perms = Array.isArray(row?.permisos) ? row.permisos : [];
       perms.forEach((perm) => {
-        const key = String(perm || '').trim();
+        const key = normalizePermission(perm);
         if (!key) return;
         acc[key] = (acc[key] || 0) + 1;
       });

@@ -26,6 +26,8 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection }) 
 
   const [users, setUsers] = useState([]);
   const [sessions, setSessions] = useState([]);
+  const [sessionSearch, setSessionSearch] = useState("");
+  const [selectedSessionIds, setSelectedSessionIds] = useState([]);
   const [roles, setRoles] = useState([]);
   const [permissions, setPermissions] = useState([]);
 
@@ -53,6 +55,13 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection }) 
   const [banForm, setBanForm] = useState({ ip: "", minutes: 60, reason: "", permanent: false });
 
   const permissionCatalog = useMemo(() => permissions.map((p) => p.permiso), [permissions]);
+  const roleOptions = useMemo(() => {
+    const fromApi = roles
+      .map((r) => String(r?.role || "").trim().toLowerCase())
+      .filter(Boolean);
+    const fallback = ["admin", "desarrollador", "supervisor", "viewer"];
+    return Array.from(new Set([...fromApi, ...fallback]));
+  }, [roles]);
 
   const resetUserForm = () => {
     setEditingUserId(null);
@@ -217,6 +226,71 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection }) 
       await loadSessions();
     } catch (err) {
       setError(err.message || "No se pudo revocar la sesión");
+    }
+  };
+
+  const sessionRows = useMemo(() => {
+    const query = sessionSearch.trim().toLowerCase();
+    if (!query) return sessions;
+    return sessions.filter((s) => {
+      const username = String(s.username || s.userId?.username || "").toLowerCase();
+      const ip = String(s.deviceInfo?.ip || "").toLowerCase();
+      const browser = String(s.deviceInfo?.browser || s.deviceInfo?.userAgent || "").toLowerCase();
+      return username.includes(query) || ip.includes(query) || browser.includes(query);
+    });
+  }, [sessions, sessionSearch]);
+
+  useEffect(() => {
+    const validIds = new Set(sessionRows.map((s) => String(s._id)));
+    setSelectedSessionIds((prev) => prev.filter((id) => validIds.has(String(id))));
+  }, [sessionRows]);
+
+  const toggleSessionSelection = (id) => {
+    setSelectedSessionIds((prev) => {
+      const key = String(id);
+      return prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key];
+    });
+  };
+
+  const toggleSelectAllSessionRows = () => {
+    const rowIds = sessionRows.map((s) => String(s._id));
+    if (rowIds.length === 0) return;
+    setSelectedSessionIds((prev) => {
+      const allSelected = rowIds.every((id) => prev.includes(id));
+      if (allSelected) return prev.filter((id) => !rowIds.includes(id));
+      const next = new Set(prev);
+      rowIds.forEach((id) => next.add(id));
+      return [...next];
+    });
+  };
+
+  const revokeSelectedSessions = async () => {
+    if (selectedSessionIds.length === 0) return;
+    if (!window.confirm(`¿Cerrar ${selectedSessionIds.length} sesión(es) seleccionada(s)?`)) return;
+    setError("");
+    try {
+      await Promise.all(
+        selectedSessionIds.map((id) => apiService.revokeSessionFromActiveView(id, { asAdmin: true }))
+      );
+      setSelectedSessionIds([]);
+      await loadSessions();
+    } catch (err) {
+      setError(err.message || "No se pudieron cerrar las sesiones seleccionadas");
+    }
+  };
+
+  const revokeAllSessions = async () => {
+    if (sessions.length === 0) return;
+    if (!window.confirm(`¿Cerrar todas las sesiones activas (${sessions.length})?`)) return;
+    setError("");
+    try {
+      await Promise.all(
+        sessions.map((s) => apiService.revokeSessionFromActiveView(s._id, { asAdmin: true }))
+      );
+      setSelectedSessionIds([]);
+      await loadSessions();
+    } catch (err) {
+      setError(err.message || "No se pudieron cerrar todas las sesiones");
     }
   };
 
@@ -434,9 +508,9 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection }) 
             <div className="form-group"><label className="form-label">Apellido</label><input className="form-input" value={userForm.apellido} onChange={(e) => setUserForm((p) => ({ ...p, apellido: e.target.value }))} /></div>
             <div className="form-group"><label className="form-label">Rol</label>
               <select className="form-select" value={userForm.rol} onChange={(e) => setUserForm((p) => ({ ...p, rol: e.target.value }))}>
-                <option value="admin">admin</option>
-                <option value="supervisor">supervisor</option>
-                <option value="viewer">viewer</option>
+                {roleOptions.map((role) => (
+                  <option key={role} value={role}>{role}</option>
+                ))}
               </select>
             </div>
             <div className="form-group"><label className="form-label">{editingUserId ? 'Nueva contraseña (opcional)' : 'Contraseña'}</label><input type="password" className="form-input" value={userForm.password} onChange={(e) => setUserForm((p) => ({ ...p, password: e.target.value }))} /></div>
@@ -481,18 +555,60 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection }) 
 
       {section === "admin-sessions" && (
         <div className="card table-wrap">
+          <div className="flex items-center justify-between mb-16" style={{ gap: 8, flexWrap: "wrap" }}>
+            <div className="flex items-center gap-8" style={{ flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12, color: "var(--text2)" }}>herramientas</span>
+              <button className="btn btn-danger btn-sm" onClick={revokeAllSessions} disabled={sessions.length === 0}>
+                cerrar todas
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={toggleSelectAllSessionRows} disabled={sessionRows.length === 0}>
+                seleccionar
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={revokeSelectedSessions} disabled={selectedSessionIds.length === 0}>
+                cerrar seleccionadas ({selectedSessionIds.length})
+              </button>
+            </div>
+            <div className="flex items-center gap-8" style={{ flexWrap: "wrap" }}>
+              <input
+                className="form-input"
+                style={{ width: 220 }}
+                placeholder="filtrar usuario / ip / navegador"
+                value={sessionSearch}
+                onChange={(e) => setSessionSearch(e.target.value)}
+              />
+              <details>
+                <summary className="btn btn-secondary btn-sm" style={{ listStyle: "none", cursor: "pointer" }}>más</summary>
+                <div className="card" style={{ position: "absolute", marginTop: 8, zIndex: 5, minWidth: 200 }}>
+                  <div className="flex" style={{ flexDirection: "column", gap: 8 }}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => setSelectedSessionIds([])}>limpiar selección</button>
+                    <button className="btn btn-secondary btn-sm" onClick={() => setSessionSearch("")}>limpiar filtro</button>
+                    <button className="btn btn-secondary btn-sm" onClick={loadSessions}>recargar sesiones</button>
+                  </div>
+                </div>
+              </details>
+            </div>
+          </div>
+
           <table>
-            <thead><tr><th>Usuario</th><th>IP</th><th>Navegador</th><th>Última actividad</th><th>Expira</th><th>Acción</th></tr></thead>
+            <thead><tr><th style={{ width: 42 }}>Sel</th><th>Usuario</th><th>Estado</th><th>IP</th><th>Navegador</th><th>Última actividad</th><th>Expira</th><th>Acción</th></tr></thead>
             <tbody>
-              {sessions.length === 0 ? (
+              {sessionRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: "center", color: "var(--text2)" }}>
-                    No hay sesiones activas
+                  <td colSpan={8} style={{ textAlign: "center", color: "var(--text2)" }}>
+                    No hay sesiones
                   </td>
                 </tr>
-              ) : sessions.map((s) => (
+              ) : sessionRows.map((s) => (
                 <tr key={s._id}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={selectedSessionIds.includes(String(s._id))}
+                      onChange={() => toggleSessionSelection(s._id)}
+                    />
+                  </td>
                   <td>{s.username || s.userId?.username || "-"}</td>
+                  <td>{s.isActive ? "Activa" : "Inactiva"}</td>
                   <td>{s.deviceInfo?.ip || '-'}</td>
                   <td>{s.deviceInfo?.browser || s.deviceInfo?.userAgent || '-'}</td>
                   <td>{s.lastActivity ? new Date(s.lastActivity).toLocaleString('es-AR') : '-'}</td>
