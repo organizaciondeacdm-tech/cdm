@@ -4,6 +4,7 @@
  */
 import { clearAuthSession, getAuthSession, setAuthSession } from '../../utils/authSession.js';
 import { getApiUrl } from '../../utils/apiConfig.js';
+import { encryptJsonBodyIfNeeded } from '../../utils/payloadCrypto.js';
 
 const API_BASE_URL = `${getApiUrl()}/api`;
 
@@ -31,9 +32,12 @@ class AcdmApiService {
 
   async request(endpoint, options = {}) {
     const url = `${this.baseUrl}${endpoint}`;
+    const headers = await this.getHeaders();
+    const maybeEncryptedBody = await encryptJsonBodyIfNeeded(options.body, headers);
     const config = {
       ...options,
-      headers: await this.getHeaders()
+      headers,
+      body: maybeEncryptedBody
     };
 
     try {
@@ -275,6 +279,17 @@ class AcdmApiService {
     return this.request(`/admin/users/${id}`, { method: 'DELETE' });
   }
 
+  async bulkAdminUsers(action, userIds = []) {
+    return this.request('/admin/users/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ action, userIds })
+    });
+  }
+
+  async impersonateAdminUser(id) {
+    return this.request(`/admin/users/${id}/impersonate`, { method: 'POST' });
+  }
+
   async getRoles() {
     return this.request('/admin/roles');
   }
@@ -283,6 +298,13 @@ class AcdmApiService {
     return this.request(`/admin/roles/${role}/permisos`, {
       method: 'PUT',
       body: JSON.stringify({ permisos, applyToUsers })
+    });
+  }
+
+  async bulkUpdateRolePermissions({ roles = [], permisos = [], operation = 'add', applyToUsers = false } = {}) {
+    return this.request('/admin/roles/bulk/permisos', {
+      method: 'POST',
+      body: JSON.stringify({ roles, permisos, operation, applyToUsers })
     });
   }
 
@@ -341,12 +363,11 @@ class AcdmApiService {
   // ==================== AUTENTICACIÓN ====================
   async login(username, password) {
     try {
+      const headers = { 'Content-Type': 'application/json' };
       const response = await fetch(`${this.baseUrl}/auth/login`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ username, password })
+        headers,
+        body: await encryptJsonBodyIfNeeded(JSON.stringify({ username, password }), headers)
       });
 
       const data = await response.json();

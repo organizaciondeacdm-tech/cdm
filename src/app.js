@@ -1,4 +1,7 @@
 const express = require('express');
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
+const { ObjectId } = require('mongodb');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -43,9 +46,20 @@ const Escuela = require('./models/Escuela');
 const Docente = require('./models/Docente');
 const Alumno = require('./models/Alumno');
 const securityMonitorService = require('./services/securityMonitorService');
+const SessionService = require('./services/sessionService');
 const RolePolicy = require('./models/RolePolicy');
 const { isPrivilegedRole } = require('./services/privilegedRoleService');
-const { normalizeRole, normalizePermission } = require('./utils/accessControlCrypto');
+const {
+  normalizeRole,
+  normalizePermission,
+  buildLookupKey,
+  encryptAclValue,
+  obfuscateRoleForTransport,
+  obfuscatePermissionForTransport,
+  resolveRoleFromTransport,
+  resolvePermissionFromTransport
+} = require('./utils/accessControlCrypto');
+const { isEncryptedEnvelope, decryptPayloadEnvelope } = require('./utils/payloadTransportCrypto');
 
 const app = express();
 const PUBLIC_RUNTIME_ENV_KEYS = ['VITE_API_URL', 'VITE_AUTH_STORAGE_SECRET'];
@@ -67,6 +81,105 @@ const STATIC_PERMISSION_CATALOG = [
   'gestionar_seguridad',
   'ver_sesiones_admin'
 ].map((permission) => normalizePermission(permission)).filter(Boolean);
+const STATIC_ROLE_CATALOG = ['admin', 'desarrollador', 'supervisor', 'viewer'].map((role) => normalizeRole(role));
+
+const hasAdminAclPermissions = (permisos = []) => {
+  const permisosSet = new Set(
+    (Array.isArray(permisos) ? permisos : []).map((permission) => normalizePermission(permission))
+  );
+  return (
+    permisosSet.has('*') ||
+    permisosSet.has('gestionar_usuarios') ||
+    permisosSet.has('gestionar_roles_permisos') ||
+    permisosSet.has('gestionar_seguridad') ||
+    permisosSet.has('ver_sesiones_admin')
+  );
+};
+
+const buildCapabilityFlags = (permisos = [], role = '') => {
+  const set = new Set((Array.isArray(permisos) ? permisos : []).map((permission) => normalizePermission(permission)));
+  const normalizedRole = normalizeRole(role || '');
+  const isDeveloper = normalizedRole === 'desarrollador';
+  const isSupervisor = normalizedRole === 'supervisor';
+  const adminLevel = hasAdminAclPermissions(permisos);
+  const canManageOperationalSections = adminLevel
+    || isSupervisor
+    || set.has('crear_escuela')
+    || set.has('editar_escuela')
+    || set.has('eliminar_escuela')
+    || set.has('crear_docente')
+    || set.has('editar_docente')
+    || set.has('eliminar_docente')
+    || set.has('crear_alumno')
+    || set.has('editar_alumno')
+    || set.has('eliminar_alumno');
+  const canExportData = adminLevel || isSupervisor || set.has('exportar_datos');
+  return {
+    canManageOperationalSections,
+    canExportData,
+    isDeveloper,
+    canManageUsers: adminLevel,
+    canManageRolesPermissions: adminLevel,
+    canManageSecurity: adminLevel,
+    canViewAdminSessions: adminLevel
+  };
+};
+
+const obfuscatePermissionsForResponse = (permisos = []) => (
+  Array.from(new Set(
+    (Array.isArray(permisos) ? permisos : [])
+      .map((permission) => normalizePermission(permission))
+      .filter(Boolean)
+      .map((permission) => obfuscatePermissionForTransport(permission))
+  ))
+);
+
+const buildAuthUserPayload = async (user) => {
+  if (!user) return null;
+  const role = normalizeRole(user.rol || '');
+  const permisos = Array.isArray(user.permisos) ? user.permisos : [];
+  const capabilities = buildCapabilityFlags(permisos, role);
+  return {
+    _id: user._id,
+    username: user.username,
+    email: user.email,
+    nombre: user.nombre,
+    apellido: user.apellido,
+    rol: role,
+    permisos: obfuscatePermissionsForResponse(permisos),
+    capabilities,
+    isPrivilegedRole: (await isPrivilegedRole(role)) || hasAdminAclPermissions(permisos)
+  };
+};
+
+const generateTokens = (userId, rol) => {
+  const accessJti = crypto.randomBytes(16).toString('hex');
+  const refreshJti = crypto.randomBytes(16).toString('hex');
+  const jwtExpire = process.env.JWT_EXPIRE || '15m';
+  const jwtRefreshExpire = process.env.JWT_REFRESH_EXPIRE || '7d';
+
+  const accessToken = jwt.sign(
+    { userId, rol, jti: accessJti },
+    JwtKeyManager.getJwtSecret(),
+    { expiresIn: jwtExpire }
+  );
+  let refreshToken;
+  try {
+    refreshToken = jwt.sign(
+      { userId, type: 'refresh', jti: refreshJti },
+      JwtKeyManager.getJwtRefreshSecret(),
+      { expiresIn: jwtRefreshExpire }
+    );
+  } catch (_error) {
+    refreshToken = jwt.sign(
+      { userId, type: 'refresh', jti: refreshJti },
+      JwtKeyManager.getJwtSecret(),
+      { expiresIn: jwtRefreshExpire }
+    );
+  }
+
+  return { accessToken, refreshToken };
+};
 
 // Variable global para la conexión (patrón Singleton)
 let connectionPromise = null;
@@ -151,6 +264,38 @@ app.use('/api', limiter);
 // Body parser
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Descifrado obligatorio de payload JSON en métodos mutables de /api
+app.use((req, res, next) => {
+  const isApiRoute = String(req.originalUrl || '').startsWith('/api/');
+  const isMutableMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(req.method || '').toUpperCase());
+  if (!isApiRoute || !isMutableMethod) return next();
+  const contentType = String(req.headers['content-type'] || '').toLowerCase();
+  const isJson = contentType.includes('application/json');
+  if (!isJson) return next();
+
+  const hasBodyByHeader = Number(req.headers['content-length'] || 0) > 0 || !!req.headers['transfer-encoding'];
+  const hasBodyByObject = req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0;
+  const hasBody = hasBodyByHeader || hasBodyByObject;
+  if (!hasBody) return next();
+
+  if (!isEncryptedEnvelope(req.body)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Payload JSON debe estar cifrado'
+    });
+  }
+
+  try {
+    req.body = decryptPayloadEnvelope(req.body);
+    return next();
+  } catch (_error) {
+    return res.status(400).json({
+      success: false,
+      error: 'No se pudo descifrar el payload'
+    });
+  }
+});
 
 // Sanitización
 app.use(mongoSanitize());
@@ -398,15 +543,8 @@ const requireAdmin = async (req, res, next) => {
 
     const role = normalizeRole(user.rol || '');
     const permisos = Array.isArray(user.permisos) ? user.permisos : [];
-    const permisosSet = new Set(permisos.map((p) => normalizePermission(p)));
     const hasAdminPrivileges = await isPrivilegedRole(role);
-    const hasAdminPermissions = (
-      permisosSet.has('*') ||
-      permisosSet.has('gestionar_usuarios') ||
-      permisosSet.has('gestionar_roles_permisos') ||
-      permisosSet.has('gestionar_seguridad') ||
-      permisosSet.has('ver_sesiones_admin')
-    );
+    const hasAdminPermissions = hasAdminAclPermissions(permisos);
 
     if (hasAdminPrivileges || hasAdminPermissions) {
       return next();
@@ -416,6 +554,15 @@ const requireAdmin = async (req, res, next) => {
   } catch (error) {
     return deny(500);
   }
+};
+
+const requireDeveloper = (req, res, next) => {
+  const role = normalizeRole(req.user?.rol || '');
+  if (role === 'desarrollador') return next();
+  return res.status(403).json({
+    success: false,
+    error: 'Acceso restringido al rol desarrollador'
+  });
 };
 
 const getPermissionCatalog = async () => {
@@ -437,15 +584,32 @@ const getPermissionCatalog = async () => {
   return Array.from(new Set([...fromStatic, ...fromPolicies, ...fromUsers]));
 };
 
+const getRoleCatalog = async () => {
+  await RolePolicy.ensureDefaults();
+  const fromStatic = [...STATIC_ROLE_CATALOG];
+  const policies = await RolePolicy.getAllPolicies();
+  const fromPolicies = (Array.isArray(policies) ? policies : [])
+    .map((policy) => normalizeRole(policy?.role))
+    .filter(Boolean);
+  const users = await User.find({}).select('rol').lean();
+  const fromUsers = (Array.isArray(users) ? users : [])
+    .map((row) => normalizeRole(row?.rol))
+    .filter(Boolean);
+  return Array.from(new Set([...fromStatic, ...fromPolicies, ...fromUsers]));
+};
+
 const getRoleDefaultPermissions = async (role) => {
-  const policy = await RolePolicy.getByRole(normalizeRole(role));
+  const roleCatalog = await getRoleCatalog();
+  const resolvedRole = resolveRoleFromTransport(role, roleCatalog) || normalizeRole(role);
+  const policy = await RolePolicy.getByRole(resolvedRole);
   return Array.isArray(policy?.defaultPermissions) ? policy.defaultPermissions : [];
 };
 
 const sanitizePermissions = (rawPermissions, permissionCatalogSet) => {
   const source = Array.isArray(rawPermissions) ? rawPermissions : [];
+  const catalog = Array.from(permissionCatalogSet || []);
   const normalized = source
-    .map((permission) => normalizePermission(permission))
+    .map((permission) => resolvePermissionFromTransport(permission, catalog))
     .filter(Boolean);
   return Array.from(new Set(normalized))
     .filter((permission) => permission === '*' || permissionCatalogSet.has(permission));
@@ -455,7 +619,15 @@ const sanitizePermissions = (rawPermissions, permissionCatalogSet) => {
 app.get('/api/admin/users', authMiddleware, requireAdmin, async (req, res) => {
   try {
     const users = await User.find({}).select('-passwordHash');
-    res.json({ success: true, data: users.map((user) => user.toObject()) });
+    res.json({
+      success: true,
+      data: users.map((user) => {
+        const row = user.toObject();
+        row.capabilities = buildCapabilityFlags(row.permisos, row.rol);
+        row.permisos = obfuscatePermissionsForResponse(row.permisos);
+        return row;
+      })
+    });
   } catch (e) {
     res.status(500).json({ success: false, error: 'Error al listar usuarios' });
   }
@@ -466,7 +638,10 @@ app.get('/api/admin/users/:id', authMiddleware, requireAdmin, async (req, res) =
   try {
     const user = await User.findById(req.params.id).select('-passwordHash');
     if (!user) return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
-    res.json({ success: true, data: user.toObject() });
+    const data = user.toObject();
+    data.capabilities = buildCapabilityFlags(data.permisos, data.rol);
+    data.permisos = obfuscatePermissionsForResponse(data.permisos);
+    res.json({ success: true, data });
   } catch (e) {
     res.status(500).json({ success: false, error: 'Error al obtener usuario' });
   }
@@ -482,8 +657,10 @@ app.post('/api/admin/users', authMiddleware, requireAdmin, async (req, res) => {
     const existing = await User.findOne({ $or: [{ username }, { email }] });
     if (existing) return res.status(400).json({ success: false, error: 'Usuario o email ya existe' });
     const targetRole = normalizeRole(rol || 'viewer');
+    const roleCatalog = await getRoleCatalog();
+    const resolvedTargetRole = resolveRoleFromTransport(targetRole, roleCatalog) || targetRole;
     const permissionCatalog = new Set(await getPermissionCatalog());
-    const roleDefaultPermissions = await getRoleDefaultPermissions(targetRole);
+    const roleDefaultPermissions = await getRoleDefaultPermissions(resolvedTargetRole);
     const normalizedPerms = sanitizePermissions(
       Array.isArray(permisos) && permisos.length > 0 ? permisos : roleDefaultPermissions,
       permissionCatalog
@@ -495,13 +672,130 @@ app.post('/api/admin/users', authMiddleware, requireAdmin, async (req, res) => {
       email: String(email).trim().toLowerCase(),
       nombre,
       apellido,
-      rol: targetRole, permisos: normalizedPerms
+      rol: resolvedTargetRole, permisos: normalizedPerms
     });
     const safe = user.toObject();
     delete safe.passwordHash;
+    safe.capabilities = buildCapabilityFlags(safe.permisos, safe.rol);
+    safe.permisos = obfuscatePermissionsForResponse(safe.permisos);
     res.status(201).json({ success: true, data: safe, message: 'Usuario creado exitosamente' });
   } catch (e) {
     res.status(500).json({ success: false, error: 'Error al crear usuario' });
+  }
+});
+
+// Acciones masivas de usuarios
+app.post('/api/admin/users/bulk', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const action = String(req.body?.action || '').trim().toLowerCase();
+    const sourceIds = Array.isArray(req.body?.userIds) ? req.body.userIds : [];
+    const objectIds = Array.from(
+      new Set(
+        sourceIds
+          .map((id) => String(id || '').trim())
+          .filter((id) => /^[a-f0-9]{24}$/i.test(id))
+      )
+    ).map((id) => new ObjectId(id));
+
+    if (!['activate', 'deactivate', 'delete'].includes(action)) {
+      return res.status(400).json({ success: false, error: 'Acción masiva inválida' });
+    }
+
+    if (objectIds.length === 0) {
+      return res.status(400).json({ success: false, error: 'Debe enviar al menos un usuario' });
+    }
+
+    const actorId = String(req.user?._id || '');
+    const targetIds = objectIds.filter((id) => String(id) !== actorId);
+    if (targetIds.length === 0) {
+      return res.status(400).json({ success: false, error: 'No hay usuarios válidos para procesar' });
+    }
+
+    let result;
+    if (action === 'delete') {
+      result = await User.deleteMany({ _id: { $in: targetIds } });
+    } else {
+      result = await User.updateMany(
+        { _id: { $in: targetIds } },
+        { $set: { isActive: action === 'activate' } }
+      );
+    }
+
+    registrarAccion(
+      req.user,
+      `bulk_${action}`,
+      'User',
+      { total: targetIds.length, targetIds: targetIds.map(String) },
+      req
+    );
+
+    const affected = Number(result?.modifiedCount ?? result?.deletedCount ?? 0);
+    return res.json({
+      success: true,
+      data: { action, requested: targetIds.length, affected },
+      message: `Acción masiva '${action}' ejecutada`
+    });
+  } catch (_error) {
+    return res.status(500).json({ success: false, error: 'Error al ejecutar acción masiva de usuarios' });
+  }
+});
+
+// Iniciar sesión como otro usuario (solo rol desarrollador)
+app.post('/api/admin/users/:id/impersonate', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const actorRole = normalizeRole(req.user?.rol || '');
+    if (actorRole !== 'desarrollador') {
+      return res.status(403).json({
+        success: false,
+        error: 'Solo el rol desarrollador puede usar "entrar como usuario"'
+      });
+    }
+
+    const targetUser = await User.findById(req.params.id).select('-passwordHash -refreshToken');
+    if (!targetUser || targetUser.isActive === false) {
+      return res.status(404).json({ success: false, error: 'Usuario objetivo no encontrado o inactivo' });
+    }
+
+    const { accessToken, refreshToken } = generateTokens(targetUser._id, targetUser.rol);
+    const deviceInfo = SessionService.parseDeviceInfo(req);
+    const impersonationContext = {
+      actorId: String(req.user?._id || ''),
+      actorUsername: String(req.user?.username || ''),
+      actorRole,
+      targetId: String(targetUser._id),
+      targetUsername: String(targetUser.username || ''),
+      ts: new Date().toISOString()
+    };
+
+    await SessionService.createSession(targetUser, accessToken, refreshToken, {
+      ...deviceInfo,
+      impersonation: true,
+      actorLookup: buildLookupKey('actor', impersonationContext.actorId || impersonationContext.actorUsername),
+      context: encryptAclValue(JSON.stringify(impersonationContext))
+    });
+
+    const authUser = await buildAuthUserPayload(targetUser);
+    registrarAccion(
+      req.user,
+      'impersonate_user',
+      'User',
+      { targetUserId: String(targetUser._id), targetUsername: targetUser.username },
+      req
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        user: authUser,
+        tokens: { access: accessToken, refresh: refreshToken },
+        impersonation: {
+          by: String(req.user?.username || ''),
+          actorRole
+        }
+      }
+    });
+  } catch (_error) {
+    return res.status(500).json({ success: false, error: 'No se pudo iniciar sesión como el usuario objetivo' });
   }
 });
 
@@ -521,7 +815,10 @@ app.put('/api/admin/users/:id', authMiddleware, requireAdmin, async (req, res) =
     if (payload.password) update.passwordHash = payload.password;
 
     const permissionCatalog = new Set(await getPermissionCatalog());
-    const requestedRole = payload.rol !== undefined ? normalizeRole(payload.rol || 'viewer') : null;
+    const roleCatalog = await getRoleCatalog();
+    const requestedRole = payload.rol !== undefined
+      ? (resolveRoleFromTransport(payload.rol || 'viewer', roleCatalog) || normalizeRole(payload.rol || 'viewer'))
+      : null;
     const hasPermisosInPayload = Array.isArray(payload.permisos);
 
     if (requestedRole) {
@@ -543,7 +840,10 @@ app.put('/api/admin/users/:id', authMiddleware, requireAdmin, async (req, res) =
     await User.updateOne({ _id: req.params.id }, { $set: update });
     const user = await User.findById(req.params.id).select('-passwordHash');
     if (!user) return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
-    res.json({ success: true, data: user.toObject(), message: 'Usuario actualizado exitosamente' });
+    const data = user.toObject();
+    data.capabilities = buildCapabilityFlags(data.permisos, data.rol);
+    data.permisos = obfuscatePermissionsForResponse(data.permisos);
+    res.json({ success: true, data, message: 'Usuario actualizado exitosamente' });
   } catch (e) {
     res.status(500).json({ success: false, error: 'Error al actualizar usuario' });
   }
@@ -564,7 +864,7 @@ app.delete('/api/admin/users/:id', authMiddleware, requireAdmin, async (req, res
 });
 
 // Roles y permisos (plantillas para administración)
-app.get('/api/admin/roles', authMiddleware, requireAdmin, async (_req, res) => {
+app.get('/api/admin/roles', authMiddleware, requireAdmin, requireDeveloper, async (_req, res) => {
   try {
     await RolePolicy.ensureDefaults();
     const users = await User.find({}).select('rol').lean();
@@ -577,9 +877,9 @@ app.get('/api/admin/roles', authMiddleware, requireAdmin, async (_req, res) => {
 
     const policies = await RolePolicy.getAllPolicies();
     const roles = policies.map((policy) => ({
-      role: policy.role,
+      role: obfuscateRoleForTransport(policy.role),
       totalUsers: byRole[policy.role] || 0,
-      defaultPermissions: policy.defaultPermissions || []
+      defaultPermissions: obfuscatePermissionsForResponse(policy.defaultPermissions || [])
     }));
 
     res.json({ success: true, data: roles });
@@ -588,9 +888,13 @@ app.get('/api/admin/roles', authMiddleware, requireAdmin, async (_req, res) => {
   }
 });
 
-app.put('/api/admin/roles/:role/permisos', authMiddleware, requireAdmin, async (req, res) => {
+app.put('/api/admin/roles/:role/permisos', authMiddleware, requireAdmin, requireDeveloper, async (req, res) => {
   try {
-    const role = normalizeRole(req.params.role || '');
+    const roleCatalog = await getRoleCatalog();
+    const role = resolveRoleFromTransport(req.params.role || '', roleCatalog);
+    if (!role) {
+      return res.status(400).json({ success: false, error: 'Rol inválido' });
+    }
     await RolePolicy.ensureDefaults();
     const currentPolicy = await RolePolicy.getByRole(role);
     if (!currentPolicy) {
@@ -615,7 +919,7 @@ app.put('/api/admin/roles/:role/permisos', authMiddleware, requireAdmin, async (
 
     res.json({
       success: true,
-      data: { role, defaultPermissions: nextPerms },
+      data: { role: obfuscateRoleForTransport(role), defaultPermissions: obfuscatePermissionsForResponse(nextPerms) },
       message: 'Permisos del rol actualizados'
     });
   } catch (error) {
@@ -623,7 +927,94 @@ app.put('/api/admin/roles/:role/permisos', authMiddleware, requireAdmin, async (
   }
 });
 
-app.get('/api/admin/permisos', authMiddleware, requireAdmin, async (_req, res) => {
+app.post('/api/admin/roles/bulk/permisos', authMiddleware, requireAdmin, requireDeveloper, async (req, res) => {
+  try {
+    await RolePolicy.ensureDefaults();
+
+    const operation = String(req.body?.operation || '').trim().toLowerCase();
+    const validOperations = new Set(['add', 'remove', 'replace']);
+    if (!validOperations.has(operation)) {
+      return res.status(400).json({ success: false, error: 'Operación inválida. Use add, remove o replace' });
+    }
+
+    const roleCatalog = await getRoleCatalog();
+    const roleNames = Array.from(new Set(
+      (Array.isArray(req.body?.roles) ? req.body.roles : [])
+        .map((role) => resolveRoleFromTransport(role, roleCatalog))
+        .filter(Boolean)
+    ));
+    if (roleNames.length === 0) {
+      return res.status(400).json({ success: false, error: 'Debe seleccionar al menos un rol' });
+    }
+
+    const catalog = new Set(await getPermissionCatalog());
+    const requestedPerms = sanitizePermissions(req.body?.permisos, catalog);
+    if (requestedPerms.length === 0) {
+      return res.status(400).json({ success: false, error: 'Debe indicar al menos un permiso válido' });
+    }
+
+    const applyToUsers = req.body?.applyToUsers === true;
+    const updatedRoles = [];
+
+    for (const role of roleNames) {
+      const currentPolicy = await RolePolicy.getByRole(role);
+      if (!currentPolicy) continue;
+
+      const currentPerms = Array.isArray(currentPolicy.defaultPermissions)
+        ? currentPolicy.defaultPermissions
+        : [];
+
+      let nextPerms = currentPerms;
+      if (operation === 'replace') {
+        nextPerms = requestedPerms;
+      } else if (operation === 'add') {
+        nextPerms = Array.from(new Set([...currentPerms, ...requestedPerms]));
+      } else if (operation === 'remove') {
+        const removeSet = new Set(requestedPerms);
+        nextPerms = currentPerms.filter((perm) => !removeSet.has(perm));
+      }
+
+      await RolePolicy.updateOne(
+        { $or: [{ roleLookup: RolePolicy.getRoleLookup(role) }, { role }] },
+        { $set: { defaultPermissions: nextPerms } },
+        { upsert: true }
+      );
+
+      if (applyToUsers) {
+        await User.updateMany(
+          { $or: [{ rolLookup: User.getRoleLookup(role) }, { rol: role }] },
+          { $set: { permisos: nextPerms } }
+        );
+      }
+
+      updatedRoles.push({ role: obfuscateRoleForTransport(role), defaultPermissions: obfuscatePermissionsForResponse(nextPerms) });
+    }
+
+    registrarAccion(
+      req.user,
+      `bulk_role_permissions_${operation}`,
+      'RolePolicy',
+      { roles: roleNames, permisos: requestedPerms, applyToUsers, updatedCount: updatedRoles.length },
+      req
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        operation,
+        applyToUsers,
+        requestedRoles: roleNames.length,
+        updatedRoles: updatedRoles.length,
+        roles: updatedRoles
+      },
+      message: 'Actualización masiva de permisos de rol completada'
+    });
+  } catch (_error) {
+    return res.status(500).json({ success: false, error: 'Error al actualizar permisos en lote' });
+  }
+});
+
+app.get('/api/admin/permisos', authMiddleware, requireAdmin, requireDeveloper, async (_req, res) => {
   try {
     const catalog = await getPermissionCatalog();
     const users = await User.find({}).select('permisos').lean();
@@ -639,7 +1030,7 @@ app.get('/api/admin/permisos', authMiddleware, requireAdmin, async (_req, res) =
 
     res.json({
       success: true,
-      data: catalog.map((perm) => ({ permiso: perm, assignedUsers: byPerm[perm] || 0 }))
+      data: catalog.map((perm) => ({ permiso: obfuscatePermissionForTransport(perm), assignedUsers: byPerm[perm] || 0 }))
     });
   } catch (error) {
     res.status(500).json({ success: false, error: 'Error al obtener permisos' });

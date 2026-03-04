@@ -11,6 +11,7 @@ export function AcdmLayout({ children }) {
         activeSection,
         setActiveSection,
         isAdmin,
+        isDeveloper,
         showHiddenAdmin,
         escuelas,
         setEscuelaModal
@@ -32,6 +33,7 @@ export function AcdmLayout({ children }) {
                     activeSection={activeSection}
                     onSectionChange={setActiveSection}
                     isAdmin={isAdmin}
+                    isDeveloper={isDeveloper}
                     showHiddenAdmin={showHiddenAdmin}
                     alertCount={alertCount}
                     onNewEscuela={() => setEscuelaModal({ isNew: true, data: null })}

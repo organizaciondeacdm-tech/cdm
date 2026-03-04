@@ -1,5 +1,6 @@
 import { getApiUrl } from './apiConfig.js';
 import { getSecureItem, removeSecureItem, setSecureItem } from './secureStorage.js';
+import { encryptJsonBodyIfNeeded } from './payloadCrypto.js';
 
 const AUTH_SESSION_KEY = 'acdm_auth_session';
 
@@ -41,10 +42,12 @@ export async function clearAuthSession() {
 }
 
 export async function loginWithSession(username, password) {
+  const loginHeaders = { 'Content-Type': 'application/json' };
+  const loginBody = await encryptJsonBodyIfNeeded(JSON.stringify({ username, password }), loginHeaders);
   const response = await fetch(`${getApiUrl()}/api/auth/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password })
+    headers: loginHeaders,
+    body: loginBody
   });
 
   const payload = await response.json().catch(() => ({}));
@@ -87,7 +90,7 @@ async function refreshAuthSession() {
     const response = await fetch(`${getApiUrl()}/api/auth/refresh-token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken })
+      body: await encryptJsonBodyIfNeeded(JSON.stringify({ refreshToken }), { 'Content-Type': 'application/json' })
     });
 
     const payload = await response.json().catch(() => ({}));
@@ -133,10 +136,12 @@ export async function authFetch(path, options = {}) {
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
+    const encryptedBody = await encryptJsonBodyIfNeeded(options.body, headers);
 
     return fetch(url, {
       ...options,
-      headers
+      headers,
+      body: encryptedBody
     });
   };
 
@@ -192,7 +197,9 @@ export async function logoutSession({ allDevices = false } = {}) {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ allDevices })
+        body: await encryptJsonBodyIfNeeded(JSON.stringify({ allDevices }), {
+          'Content-Type': 'application/json'
+        })
       });
     }
   } finally {

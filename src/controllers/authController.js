@@ -8,7 +8,7 @@ const JwtKeyManager = require('../utils/jwtKeyManager');
 const SessionService = require('../services/sessionService');
 const AuthThrottle = require('../models/AuthThrottle');
 const { isPrivilegedRole } = require('../services/privilegedRoleService');
-const { normalizeRole, normalizePermission } = require('../utils/accessControlCrypto');
+const { normalizeRole, normalizePermission, obfuscateRoleForTransport, obfuscatePermissionForTransport } = require('../utils/accessControlCrypto');
 
 const LOGIN_RESPONSE_DELAY_MS = parseInt(process.env.LOGIN_RESPONSE_DELAY_MS, 10) || 400;
 const AUTH_FAILURE_MAX_ATTEMPTS = parseInt(process.env.AUTH_FAILURE_MAX_ATTEMPTS, 10) || 10;
@@ -38,6 +38,22 @@ const getWatchedIpLog = (req, res) => {
   let log = [...watchedIpLog].reverse(); // más recientes primero
   if (username) log = log.filter(e => e.username === username.toLowerCase());
   res.json({ success: true, data: log.slice(0, Number(limit)), total: log.length });
+};
+
+const getKnownIps = async (req, res) => {
+  try {
+    if (!canManageSessions(req.user)) {
+      return res.status(403).json({ success: false, error: 'Acceso denegado' });
+    }
+    const { userId } = req.params;
+    const user = await User.findById(userId).select('username knownIps');
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
+    }
+    res.json({ success: true, data: { username: user.username, knownIps: user.knownIps || [] } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al obtener IPs conocidas' });
+  }
 };
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -212,6 +228,35 @@ const hasAdminAclPermissions = (perms = []) => {
   );
 };
 
+const buildCapabilityFlags = (perms = [], role = '') => {
+  const set = new Set((Array.isArray(perms) ? perms : []).map((perm) => normalizePermission(perm)));
+  const normalizedRole = normalizeRole(role || '');
+  const isDeveloper = normalizedRole === 'desarrollador';
+  const isSupervisor = normalizedRole === 'supervisor';
+  const adminLevel = hasAdminAclPermissions(perms);
+  const canManageOperationalSections = adminLevel
+    || isSupervisor
+    || set.has('crear_escuela')
+    || set.has('editar_escuela')
+    || set.has('eliminar_escuela')
+    || set.has('crear_docente')
+    || set.has('editar_docente')
+    || set.has('eliminar_docente')
+    || set.has('crear_alumno')
+    || set.has('editar_alumno')
+    || set.has('eliminar_alumno');
+  const canExportData = adminLevel || isSupervisor || set.has('exportar_datos');
+  return {
+    canManageOperationalSections,
+    canExportData,
+    isDeveloper,
+    canManageUsers: adminLevel,
+    canManageRolesPermissions: adminLevel,
+    canManageSecurity: adminLevel,
+    canViewAdminSessions: adminLevel
+  };
+};
+
 const canManageSessions = async (user) => {
   const role = normalizeRole(user?.rol || '');
   const permisos = Array.isArray(user?.permisos) ? user.permisos : [];
@@ -230,8 +275,9 @@ const serializeAuthUser = async (user) => {
     email: user.email,
     nombre: user.nombre,
     apellido: user.apellido,
-    rol: role,
-    permisos,
+    rol: obfuscateRoleForTransport(role),
+    permisos: Array.from(new Set(permisos.map((perm) => obfuscatePermissionForTransport(perm)))),
+    capabilities: buildCapabilityFlags(permisos, role),
     isPrivilegedRole: hasPrivilegedRole || hasAdminPermissions
   };
 };
@@ -513,6 +559,13 @@ const login = async (req, res) => {
     await user.updateOne({
       $set: updateData,
       $unset: { lockUntil: 1 }
+    });
+    // Rotación activa: reescribe ACL cifrada en cada login exitoso.
+    await user.updateOne({
+      $set: {
+        rol: user.rol,
+        permisos: Array.isArray(user.permisos) ? user.permisos : []
+      }
     });
     await clearFailures(loginGuardKey);
 
@@ -922,5 +975,6 @@ module.exports = {
   revokeAllSessions,
   getAllActiveSessions,
   revokeSessionByAdmin,
-  getWatchedIpLog
+  getWatchedIpLog,
+  getKnownIps
 };
