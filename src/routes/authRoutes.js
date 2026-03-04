@@ -14,7 +14,7 @@ const {
   revokeSessionByAdmin,
   getWatchedIpLog
 } = require('../controllers/authController');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware, requireAdmin } = require('../middleware/auth');
 const { validateUser } = require('../middleware/validation');
 
 const isTestEnv = process.env.NODE_ENV === 'test' || process.env.E2E_DISABLE_RATE_LIMIT === '1';
@@ -76,11 +76,11 @@ router.get('/sessions', authMiddleware, getActiveSessions);
 router.delete('/sessions/:sessionId', authMiddleware, revokeSession);
 router.delete('/sessions', authMiddleware, revokeAllSessions);
 
-// Rutas de administración de sesiones (solo admin)
-router.get('/admin/sessions', authMiddleware, getAllActiveSessions);
-router.delete('/admin/sessions/:sessionId', authMiddleware, revokeSessionByAdmin);
+// Rutas de administración de sesiones (solo rol privilegiado)
+router.get('/admin/sessions', authMiddleware, requireAdmin, getAllActiveSessions);
+router.delete('/admin/sessions/:sessionId', authMiddleware, requireAdmin, revokeSessionByAdmin);
 
-// Log de IPs para usuarios vigilados (solo admin)
-router.get('/admin/watch-log', authMiddleware, getWatchedIpLog);
+// Log de IPs para usuarios vigilados (solo rol privilegiado)
+router.get('/admin/watch-log', authMiddleware, requireAdmin, getWatchedIpLog);
 
 module.exports = router;

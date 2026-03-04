@@ -130,7 +130,7 @@ class QueryBuilder {
       if (!result) return null;
       let rows = [result];
       rows = await this.applyPopulate(rows);
-      const row = rows[0] || null;
+      const row = this.modelClass.applyReadTransform(rows[0] || null);
       return this._lean ? row : this.modelClass.hydrate(row);
     }
 
@@ -141,6 +141,7 @@ class QueryBuilder {
 
     result = await cursor.toArray();
     result = await this.applyPopulate(result);
+    result = result.map((row) => this.modelClass.applyReadTransform(row));
     if (this._lean) return result;
     return result.map((row) => this.modelClass.hydrate(row));
   }
@@ -222,9 +223,16 @@ class BaseMongoModel {
 
   static hydrate(raw) {
     if (!raw) return null;
-    const doc = new BaseMongoDocument(this, raw);
+    const transformed = this.applyReadTransform(raw);
+    const doc = new BaseMongoDocument(this, transformed);
     Object.setPrototypeOf(doc, this.documentPrototype || BaseMongoDocument.prototype);
     return doc;
+  }
+
+  static applyReadTransform(data) {
+    if (!data || typeof data !== 'object') return data;
+    if (typeof this.transformOnRead !== 'function') return data;
+    return this.transformOnRead(data) || data;
   }
 
   static applyOutputTransform(data) {
@@ -322,33 +330,45 @@ class BaseMongoModel {
 
   static async updateOne(filter = {}, update = {}, options = {}) {
     const collection = await this.getCollection();
-    const normalizedUpdate = toAtomicUpdate(update);
+    const normalizedFilter = normalizeValue(filter);
+    let normalizedUpdate = toAtomicUpdate(update);
+    if (typeof this.preUpdate === 'function') {
+      normalizedUpdate = await this.preUpdate(normalizedUpdate, { filter: normalizedFilter, options }) || normalizedUpdate;
+    }
     if (!normalizedUpdate.$set) normalizedUpdate.$set = {};
     normalizedUpdate.$set.updatedAt = new Date();
     if (!normalizedUpdate.$inc) normalizedUpdate.$inc = {};
     normalizedUpdate.$inc.entityVersion = Number(normalizedUpdate.$inc.entityVersion || 1);
-    return collection.updateOne(normalizeValue(filter), normalizedUpdate, options);
+    return collection.updateOne(normalizedFilter, normalizedUpdate, options);
   }
 
   static async updateMany(filter = {}, update = {}, options = {}) {
     const collection = await this.getCollection();
-    const normalizedUpdate = toAtomicUpdate(update);
+    const normalizedFilter = normalizeValue(filter);
+    let normalizedUpdate = toAtomicUpdate(update);
+    if (typeof this.preUpdate === 'function') {
+      normalizedUpdate = await this.preUpdate(normalizedUpdate, { filter: normalizedFilter, options }) || normalizedUpdate;
+    }
     if (!normalizedUpdate.$set) normalizedUpdate.$set = {};
     normalizedUpdate.$set.updatedAt = new Date();
     if (!normalizedUpdate.$inc) normalizedUpdate.$inc = {};
     normalizedUpdate.$inc.entityVersion = Number(normalizedUpdate.$inc.entityVersion || 1);
-    return collection.updateMany(normalizeValue(filter), normalizedUpdate, options);
+    return collection.updateMany(normalizedFilter, normalizedUpdate, options);
   }
 
   static async findByIdAndUpdate(id, update = {}, options = {}) {
     const collection = await this.getCollection();
-    const normalizedUpdate = toAtomicUpdate(update);
+    const normalizedFilter = { _id: toObjectId(id) };
+    let normalizedUpdate = toAtomicUpdate(update);
+    if (typeof this.preUpdate === 'function') {
+      normalizedUpdate = await this.preUpdate(normalizedUpdate, { filter: normalizedFilter, options }) || normalizedUpdate;
+    }
     if (!normalizedUpdate.$set) normalizedUpdate.$set = {};
     normalizedUpdate.$set.updatedAt = new Date();
     if (!normalizedUpdate.$inc) normalizedUpdate.$inc = {};
     normalizedUpdate.$inc.entityVersion = Number(normalizedUpdate.$inc.entityVersion || 1);
     return collection.findOneAndUpdate(
-      { _id: toObjectId(id) },
+      normalizedFilter,
       normalizedUpdate,
       { returnDocument: options.new ? 'after' : 'before' }
     );

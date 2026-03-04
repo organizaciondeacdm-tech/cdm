@@ -41,6 +41,7 @@ test.describe('Protected resources', () => {
 
     for (const [path, expected] of checks) {
       const res = await api.get(path, { headers });
+      if (res.status() !== expected) { console.error(`Failed ${path}: [${res.status()}]`, await res.text()); }
       expect(res.status(), `fallo en ${path}`).toBe(expected);
     }
   });
@@ -143,7 +144,7 @@ test.describe('Protected resources', () => {
     expect(alumnoId).toBeTruthy();
 
     expect((await api.get('/api/alumnos', { headers })).status()).toBe(200);
-    expect((await api.get('/api/alumnos/estadisticas', { headers })).status()).toBe(200);
+    const stRes = await api.get('/api/alumnos/estadisticas', { headers }); if (stRes.status() !== 200) console.error('Estadisticas fail:', await stRes.text()); expect(stRes.status()).toBe(200);
 
     const { response: updateRes } = await requestJson(api, 'PUT', `/api/alumnos/${alumnoId}`, {
       diagnostico: 'TEA'

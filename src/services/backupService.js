@@ -4,6 +4,7 @@ const { exec } = require('child_process');
 const util = require('util');
 const { createLogger } = require('./../utils/logger');
 const cron = require('node-cron');
+const { getMongoUri } = require('../utils/envObfuscator');
 
 const execPromise = util.promisify(exec);
 
@@ -23,7 +24,7 @@ const realizarBackup = async () => {
     }
 
     // Backup de MongoDB
-    const mongoUri = process.env.MONGODB_URI;
+    const mongoUri = getMongoUri();
     const mongoBackupPath = path.join(backupDir, 'mongodb');
 
     await execPromise(`mongodump --uri="${mongoUri}" --out="${mongoBackupPath}"`);
@@ -77,7 +78,7 @@ const restaurarBackup = async (backupFile) => {
     await execPromise(`tar -xzf ${backupPath} -C ${tempDir}`);
 
     // Restaurar MongoDB
-    const mongoUri = process.env.MONGODB_URI;
+    const mongoUri = getMongoUri();
     await execPromise(`mongorestore --uri="${mongoUri}" --drop ${tempDir}/mongodb`);
 
     // Limpiar
