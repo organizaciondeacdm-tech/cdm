@@ -206,11 +206,12 @@ export function useAcdmMongoData(currentUser) {
   }, [loadAllData, request]);
 
   const deleteEscuela = useCallback(async (id) => {
-    if (!confirm('¿Eliminar escuela?')) return;
+    if (!confirm('¿Eliminar escuela?')) return false;
 
     try {
       await request(`/api/escuelas/${id}`, { method: 'DELETE' });
       await loadAllData();
+      return true;
     } catch (err) {
       console.error('Error eliminando escuela:', err);
       setError(err.message);
@@ -248,11 +249,12 @@ export function useAcdmMongoData(currentUser) {
   }, [loadAllData, request]);
 
   const deleteDocente = useCallback(async (_escuelaId, docId) => {
-    if (!confirm('¿Eliminar docente?')) return;
+    if (!confirm('¿Eliminar docente?')) return false;
 
     try {
       await request(`/api/docentes/${docId}`, { method: 'DELETE' });
       await loadAllData();
+      return true;
     } catch (err) {
       console.error('Error eliminando docente:', err);
       setError(err.message);
@@ -290,11 +292,12 @@ export function useAcdmMongoData(currentUser) {
   }, [loadAllData, request]);
 
   const deleteAlumno = useCallback(async (_escuelaId, alumId) => {
-    if (!confirm('¿Eliminar alumno?')) return;
+    if (!confirm('¿Eliminar alumno?')) return false;
 
     try {
       await request(`/api/alumnos/${alumId}`, { method: 'DELETE' });
       await loadAllData();
+      return true;
     } catch (err) {
       console.error('Error eliminando alumno:', err);
       setError(err.message);
@@ -332,11 +335,12 @@ export function useAcdmMongoData(currentUser) {
   }, [loadAllData, request]);
 
   const deleteVisita = useCallback(async (escuelaId, visitaId) => {
-    if (!confirm('¿Eliminar visita?')) return;
+    if (!confirm('¿Eliminar visita?')) return false;
 
     try {
       await request(`/api/escuelas/${escuelaId}/visitas/${visitaId}`, { method: 'DELETE' });
       await loadAllData();
+      return true;
     } catch (err) {
       console.error('Error eliminando visita:', err);
       setError(err.message);
@@ -374,11 +378,12 @@ export function useAcdmMongoData(currentUser) {
   }, [loadAllData, request]);
 
   const deleteProyecto = useCallback(async (escuelaId, proyectoId) => {
-    if (!confirm('¿Eliminar proyecto?')) return;
+    if (!confirm('¿Eliminar proyecto?')) return false;
 
     try {
       await request(`/api/escuelas/${escuelaId}/proyectos/${proyectoId}`, { method: 'DELETE' });
       await loadAllData();
+      return true;
     } catch (err) {
       console.error('Error eliminando proyecto:', err);
       setError(err.message);
@@ -416,11 +421,12 @@ export function useAcdmMongoData(currentUser) {
   }, [loadAllData, request]);
 
   const deleteInforme = useCallback(async (escuelaId, informeId) => {
-    if (!confirm('¿Eliminar informe?')) return;
+    if (!confirm('¿Eliminar informe?')) return false;
 
     try {
       await request(`/api/escuelas/${escuelaId}/informes/${informeId}`, { method: 'DELETE' });
       await loadAllData();
+      return true;
     } catch (err) {
       console.error('Error eliminando informe:', err);
       setError(err.message);

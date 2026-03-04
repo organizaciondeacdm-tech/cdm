@@ -52,7 +52,8 @@ body {
   background: var(--bg);
   color: var(--text);
   line-height: 1.5;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 /* Typography */
@@ -364,6 +365,93 @@ tr:hover {
   background: rgba(0, 217, 102, 0.1);
 }
 
+/* Toast-like app alerts */
+.app-alert {
+  position: fixed;
+  top: 84px;
+  right: 20px;
+  z-index: 1400;
+  min-width: 280px;
+  max-width: min(92vw, 420px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px);
+}
+
+.app-alert.is-visible {
+  animation: appAlertIn 0.28s ease forwards;
+}
+
+.app-alert.is-closing {
+  animation: appAlertOut 0.24s ease forwards;
+}
+
+.app-alert-success {
+  background: rgba(0, 217, 102, 0.13);
+  border-color: rgba(0, 217, 102, 0.32);
+  color: var(--green);
+}
+
+.app-alert-error {
+  background: rgba(255, 71, 87, 0.14);
+  border-color: rgba(255, 71, 87, 0.32);
+  color: var(--red);
+}
+
+.app-alert-icon {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.app-alert-message {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.app-alert-close {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.8;
+  font-size: 14px;
+  line-height: 1;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.app-alert-close:hover {
+  opacity: 1;
+  transform: scale(1.05);
+}
+
+@keyframes appAlertIn {
+  0% {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes appAlertOut {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+}
+
 /* Flex utilities */
 .flex {
   display: flex;
@@ -415,6 +503,29 @@ tr:hover {
 }
 
 /* Scrollbar */
+html, body {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) var(--bg2);
+}
+
+body::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+body::-webkit-scrollbar-track {
+  background: var(--bg2);
+}
+
+body::-webkit-scrollbar-thumb {
+  background: var(--border2);
+  border-radius: 3px;
+}
+
+body::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -468,5 +579,13 @@ tr:hover {
 
   th, td {
     padding: 8px 4px;
+  }
+
+  .app-alert {
+    right: 12px;
+    left: 12px;
+    top: 76px;
+    max-width: 100%;
+    min-width: 0;
   }
 }
