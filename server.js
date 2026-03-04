@@ -1,6 +1,5 @@
 require('dotenv').config();
 
-const app = require('./src/app');
 const mongoose = require('mongoose');
 const winston = require('winston');
 const connectDB = require('./src/config/database');
@@ -16,18 +15,54 @@ const logger = winston.createLogger({
 });
 
 const PORT = process.env.PORT || 5000;
+const DB_RETRY_INTERVAL_MS = 30000;
+
+let dbRetryTimer = null;
+
+const scheduleDbReconnect = () => {
+  if (dbRetryTimer) return;
+  dbRetryTimer = setInterval(async () => {
+    if (mongoose.connection.readyState === 1) {
+      clearInterval(dbRetryTimer);
+      dbRetryTimer = null;
+      return;
+    }
+
+    try {
+      await connectDB();
+      logger.info('MongoDB reconectado exitosamente');
+      clearInterval(dbRetryTimer);
+      dbRetryTimer = null;
+    } catch (error) {
+      logger.warn(`Reintento de MongoDB falló: ${error.message}`);
+    }
+  }, DB_RETRY_INTERVAL_MS);
+};
 
 // Solo iniciar el servidor si NO estamos en Vercel
 let server;
 if (!process.env.VERCEL) {
   const startServer = async () => {
+    let dbConnected = false;
     try {
-      // Conectar a MongoDB antes de iniciar el servidor
+      // Intentar conectar a MongoDB antes de iniciar el servidor
       await connectDB();
       logger.info('Connected to MongoDB');
+      dbConnected = true;
+    } catch (error) {
+      logger.error('Initial MongoDB connection failed:', error.message);
+      logger.warn('Starting server without MongoDB; retrying connection in background');
+      scheduleDbReconnect();
+    }
 
+    try {
+      // Cargar app después de intento de conexión para aprovechar env de Mongo cuando esté disponible
+      const app = require('./src/app');
       server = app.listen(PORT, () => {
         logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV} mode`);
+        if (!dbConnected) {
+          logger.warn('Server started in degraded mode (MongoDB disconnected)');
+        }
         console.log(`🚀 Server started at http://localhost:${PORT}`);
       });
     } catch (error) {
