@@ -3,14 +3,16 @@
 // ─────────────────────────────────────────────────────────────────────────────
 const { test, expect } = require('@playwright/test');
 const {
-  loginUI,
   gotoSection,
   loginAPI,
   authJson,
   findEscuelaByName,
   safeDeleteEscuelaByName,
-  uniqueSuffix
+  uniqueSuffix,
+  DEFAULT_FRONTEND_URL
 } = require('./helpers/systematic');
+
+test.use({ storageState: 'tests/e2e/.auth/admin.json' });
 
 // ── Helper: open a modal by clicking a "New …" button ────────────────────────
 async function openNewModal(page, btnPattern) {
@@ -50,7 +52,8 @@ test.describe('UI – CRUD Escuelas', () => {
   let createdName = null;
 
   test.beforeEach(async ({ page }) => {
-    await loginUI(page);
+    await page.goto(DEFAULT_FRONTEND_URL, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.sidebar, nav.sidebar').first()).toBeVisible();
   });
 
   test.afterEach(async ({ request }) => {
@@ -105,7 +108,10 @@ test.describe('UI – CRUD Escuelas', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('UI – CRUD Visitas', () => {
-  test.beforeEach(async ({ page }) => { await loginUI(page); });
+  test.beforeEach(async ({ page }) => {
+    await page.goto(DEFAULT_FRONTEND_URL, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.sidebar, nav.sidebar').first()).toBeVisible();
+  });
 
   test('sección Visitas carga y muestra el encabezado', async ({ page }) => {
     await gotoSection(page, 'Visitas');
@@ -142,7 +148,10 @@ test.describe('UI – CRUD Visitas', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('UI – CRUD Proyectos', () => {
-  test.beforeEach(async ({ page }) => { await loginUI(page); });
+  test.beforeEach(async ({ page }) => {
+    await page.goto(DEFAULT_FRONTEND_URL, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.sidebar, nav.sidebar').first()).toBeVisible();
+  });
 
   test('sección Proyectos carga y muestra el encabezado', async ({ page }) => {
     await gotoSection(page, 'Proyectos');
@@ -178,7 +187,10 @@ test.describe('UI – CRUD Proyectos', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('UI – CRUD Informes', () => {
-  test.beforeEach(async ({ page }) => { await loginUI(page); });
+  test.beforeEach(async ({ page }) => {
+    await page.goto(DEFAULT_FRONTEND_URL, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.sidebar, nav.sidebar').first()).toBeVisible();
+  });
 
   test('sección Informes carga y muestra el encabezado', async ({ page }) => {
     await gotoSection(page, 'Informes');
@@ -190,7 +202,10 @@ test.describe('UI – CRUD Informes', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('UI – Sección Exportar', () => {
-  test.beforeEach(async ({ page }) => { await loginUI(page); });
+  test.beforeEach(async ({ page }) => {
+    await page.goto(DEFAULT_FRONTEND_URL, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.sidebar, nav.sidebar').first()).toBeVisible();
+  });
 
   test('muestra botones de exportación', async ({ page }) => {
     await gotoSection(page, 'Exportar');
@@ -203,7 +218,10 @@ test.describe('UI – Sección Exportar', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('UI – Sección Estadísticas', () => {
-  test.beforeEach(async ({ page }) => { await loginUI(page); });
+  test.beforeEach(async ({ page }) => {
+    await page.goto(DEFAULT_FRONTEND_URL, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.sidebar, nav.sidebar').first()).toBeVisible();
+  });
 
   test('muestra gráficos o tarjetas de datos', async ({ page }) => {
     await gotoSection(page, 'Estadísticas');
@@ -219,7 +237,10 @@ test.describe('UI – Sección Estadísticas', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('UI – Sección Alertas', () => {
-  test.beforeEach(async ({ page }) => { await loginUI(page); });
+  test.beforeEach(async ({ page }) => {
+    await page.goto(DEFAULT_FRONTEND_URL, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.sidebar, nav.sidebar').first()).toBeVisible();
+  });
 
   test('muestra el centro de alertas', async ({ page }) => {
     await gotoSection(page, 'Alertas');
@@ -231,7 +252,10 @@ test.describe('UI – Sección Alertas', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('UI – Sección Calendario', () => {
-  test.beforeEach(async ({ page }) => { await loginUI(page); });
+  test.beforeEach(async ({ page }) => {
+    await page.goto(DEFAULT_FRONTEND_URL, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.sidebar, nav.sidebar').first()).toBeVisible();
+  });
 
   test('muestra la grilla del calendario', async ({ page }) => {
     await gotoSection(page, 'Calendario');

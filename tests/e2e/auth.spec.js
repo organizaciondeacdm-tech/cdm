@@ -8,7 +8,8 @@ const {
   loginUI,
   logoutUI,
   loginAPI,
-  authRequest
+  authRequest,
+  clearLoginCache
 } = require('./helpers/systematic');
 
 // ── Login page rendering ──────────────────────────────────────────────────────
@@ -66,7 +67,7 @@ test.describe('Auth – Credenciales inválidas', () => {
     await page
       .locator('input[name="username"], input[placeholder="admin"], input[placeholder="Usuario"]')
       .first()
-      .fill('admin');
+      .fill('usuario-que-no-existe-2');
     await page.locator('input[type="password"]').first().fill('claveIncorrecta!');
     await page.getByRole('button', { name: /Ingresar/i }).click();
 
@@ -144,7 +145,7 @@ test.describe('Auth – API REST', () => {
   });
 
   test('GET /api/auth/profile con token válido devuelve 200', async ({ request }) => {
-    const token = await loginAPI(request);
+    const token = await loginAPI(request, undefined, undefined, { force: true });
     const res = await authRequest(request, token, 'GET', '/api/auth/profile');
     expect(res.status()).toBe(200);
     const body = await res.json();
@@ -152,7 +153,7 @@ test.describe('Auth – API REST', () => {
   });
 
   test('GET /api/auth/sessions lista sesiones activas', async ({ request }) => {
-    const token = await loginAPI(request);
+    const token = await loginAPI(request, undefined, undefined, { force: true });
     const res = await authRequest(request, token, 'GET', '/api/auth/sessions');
     expect(res.status()).toBe(200);
     const body = await res.json();
@@ -177,8 +178,9 @@ test.describe('Auth – API REST', () => {
   });
 
   test('DELETE /api/auth/sessions revoca todas las sesiones', async ({ request }) => {
-    const token = await loginAPI(request);
+    const token = await loginAPI(request, undefined, undefined, { force: true });
     const res = await authRequest(request, token, 'DELETE', '/api/auth/sessions');
     expect(res.status()).toBe(200);
+    clearLoginCache();
   });
 });

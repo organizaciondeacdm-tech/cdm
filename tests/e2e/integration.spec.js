@@ -3,8 +3,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 const { test, expect } = require('@playwright/test');
 const {
-  loginUI,
-  logoutUI,
   gotoSection,
   loginAPI,
   authJson,
@@ -12,16 +10,19 @@ const {
   findEscuelaByName,
   safeDeleteEscuelaByName,
   uniqueSuffix,
-  DEFAULT_API_URL
+  DEFAULT_API_URL,
+  DEFAULT_FRONTEND_URL
 } = require('./helpers/systematic');
+
+test.use({ storageState: 'tests/e2e/.auth/admin.json' });
 
 // ── Flujo 1: login → todas las secciones → logout ────────────────────────────
 test.describe('Integración – Login, navegación completa y Logout', () => {
   test('recorre todas las secciones del sidebar sin errores de JS', async ({ page }) => {
     const jsErrors = [];
     page.on('pageerror', (err) => jsErrors.push(err.message));
-
-    await loginUI(page);
+    await page.goto(DEFAULT_FRONTEND_URL, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.sidebar, nav.sidebar').first()).toBeVisible();
 
     const sections = [
       'Dashboard', 'Escuelas', 'Visitas', 'Proyectos',
@@ -36,8 +37,6 @@ test.describe('Integración – Login, navegación completa y Logout', () => {
         page.getByRole('heading', { level: 1 }).or(page.getByRole('heading', { level: 2 })).first()
       ).toBeVisible({ timeout: 8_000 });
     }
-
-    await logoutUI(page);
 
     // No unhandled JS errors
     expect(jsErrors.filter(e => !e.includes('ResizeObserver'))).toHaveLength(0);

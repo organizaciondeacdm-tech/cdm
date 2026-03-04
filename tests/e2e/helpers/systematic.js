@@ -14,6 +14,8 @@ const TEST_USER = {
             'admin2025'
 };
 
+let cachedAccessToken = null;
+
 // ── Misc ─────────────────────────────────────────────────────────────────────
 
 /** Returns a short unique suffix safe to embed in names / emails */
@@ -109,8 +111,13 @@ async function waitForHeading(page, headingText) {
 async function loginAPI(
   request,
   username = TEST_USER.username,
-  password  = TEST_USER.password
+  password  = TEST_USER.password,
+  options = {}
 ) {
+  if (!options.force && cachedAccessToken) {
+    return cachedAccessToken;
+  }
+
   const res = await request.post(`${DEFAULT_API_URL}/api/auth/login`, {
     data: { username, password }
   });
@@ -128,7 +135,12 @@ async function loginAPI(
   if (!token) {
     throw new Error(`loginAPI: no access token in response – ${JSON.stringify(body)}`);
   }
+  cachedAccessToken = token;
   return token;
+}
+
+function clearLoginCache() {
+  cachedAccessToken = null;
 }
 
 /**
@@ -189,6 +201,7 @@ module.exports = {
   waitForHeading,
   // API
   loginAPI,
+  clearLoginCache,
   authRequest,
   authJson,
   // Escuelas

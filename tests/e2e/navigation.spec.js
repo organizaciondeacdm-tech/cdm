@@ -2,7 +2,9 @@
 // navigation.spec.js  –  Sidebar navigation after login
 // ─────────────────────────────────────────────────────────────────────────────
 const { test, expect } = require('@playwright/test');
-const { loginUI, gotoSection } = require('./helpers/systematic');
+const { gotoSection, DEFAULT_FRONTEND_URL } = require('./helpers/systematic');
+
+test.use({ storageState: 'tests/e2e/.auth/admin.json' });
 
 // All nav items defined in acdm-system-sidebar.jsx
 const NAV_SECTIONS = [
@@ -19,7 +21,8 @@ const NAV_SECTIONS = [
 
 test.describe('Navegación – Sidebar', () => {
   test.beforeEach(async ({ page }) => {
-    await loginUI(page);
+    await page.goto(DEFAULT_FRONTEND_URL, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.sidebar, nav.sidebar').first()).toBeVisible();
   });
 
   // ── Sidebar is visible ──────────────────────────────────────────────────
