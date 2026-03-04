@@ -115,3 +115,7 @@
 {"level":"info","message":"MongoDB Connected: ac-ecy7eid-shard-00-00.lpmkykh.mongodb.net"}
 {"level":"info","message":"Connecting to MongoDB: mongodb+srv://Papiweb:****@cluster0.lpmkykh.mongodb.net/acdm_db?retryWrites=true&w=majority"}
 {"level":"info","message":"MongoDB Connected: ac-ecy7eid-shard-00-00.lpmkykh.mongodb.net"}
+{"level":"info","message":"Connecting to MongoDB: mongodb+srv://Papiweb:****@cluster0.lpmkykh.mongodb.net/acdm_db?retryWrites=true&w=majority"}
+{"level":"info","message":"MongoDB Connected: ac-ecy7eid-shard-00-00.lpmkykh.mongodb.net"}
+{"level":"info","message":"Connecting to MongoDB: mongodb+srv://Papiweb:****@cluster0.lpmkykh.mongodb.net/acdm_db?retryWrites=true&w=majority"}
+{"level":"info","message":"MongoDB Connected: ac-ecy7eid-shard-00-02.lpmkykh.mongodb.net"}
