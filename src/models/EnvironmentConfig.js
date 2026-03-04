@@ -1,44 +1,17 @@
-const mongoose = require('mongoose');
-const baseEntityPlugin = require('./plugins/baseEntityPlugin');
+const { BaseMongoModel } = require('./base/mongoModel');
 
-const environmentConfigSchema = new mongoose.Schema({
-  key: {
-    type: String,
-    required: true,
-    trim: true,
-    uppercase: true,
-    unique: true
-  },
-  value: {
-    type: String,
-    required: true
-  },
-  enabled: {
-    type: Boolean,
-    default: true
-  },
-  description: {
-    type: String,
-    default: ''
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
+class EnvironmentConfig extends BaseMongoModel {
+  static collectionName = 'environment_configs';
+  static sensitiveFields = ['value'];
+
+  static async preSave(payload) {
+    payload.updatedAt = new Date();
+    if (payload.key) payload.key = String(payload.key).trim().toUpperCase();
   }
-});
 
-environmentConfigSchema.pre('save', function onSave(next) {
-  this.updatedAt = new Date();
-  next();
-});
+  static getEnabledConfig() {
+    return this.find({ enabled: true }).lean();
+  }
+}
 
-environmentConfigSchema.statics.getEnabledConfig = function getEnabledConfig() {
-  return this.find({ enabled: true }).lean();
-};
-
-environmentConfigSchema.plugin(baseEntityPlugin, {
-  entityName: 'EnvironmentConfig',
-  sensitiveFields: ['value']
-});
-
-module.exports = mongoose.model('EnvironmentConfig', environmentConfigSchema);
+module.exports = EnvironmentConfig;
