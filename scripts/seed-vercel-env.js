@@ -16,7 +16,7 @@
  */
 
 require('dotenv').config();
-const mongoose = require('mongoose');
+const connectDB = require('../src/config/database');
 const EnvironmentConfig = require('../src/models/EnvironmentConfig');
 
 // ─── Variables de producción para Vercel ────────────────────────
@@ -67,19 +67,16 @@ const PROD_ENV = {
 
 // ─────────────────────────────────────────────────────────────────
 
-async function main() {
-  const mongoUri = process.env.MONGODB_URI;
-  if (!mongoUri) {
-    throw new Error('MONGODB_URI no está definida. Agregala al .env local o como variable de entorno.');
-  }
+const { getMongoUri } = require('../src/utils/envObfuscator');
 
-  console.log('Conectando a MongoDB Atlas...');
-  await mongoose.connect(mongoUri);
+async function main() {
+  console.log('Conectando a MongoDB con TypeORM...');
+  const ds = await connectDB();
   console.log('Conectado.\n');
 
   let updated = 0;
   for (const [key, value] of Object.entries(PROD_ENV)) {
-    await EnvironmentConfig.findOneAndUpdate(
+    await EnvironmentConfig.updateOne(
       { key },
       {
         $set: {
@@ -91,7 +88,7 @@ async function main() {
           description: `Producción Vercel (${new Date().toISOString().split('T')[0]})`
         }
       },
-      { upsert: true, new: true }
+      { upsert: true }
     );
     console.log(`  ✓ ${key}`);
     updated += 1;
@@ -106,10 +103,6 @@ main()
     console.error('\n❌ Error:', err.message);
     process.exitCode = 1;
   })
-  .finally(async () => {
-    try {
-      await mongoose.disconnect();
-    } catch (_) {
-      // noop
-    }
+  .finally(() => {
+    process.exit(0);
   });

@@ -1,24 +1,20 @@
 #!/usr/bin/env node
 
 require('dotenv').config();
-const mongoose = require('mongoose');
+const connectDB = require('../src/config/database');
 const EnvironmentConfig = require('../src/models/EnvironmentConfig');
 const { isAllowedRuntimeEnvKey } = require('../src/config/envKeys');
+const { getMongoUri } = require('../src/utils/envObfuscator');
 
 async function main() {
-  const mongoUri = process.env.MONGODB_URI;
-  if (!mongoUri) {
-    throw new Error('MONGODB_URI no está definida');
-  }
-
-  await mongoose.connect(mongoUri);
+  await connectDB();
 
   const candidates = Object.entries(process.env)
     .filter(([key, value]) => /^[A-Z0-9_]+$/.test(key) && value !== undefined && isAllowedRuntimeEnvKey(key));
 
   let updated = 0;
   for (const [key, value] of candidates) {
-    await EnvironmentConfig.findOneAndUpdate(
+    await EnvironmentConfig.updateOne(
       { key },
       {
         $set: {
@@ -30,7 +26,7 @@ async function main() {
           description: 'Sincronizado desde process.env'
         }
       },
-      { upsert: true, new: true }
+      { upsert: true }
     );
     updated += 1;
   }
@@ -43,10 +39,6 @@ main()
     console.error('Error sincronizando env a MongoDB:', error.message);
     process.exitCode = 1;
   })
-  .finally(async () => {
-    try {
-      await mongoose.disconnect();
-    } catch (error) {
-      // noop
-    }
+  .finally(() => {
+    process.exit(0);
   });
