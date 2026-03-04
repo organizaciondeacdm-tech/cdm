@@ -5,6 +5,7 @@ const apiUrl = process.env.E2E_API_URL || 'http://localhost:5000';
 const skipWebServer = process.env.E2E_SKIP_WEBSERVER === '1';
 
 export default defineConfig({
+  globalSetup: './tests/e2e/global-setup.js',
   testDir: './tests/e2e',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,

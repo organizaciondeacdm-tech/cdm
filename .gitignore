@@ -57,3 +57,7 @@ tmp/
 # Vite
 .vite/
 
+
+# Playwright
+test-results/
+playwright-report/

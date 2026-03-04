@@ -353,10 +353,12 @@ test.describe('API – Alumnos CRUD', () => {
 
 // ── Informes globales ─────────────────────────────────────────────────────────
 test.describe('API – Informes globales', () => {
-  let token, informeId;
+  let token, informeId, escuelaId;
 
   test.beforeAll(async ({ request }) => {
     token = await loginAPI(request);
+    const escuelas = await authJson(request, token, 'GET', '/api/escuelas?limit=1');
+    escuelaId = escuelas.data?.escuelas?.[0]?._id ?? null;
   });
 
   test('GET /api/informes → 200', async ({ request }) => {
@@ -364,8 +366,10 @@ test.describe('API – Informes globales', () => {
     expect(body.success).toBe(true);
   });
 
-  test('POST /api/informes → 201 crea informe global (sin escuelaId)', async ({ request }) => {
+  test('POST /api/informes → 201 crea informe (con escuelaId)', async ({ request }) => {
+    if (!escuelaId) test.skip();
     const body = await authJson(request, token, 'POST', '/api/informes', {
+      escuelaId,
       titulo: `Informe Global E2E ${uniqueSuffix()}`,
       estado: 'Pendiente'
     }, 201);
@@ -374,22 +378,23 @@ test.describe('API – Informes globales', () => {
   });
 
   test('GET /api/informes/:id → 200', async ({ request }) => {
-    if (!informeId) test.skip();
-    const body = await authJson(request, token, 'GET', `/api/informes/${informeId}`);
+    if (!informeId || !escuelaId) test.skip();
+    const body = await authJson(request, token, 'GET', `/api/informes/${informeId}?escuelaId=${escuelaId}`);
     expect(body.success).toBe(true);
   });
 
   test('PUT /api/informes/:id → 200 actualiza informe', async ({ request }) => {
-    if (!informeId) test.skip();
+    if (!informeId || !escuelaId) test.skip();
     const body = await authJson(request, token, 'PUT', `/api/informes/${informeId}`, {
+      escuelaId,
       estado: 'En Progreso'
     });
     expect(body.success).toBe(true);
   });
 
   test('DELETE /api/informes/:id → 200 elimina informe', async ({ request }) => {
-    if (!informeId) test.skip();
-    const body = await authJson(request, token, 'DELETE', `/api/informes/${informeId}`);
+    if (!informeId || !escuelaId) test.skip();
+    const body = await authJson(request, token, 'DELETE', `/api/informes/${informeId}?escuelaId=${escuelaId}`);
     expect(body.success).toBe(true);
     informeId = null;
   });
