@@ -93,6 +93,11 @@ const docenteSchema = new mongoose.Schema({
     enum: ['Activo', 'Licencia', 'Suspendido', 'Jubilado', 'Renunció'],
     default: 'Activo'
   },
+  jornada: {
+    type: String,
+    enum: ['Simple', 'Completa', 'Extendida', 'Doble Escolaridad'],
+    default: 'Completa'
+  },
   motivo: {
     type: String,
     default: '-'

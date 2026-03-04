@@ -1,79 +1,187 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getApiUrl } from '../utils/apiConfig.js';
 
-/**
- * Hook personalizado para cargar y sincronizar datos ACDM desde MongoDB
- * Reemplaza el almacenamiento local (acdm_db) con API real
- */
+const toDateInput = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().split('T')[0];
+};
+
+const splitNombreApellido = (value = '') => {
+  const normalized = String(value).trim();
+  if (!normalized) return { nombre: '', apellido: '' };
+
+  if (normalized.includes(',')) {
+    const [apellido, nombre] = normalized.split(',').map(part => part.trim());
+    return { nombre: nombre || '', apellido: apellido || '' };
+  }
+
+  const parts = normalized.split(/\s+/);
+  const nombre = parts.pop() || '';
+  const apellido = parts.join(' ') || normalized;
+  return { nombre, apellido };
+};
+
+const mapDocente = (docente) => ({
+  ...docente,
+  id: docente._id || docente.id,
+  nombreApellido: docente.nombreApellido || [docente.apellido, docente.nombre].filter(Boolean).join(', '),
+  jornada: docente.jornada || 'Completa',
+  suplentes: (docente.suplentes || []).map((suplente) => ({
+    ...suplente,
+    id: suplente._id || suplente.id,
+    nombreApellido: suplente.nombreApellido || [suplente.apellido, suplente.nombre].filter(Boolean).join(', '),
+    fechaInicioLicencia: toDateInput(suplente.fechaInicioLicencia),
+    fechaFinLicencia: toDateInput(suplente.fechaFinLicencia)
+  })),
+  fechaInicioLicencia: toDateInput(docente.fechaInicioLicencia),
+  fechaFinLicencia: toDateInput(docente.fechaFinLicencia)
+});
+
+const mapAlumno = (alumno) => ({
+  ...alumno,
+  id: alumno._id || alumno.id,
+  nombre: alumno.nombreCompleto || [alumno.apellido, alumno.nombre].filter(Boolean).join(', ')
+});
+
+const mapEscuela = (escuela) => ({
+  ...escuela,
+  id: escuela._id || escuela.id,
+  lat: escuela.ubicacion?.coordinates?.[1] ?? escuela.lat ?? null,
+  lng: escuela.ubicacion?.coordinates?.[0] ?? escuela.lng ?? null,
+  mail: escuela.mail || escuela.email || '',
+  telefonos: Array.isArray(escuela.telefonos)
+    ? escuela.telefonos.map((t) => (typeof t === 'string' ? t : (t?.numero || ''))).filter(Boolean)
+    : [],
+  docentes: (escuela.docentes || []).map(mapDocente),
+  alumnos: (escuela.alumnos || []).map(mapAlumno),
+  visitas: (escuela.visitas || []).map((visita) => ({ ...visita, id: visita._id || visita.id, fecha: toDateInput(visita.fecha) })),
+  proyectos: (escuela.proyectos || []).map((proyecto) => ({
+    ...proyecto,
+    id: proyecto._id || proyecto.id,
+    fechaInicio: toDateInput(proyecto.fechaInicio),
+    fechaBaja: toDateInput(proyecto.fechaBaja)
+  })),
+  informes: (escuela.informes || []).map((informe) => ({
+    ...informe,
+    id: informe._id || informe.id,
+    fechaEntrega: toDateInput(informe.fechaEntrega)
+  }))
+});
+
+const buildEscuelaPayload = (form = {}) => ({
+  de: form.de ? form.de.toUpperCase().replace(/^DE(\d{2})$/, 'DE $1').replace(/^DE\s*(\d{2})$/, 'DE $1').trim() : form.de,
+  escuela: form.escuela,
+  nivel: form.nivel,
+  direccion: form.direccion,
+  localidad: form.localidad,
+  jornada: form.jornada,
+  turno: form.turno,
+  email: form.mail || form.email,
+  telefonos: Array.isArray(form.telefonos) ? form.telefonos : [],
+  lat: form.lat,
+  lng: form.lng,
+  estado: form.estado
+});
+
+const buildDocentePayload = (form = {}, escuelaId, titularId) => {
+  const parsed = splitNombreApellido(form.nombreApellido);
+  const payload = {
+    escuela: escuelaId,
+    titularId: titularId || null,
+    cargo: form.cargo,
+    nombre: form.nombre || parsed.nombre,
+    apellido: form.apellido || parsed.apellido,
+    estado: form.estado,
+    motivo: form.motivo === 'Otro' ? (form.motivoPersonalizado || form.motivo) : (form.motivo || '-'),
+    diasAutorizados: Number(form.diasAutorizados || 0),
+    fechaInicioLicencia: form.fechaInicioLicencia || null,
+    fechaFinLicencia: form.fechaFinLicencia || null,
+    jornada: form.jornada || 'Completa',
+    dni: form.dni,
+    email: form.email,
+    fechaNacimiento: form.fechaNacimiento
+  };
+
+  Object.keys(payload).forEach((key) => {
+    if (payload[key] === undefined) delete payload[key];
+  });
+
+  return payload;
+};
+
+const buildAlumnoPayload = (form = {}, escuelaId) => {
+  const parsed = splitNombreApellido(form.nombre);
+
+  const payload = {
+    escuela: escuelaId,
+    nombre: form.nombreSimple || parsed.nombre,
+    apellido: form.apellido || parsed.apellido,
+    gradoSalaAnio: form.gradoSalaAnio,
+    diagnostico: form.diagnostico,
+    observaciones: form.observaciones,
+    dni: form.dni,
+    fechaNacimiento: form.fechaNacimiento
+  };
+
+  Object.keys(payload).forEach((key) => {
+    if (payload[key] === undefined) delete payload[key];
+  });
+
+  return payload;
+};
+
 export function useAcdmMongoData(currentUser) {
   const [db, setDb] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Token desde localStorage
   const token = localStorage.getItem('authToken');
 
-  // Cargar datos iniciales
-  useEffect(() => {
+  const request = useCallback(async (path, options = {}) => {
+    if (!token) throw new Error('No hay token de autenticación');
+
+    const response = await fetch(`${getApiUrl()}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        ...(options.headers || {})
+      }
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const errorMessage = payload.error || (payload.errors && payload.errors.length > 0 ? payload.errors.map(e => e.msg || e.message).join(', ') : `Error HTTP ${response.status}`);
+      throw new Error(errorMessage);
+    }
+
+    return payload;
+  }, [token]);
+
+  const loadAllData = useCallback(async () => {
     if (!currentUser || !token) {
       setLoading(false);
       return;
     }
 
-    loadAllData();
-  }, [currentUser, token]);
-
-  const loadAllData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const headers = { 'Authorization': `Bearer ${token}` };
+      const escuelasRes = await request('/api/escuelas?limit=200');
+      const escuelas = (escuelasRes.data?.escuelas || []).map(mapEscuela);
 
-      // Solo cargar escuelas (contienen alumnos y docentes anidados)
-      const escuelasRes = await fetch(`${getApiUrl()}/api/escuelas`, { headers });
-
-      if (!escuelasRes.ok) {
-        throw new Error('Error cargando escuelas del servidor');
-      }
-
-      const escuelasData = await escuelasRes.json();
-
-      // Normalizar estructura de datos desde MongoDB
-      const normalizeEscuelas = (escuelas) => {
-        return (escuelas || []).map(esc => ({
-          ...esc,
-          id: esc._id || esc.id,
-          telefonos: Array.isArray(esc.telefonos) 
-            ? esc.telefonos.map(t => typeof t === 'string' ? t : (t.numero || ''))
-            : [],
-          alumnos: (esc.alumnos || []).map(a => ({
-            ...a,
-            id: a._id || a.id
-          })),
-          docentes: (esc.docentes || []).map(d => ({
-            ...d,
-            id: d._id || d.id,
-            suplentes: (d.suplentes || []).map(s => ({
-              ...s,
-              id: s._id || s.id
-            }))
-          }))
-        }));
-      };
-
-      // Organizar datos en estructura de db
-      const newDb = {
-        escuelas: normalizeEscuelas(escuelasData.data?.escuelas || []),
+      setDb({
+        escuelas,
         alumnos: [],
         docentes: [],
         usuarios: [currentUser],
         visitas: [],
         proyectos: [],
         informes: []
-      };
-
-      setDb(newDb);
+      });
     } catch (err) {
       console.error('Error cargando datos ACDM:', err);
       setError(err.message);
@@ -81,352 +189,253 @@ export function useAcdmMongoData(currentUser) {
     } finally {
       setLoading(false);
     }
-  }, [token, currentUser]);
+  }, [currentUser, request, token]);
 
-  // Operaciones CRUD para escuelas
+  useEffect(() => {
+    loadAllData();
+  }, [loadAllData]);
+
   const saveEscuela = useCallback(async (form) => {
-    if (!token) return;
     try {
-      const method = form.id && db?.escuelas.some(e => e.id === form.id) ? 'PUT' : 'POST';
-      const url = `${getApiUrl()}/api/escuelas`;
-      const endpoint = method === 'PUT' ? `${url}/${form.id}` : url;
+      const isUpdate = Boolean(form.id);
+      const endpoint = isUpdate ? `/api/escuelas/${form.id}` : '/api/escuelas';
+      const method = isUpdate ? 'PUT' : 'POST';
 
-      const res = await fetch(endpoint, {
+      await request(endpoint, {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(form)
+        body: JSON.stringify(buildEscuelaPayload(form))
       });
 
-      if (!res.ok) throw new Error('Error guardando escuela');
-
-      const data = await res.json();
-      const savedEscuela = data.data?.escuela || form;
-
-      setDb(prev => {
-        const idx = prev.escuelas.findIndex(e => e.id === savedEscuela.id);
-        if (idx >= 0) {
-          const updated = [...prev.escuelas];
-          updated[idx] = savedEscuela;
-          return { ...prev, escuelas: updated };
-        }
-        return { ...prev, escuelas: [...prev.escuelas, savedEscuela] };
-      });
+      await loadAllData();
     } catch (err) {
       console.error('Error guardando escuela:', err);
+      setError(err.message);
+      throw err;
     }
-  }, [token, db]);
+  }, [loadAllData, request]);
 
   const deleteEscuela = useCallback(async (id) => {
-    if (!token || !confirm('¿Eliminar escuela?')) return;
+    if (!confirm('¿Eliminar escuela?')) return;
+
     try {
-      const res = await fetch(`${getApiUrl()}/api/escuelas/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-
-      if (!res.ok) throw new Error('Error eliminando escuela');
-
-      setDb(prev => ({
-        ...prev,
-        escuelas: prev.escuelas.filter(e => e.id !== id)
-      }));
+      await request(`/api/escuelas/${id}`, { method: 'DELETE' });
+      await loadAllData();
     } catch (err) {
       console.error('Error eliminando escuela:', err);
+      setError(err.message);
+      throw err;
     }
-  }, [token]);
+  }, [loadAllData, request]);
 
-  // Operaciones CRUD para docentes
   const addDocente = useCallback(async (escuelaId, docForm, titularId) => {
-    if (!token) return;
     try {
-      const res = await fetch(`${getApiUrl()}/api/docentes`, {
+      await request('/api/docentes', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ ...docForm, escuelaId, titularId })
+        body: JSON.stringify(buildDocentePayload(docForm, escuelaId, titularId))
       });
-
-      if (!res.ok) throw new Error('Error agregando docente');
-
-      const data = await res.json();
-      const newDocente = data.data?.docente || docForm;
-
-      setDb(prev => ({
-        ...prev,
-        escuelas: prev.escuelas.map(esc => {
-          if (esc.id !== escuelaId) return esc;
-          if (titularId) {
-            return {
-              ...esc,
-              docentes: esc.docentes.map(d =>
-                d.id === titularId
-                  ? { ...d, suplentes: [...(d.suplentes || []), newDocente] }
-                  : d
-              )
-            };
-          }
-          return { ...esc, docentes: [...esc.docentes, { ...newDocente, suplentes: [] }] };
-        })
-      }));
+      await loadAllData();
     } catch (err) {
       console.error('Error agregando docente:', err);
+      setError(err.message);
+      throw err;
     }
-  }, [token, db]);
+  }, [loadAllData, request]);
 
   const updateDocente = useCallback(async (escuelaId, docForm, titularId) => {
-    if (!token) return;
     try {
-      const res = await fetch(`${getApiUrl()}/api/docentes/${docForm.id}`, {
+      const id = docForm.id || docForm._id;
+      await request(`/api/docentes/${id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(docForm)
+        body: JSON.stringify(buildDocentePayload(docForm, escuelaId, titularId))
       });
-
-      if (!res.ok) throw new Error('Error actualizando docente');
-
-      const data = await res.json();
-      const updatedDocente = data.data?.docente || docForm;
-
-      setDb(prev => ({
-        ...prev,
-        escuelas: prev.escuelas.map(esc => {
-          if (esc.id !== escuelaId) return esc;
-          if (titularId) {
-            return {
-              ...esc,
-              docentes: esc.docentes.map(d =>
-                d.id === titularId
-                  ? { ...d, suplentes: d.suplentes.map(s => s.id === docForm.id ? updatedDocente : s) }
-                  : d
-              )
-            };
-          }
-          return {
-            ...esc,
-            docentes: esc.docentes.map(d =>
-              d.id === docForm.id ? { ...updatedDocente, suplentes: d.suplentes } : d
-            )
-          };
-        })
-      }));
+      await loadAllData();
     } catch (err) {
       console.error('Error actualizando docente:', err);
+      setError(err.message);
+      throw err;
     }
-  }, [token, db]);
+  }, [loadAllData, request]);
 
-  const deleteDocente = useCallback(async (escuelaId, docId, titularId) => {
-    if (!token || !confirm('¿Eliminar docente?')) return;
+  const deleteDocente = useCallback(async (_escuelaId, docId) => {
+    if (!confirm('¿Eliminar docente?')) return;
+
     try {
-      const res = await fetch(`${getApiUrl()}/api/docentes/${docId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-
-      if (!res.ok) throw new Error('Error eliminando docente');
-
-      setDb(prev => ({
-        ...prev,
-        escuelas: prev.escuelas.map(esc => {
-          if (esc.id !== escuelaId) return esc;
-          if (titularId) {
-            return {
-              ...esc,
-              docentes: esc.docentes.map(d =>
-                d.id === titularId
-                  ? { ...d, suplentes: d.suplentes.filter(s => s.id !== docId) }
-                  : d
-              )
-            };
-          }
-          return { ...esc, docentes: esc.docentes.filter(d => d.id !== docId) };
-        })
-      }));
+      await request(`/api/docentes/${docId}`, { method: 'DELETE' });
+      await loadAllData();
     } catch (err) {
       console.error('Error eliminando docente:', err);
+      setError(err.message);
+      throw err;
     }
-  }, [token]);
+  }, [loadAllData, request]);
 
-  // Operaciones CRUD para alumnos
   const addAlumno = useCallback(async (escuelaId, alumForm) => {
-    if (!token) return;
     try {
-      const res = await fetch(`${getApiUrl()}/api/alumnos`, {
+      await request('/api/alumnos', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ ...alumForm, escuelaId })
+        body: JSON.stringify(buildAlumnoPayload(alumForm, escuelaId))
       });
-
-      if (!res.ok) throw new Error('Error agregando alumno');
-
-      const data = await res.json();
-      const newAlumno = data.data?.alumno || alumForm;
-
-      setDb(prev => ({
-        ...prev,
-        escuelas: prev.escuelas.map(esc =>
-          esc.id === escuelaId
-            ? { ...esc, alumnos: [...(esc.alumnos || []), newAlumno] }
-            : esc
-        )
-      }));
+      await loadAllData();
     } catch (err) {
       console.error('Error agregando alumno:', err);
+      setError(err.message);
+      throw err;
     }
-  }, [token, db]);
+  }, [loadAllData, request]);
 
   const updateAlumno = useCallback(async (escuelaId, alumForm) => {
-    if (!token) return;
     try {
-      const res = await fetch(`${getApiUrl()}/api/alumnos/${alumForm.id}`, {
+      const id = alumForm.id || alumForm._id;
+      await request(`/api/alumnos/${id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(alumForm)
+        body: JSON.stringify(buildAlumnoPayload(alumForm, escuelaId))
       });
-
-      if (!res.ok) throw new Error('Error actualizando alumno');
-
-      const data = await res.json();
-      const updatedAlumno = data.data?.alumno || alumForm;
-
-      setDb(prev => ({
-        ...prev,
-        escuelas: prev.escuelas.map(esc =>
-          esc.id === escuelaId
-            ? {
-              ...esc,
-              alumnos: esc.alumnos.map(a => a.id === alumForm.id ? updatedAlumno : a)
-            }
-            : esc
-        )
-      }));
+      await loadAllData();
     } catch (err) {
       console.error('Error actualizando alumno:', err);
+      setError(err.message);
+      throw err;
     }
-  }, [token, db]);
+  }, [loadAllData, request]);
 
-  const deleteAlumno = useCallback(async (escuelaId, alumId) => {
-    if (!token || !confirm('¿Eliminar alumno?')) return;
+  const deleteAlumno = useCallback(async (_escuelaId, alumId) => {
+    if (!confirm('¿Eliminar alumno?')) return;
+
     try {
-      const res = await fetch(`${getApiUrl()}/api/alumnos/${alumId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-
-      if (!res.ok) throw new Error('Error eliminando alumno');
-
-      setDb(prev => ({
-        ...prev,
-        escuelas: prev.escuelas.map(esc =>
-          esc.id === escuelaId
-            ? { ...esc, alumnos: esc.alumnos.filter(a => a.id !== alumId) }
-            : esc
-        )
-      }));
+      await request(`/api/alumnos/${alumId}`, { method: 'DELETE' });
+      await loadAllData();
     } catch (err) {
       console.error('Error eliminando alumno:', err);
+      setError(err.message);
+      throw err;
     }
-  }, [token]);
+  }, [loadAllData, request]);
 
-  // Operaciones CRUD para informes
-  const addInforme = useCallback(async (escuelaId, informeForm) => {
-    if (!token) return;
+  const addVisita = useCallback(async (escuelaId, visitaForm) => {
     try {
-      const res = await fetch(`${getApiUrl()}/api/informes`, {
+      await request(`/api/escuelas/${escuelaId}/visitas`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ ...informeForm, escuelaId })
+        body: JSON.stringify(visitaForm)
       });
+      await loadAllData();
+    } catch (err) {
+      console.error('Error agregando visita:', err);
+      setError(err.message);
+      throw err;
+    }
+  }, [loadAllData, request]);
 
-      if (!res.ok) throw new Error('Error agregando informe');
+  const updateVisita = useCallback(async (escuelaId, visitaForm) => {
+    try {
+      const visitaId = visitaForm.id || visitaForm._id;
+      await request(`/api/escuelas/${escuelaId}/visitas/${visitaId}`, {
+        method: 'PUT',
+        body: JSON.stringify(visitaForm)
+      });
+      await loadAllData();
+    } catch (err) {
+      console.error('Error actualizando visita:', err);
+      setError(err.message);
+      throw err;
+    }
+  }, [loadAllData, request]);
 
-      const data = await res.json();
-      const newInforme = data.data?.informe || informeForm;
+  const deleteVisita = useCallback(async (escuelaId, visitaId) => {
+    if (!confirm('¿Eliminar visita?')) return;
 
-      setDb(prev => ({
-        ...prev,
-        escuelas: prev.escuelas.map(esc =>
-          esc.id === escuelaId
-            ? { ...esc, informes: [...(esc.informes || []), newInforme] }
-            : esc
-        )
-      }));
+    try {
+      await request(`/api/escuelas/${escuelaId}/visitas/${visitaId}`, { method: 'DELETE' });
+      await loadAllData();
+    } catch (err) {
+      console.error('Error eliminando visita:', err);
+      setError(err.message);
+      throw err;
+    }
+  }, [loadAllData, request]);
+
+  const addProyecto = useCallback(async (escuelaId, proyectoForm) => {
+    try {
+      await request(`/api/escuelas/${escuelaId}/proyectos`, {
+        method: 'POST',
+        body: JSON.stringify(proyectoForm)
+      });
+      await loadAllData();
+    } catch (err) {
+      console.error('Error agregando proyecto:', err);
+      setError(err.message);
+      throw err;
+    }
+  }, [loadAllData, request]);
+
+  const updateProyecto = useCallback(async (escuelaId, proyectoForm) => {
+    try {
+      const proyectoId = proyectoForm.id || proyectoForm._id;
+      await request(`/api/escuelas/${escuelaId}/proyectos/${proyectoId}`, {
+        method: 'PUT',
+        body: JSON.stringify(proyectoForm)
+      });
+      await loadAllData();
+    } catch (err) {
+      console.error('Error actualizando proyecto:', err);
+      setError(err.message);
+      throw err;
+    }
+  }, [loadAllData, request]);
+
+  const deleteProyecto = useCallback(async (escuelaId, proyectoId) => {
+    if (!confirm('¿Eliminar proyecto?')) return;
+
+    try {
+      await request(`/api/escuelas/${escuelaId}/proyectos/${proyectoId}`, { method: 'DELETE' });
+      await loadAllData();
+    } catch (err) {
+      console.error('Error eliminando proyecto:', err);
+      setError(err.message);
+      throw err;
+    }
+  }, [loadAllData, request]);
+
+  const addInforme = useCallback(async (escuelaId, informeForm) => {
+    try {
+      await request(`/api/escuelas/${escuelaId}/informes`, {
+        method: 'POST',
+        body: JSON.stringify(informeForm)
+      });
+      await loadAllData();
     } catch (err) {
       console.error('Error agregando informe:', err);
+      setError(err.message);
+      throw err;
     }
-  }, [token, db]);
+  }, [loadAllData, request]);
 
   const updateInforme = useCallback(async (escuelaId, informeForm) => {
-    if (!token) return;
     try {
-      const res = await fetch(`${getApiUrl()}/api/informes/${informeForm.id || informeForm._id}`, {
+      const informeId = informeForm.id || informeForm._id;
+      await request(`/api/escuelas/${escuelaId}/informes/${informeId}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ ...informeForm, escuelaId })
+        body: JSON.stringify(informeForm)
       });
-
-      if (!res.ok) throw new Error('Error actualizando informe');
-
-      const data = await res.json();
-      const updatedInforme = data.data?.informe || informeForm;
-
-      setDb(prev => ({
-        ...prev,
-        escuelas: prev.escuelas.map(esc =>
-          esc.id === escuelaId
-            ? {
-              ...esc,
-              informes: esc.informes.map(i => (i.id === informeForm.id || i._id === informeForm._id) ? updatedInforme : i)
-            }
-            : esc
-        )
-      }));
+      await loadAllData();
     } catch (err) {
       console.error('Error actualizando informe:', err);
+      setError(err.message);
+      throw err;
     }
-  }, [token, db]);
+  }, [loadAllData, request]);
 
   const deleteInforme = useCallback(async (escuelaId, informeId) => {
-    if (!token) return;
+    if (!confirm('¿Eliminar informe?')) return;
+
     try {
-      const res = await fetch(`${getApiUrl()}/api/informes/${informeId}?escuelaId=${escuelaId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-
-      if (!res.ok) throw new Error('Error eliminando informe');
-
-      setDb(prev => ({
-        ...prev,
-        escuelas: prev.escuelas.map(esc =>
-          esc.id === escuelaId
-            ? { ...esc, informes: esc.informes.filter(i => i.id !== informeId && i._id !== informeId) }
-            : esc
-        )
-      }));
+      await request(`/api/escuelas/${escuelaId}/informes/${informeId}`, { method: 'DELETE' });
+      await loadAllData();
     } catch (err) {
       console.error('Error eliminando informe:', err);
+      setError(err.message);
+      throw err;
     }
-  }, [token]);
+  }, [loadAllData, request]);
 
   return {
     db,
@@ -440,6 +449,12 @@ export function useAcdmMongoData(currentUser) {
     addAlumno,
     updateAlumno,
     deleteAlumno,
+    addVisita,
+    updateVisita,
+    deleteVisita,
+    addProyecto,
+    updateProyecto,
+    deleteProyecto,
     addInforme,
     updateInforme,
     deleteInforme,

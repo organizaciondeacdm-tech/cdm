@@ -1,6 +1,40 @@
 const Alumno = require('../models/Alumno');
 const Escuela = require('../models/Escuela');
 
+const splitNombreApellido = (nombreCompleto = '') => {
+  const value = String(nombreCompleto).trim();
+  if (!value) return { nombre: '', apellido: '' };
+  if (value.includes(',')) {
+    const [apellido, nombre] = value.split(',').map(v => v.trim());
+    return { nombre: nombre || '', apellido: apellido || '' };
+  }
+  const parts = value.split(/\s+/);
+  const nombre = parts.pop() || '';
+  const apellido = parts.join(' ') || value;
+  return { nombre, apellido };
+};
+
+const normalizeAlumnoPayload = (payload = {}, { partial = false } = {}) => {
+  const normalized = { ...payload };
+  const parsed = splitNombreApellido(normalized.nombre);
+
+  if (!normalized.apellido && parsed.apellido) normalized.apellido = parsed.apellido;
+  if (parsed.nombre) normalized.nombre = parsed.nombre;
+
+  if (!partial) {
+    const uniqueSeed = Date.now().toString().slice(-8);
+    normalized.dni = normalized.dni || uniqueSeed;
+    normalized.fechaNacimiento = normalized.fechaNacimiento || '2015-01-01';
+    normalized.gradoSalaAnio = normalized.gradoSalaAnio || 'Sin grado';
+    normalized.diagnostico = normalized.diagnostico || 'Sin especificar';
+  }
+
+  delete normalized.id;
+  delete normalized._id;
+
+  return normalized;
+};
+
 const getAlumnos = async (req, res) => {
   try {
     const {
@@ -87,7 +121,8 @@ const getAlumnoById = async (req, res) => {
 
 const createAlumno = async (req, res) => {
   try {
-    const { escuela: escuelaId, ...alumnoData } = req.body;
+    const escuelaId = req.body.escuela || req.body.escuelaId;
+    const alumnoData = normalizeAlumnoPayload(req.body);
 
     // Verificar escuela
     const escuela = await Escuela.findById(escuelaId);
@@ -140,7 +175,7 @@ const updateAlumno = async (req, res) => {
       });
     }
 
-    Object.assign(alumno, req.body);
+    Object.assign(alumno, normalizeAlumnoPayload(req.body, { partial: true }));
     alumno.updatedBy = req.user._id;
 
     await alumno.save();

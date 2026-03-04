@@ -23,6 +23,10 @@ const alumnoRoutes = require('./routes/alumnoRoutes');
 const reporteRoutes = require('./routes/reporteRoutes');
 const informeRoutes = require('./routes/informeRoutes');
 const { sendEmail } = require('./services/emailService');
+const { authMiddleware } = require('./middleware/auth');
+const Escuela = require('./models/Escuela');
+const Docente = require('./models/Docente');
+const Alumno = require('./models/Alumno');
 
 const app = express();
 
@@ -160,6 +164,142 @@ app.use('/api/docentes', docenteRoutes);
 app.use('/api/alumnos', alumnoRoutes);
 app.use('/api/reportes', reporteRoutes);
 app.use('/api/informes', informeRoutes);
+
+app.get('/api/estadisticas', authMiddleware, async (req, res) => {
+  try {
+    const [escuelas, docentes, alumnos, visitas, proyectos, informes] = await Promise.all([
+      Escuela.countDocuments({ estado: { $ne: 'inactiva' } }),
+      Docente.countDocuments({ activo: true }),
+      Alumno.countDocuments({ activo: true }),
+      Escuela.aggregate([{ $group: { _id: null, total: { $sum: { $size: { $ifNull: ['$visitas', []] } } } } }]),
+      Escuela.aggregate([{ $group: { _id: null, total: { $sum: { $size: { $ifNull: ['$proyectos', []] } } } } }]),
+      Escuela.aggregate([{ $group: { _id: null, total: { $sum: { $size: { $ifNull: ['$informes', []] } } } } }])
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        escuelas,
+        docentes,
+        alumnos,
+        visitas: visitas[0]?.total || 0,
+        proyectos: proyectos[0]?.total || 0,
+        informes: informes[0]?.total || 0
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al obtener estadísticas globales' });
+  }
+});
+
+app.get('/api/buscar', authMiddleware, async (req, res) => {
+  try {
+    const term = String(req.query.q || '').trim();
+    if (!term) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const regex = new RegExp(term, 'i');
+    const escuelas = await Escuela.find({
+      $or: [{ escuela: regex }, { de: regex }, { direccion: regex }]
+    })
+      .select('_id de escuela nivel direccion estado')
+      .limit(50)
+      .lean();
+
+    res.json({
+      success: true,
+      data: escuelas
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al realizar búsqueda' });
+  }
+});
+
+app.get('/api/alertas', authMiddleware, async (req, res) => {
+  try {
+    const escuelas = await Escuela.find({})
+      .populate({ path: 'docentes', match: { activo: true }, select: 'estado fechaFinLicencia nombre apellido' })
+      .select('escuela de proyectos informes')
+      .lean();
+
+    const alerts = [];
+    const now = new Date();
+    const tenDays = new Date();
+    tenDays.setDate(tenDays.getDate() + 10);
+
+    escuelas.forEach(esc => {
+      if (!esc.docentes || esc.docentes.length === 0) {
+        alerts.push({
+          id: `sin-docente-${esc._id}`,
+          tipo: 'sin_docentes',
+          severidad: 'alta',
+          escuelaId: esc._id,
+          escuela: esc.escuela,
+          mensaje: 'Escuela sin docentes activos asignados'
+        });
+      }
+
+      (esc.docentes || []).forEach(doc => {
+        if (doc.estado === 'Licencia' && doc.fechaFinLicencia) {
+          const end = new Date(doc.fechaFinLicencia);
+          if (end >= now && end <= tenDays) {
+            alerts.push({
+              id: `licencia-${doc._id}`,
+              tipo: 'licencia_proxima',
+              severidad: 'media',
+              escuelaId: esc._id,
+              escuela: esc.escuela,
+              mensaje: `Licencia próxima a vencer: ${doc.apellido || ''}, ${doc.nombre || ''}`.trim()
+            });
+          }
+        }
+      });
+    });
+
+    res.json({ success: true, data: alerts });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al obtener alertas' });
+  }
+});
+
+app.post('/api/alertas/:id/acknowledge', authMiddleware, async (req, res) => {
+  res.json({ success: true, message: 'Alerta marcada como revisada' });
+});
+
+app.get('/api/export/json', authMiddleware, async (req, res) => {
+  try {
+    const escuelas = await Escuela.find({})
+      .populate({ path: 'docentes', match: { activo: true } })
+      .populate({ path: 'alumnos', match: { activo: true } })
+      .lean();
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename=acdm-export.json');
+    res.send(JSON.stringify({ success: true, data: escuelas }, null, 2));
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al exportar JSON' });
+  }
+});
+
+app.get('/api/export/csv', authMiddleware, async (req, res) => {
+  try {
+    const escuelas = await Escuela.find({}).select('de escuela nivel direccion estado').lean();
+    const header = 'de,escuela,nivel,direccion,estado';
+    const rows = escuelas.map(esc => {
+      const values = [esc.de, esc.escuela, esc.nivel, esc.direccion, esc.estado].map(v =>
+        `"${String(v ?? '').replace(/"/g, '""')}"`
+      );
+      return values.join(',');
+    });
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=acdm-export.csv');
+    res.send([header, ...rows].join('\n'));
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al exportar CSV' });
+  }
+});
 
 // Endpoint de prueba
 app.get('/api/test', (req, res) => {

@@ -1,6 +1,41 @@
 const Docente = require('../models/Docente');
 const Escuela = require('../models/Escuela');
 
+const splitNombreApellido = (nombreApellido = '') => {
+  const value = String(nombreApellido).trim();
+  if (!value) return { nombre: '', apellido: '' };
+  if (value.includes(',')) {
+    const [apellido, nombre] = value.split(',').map(v => v.trim());
+    return { nombre: nombre || '', apellido: apellido || '' };
+  }
+  const parts = value.split(/\s+/);
+  const nombre = parts.pop() || '';
+  const apellido = parts.join(' ') || value;
+  return { nombre, apellido };
+};
+
+const normalizeDocentePayload = (payload = {}, { partial = false } = {}) => {
+  const normalized = { ...payload };
+  const parsed = splitNombreApellido(normalized.nombreApellido);
+
+  if (!normalized.nombre && parsed.nombre) normalized.nombre = parsed.nombre;
+  if (!normalized.apellido && parsed.apellido) normalized.apellido = parsed.apellido;
+
+  if (!partial) {
+    const uniqueSeed = Date.now().toString().slice(-8);
+    normalized.dni = normalized.dni || uniqueSeed;
+    normalized.email = normalized.email || `${(normalized.nombre || 'docente').toLowerCase().replace(/\s+/g, '.')}.${uniqueSeed}@acdm.local`;
+    normalized.fechaNacimiento = normalized.fechaNacimiento || '1990-01-01';
+    normalized.cargo = normalized.cargo || 'Titular';
+  }
+
+  delete normalized.nombreApellido;
+  delete normalized.id;
+  delete normalized._id;
+
+  return normalized;
+};
+
 const getDocentes = async (req, res) => {
   try {
     const {
@@ -102,7 +137,9 @@ const getDocenteById = async (req, res) => {
 
 const createDocente = async (req, res) => {
   try {
-    const { escuela: escuelaId, titularId, ...docenteData } = req.body;
+    const escuelaId = req.body.escuela || req.body.escuelaId;
+    const titularId = req.body.titularId;
+    const docenteData = normalizeDocentePayload(req.body);
 
     // Verificar escuela
     const escuela = await Escuela.findById(escuelaId);
@@ -192,7 +229,7 @@ const updateDocente = async (req, res) => {
     const newEstado = req.body.estado;
 
     // Actualizar campos
-    Object.assign(docente, req.body);
+    Object.assign(docente, normalizeDocentePayload(req.body, { partial: true }));
     docente.updatedBy = req.user._id;
 
     await docente.save();

@@ -2109,7 +2109,16 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
     deleteDocente: mongoDeleteDocente,
     addAlumno: mongoAddAlumno,
     updateAlumno: mongoUpdateAlumno,
-    deleteAlumno: mongoDeleteAlumno
+    deleteAlumno: mongoDeleteAlumno,
+    addVisita: mongoAddVisita,
+    updateVisita: mongoUpdateVisita,
+    deleteVisita: mongoDeleteVisita,
+    addProyecto: mongoAddProyecto,
+    updateProyecto: mongoUpdateProyecto,
+    deleteProyecto: mongoDeleteProyecto,
+    addInforme: mongoAddInforme,
+    updateInforme: mongoUpdateInforme,
+    deleteInforme: mongoDeleteInforme
   } = useAcdmMongoData(currentUser);
   
   // Fallback a estado local si no hay db de mongo
@@ -2173,6 +2182,10 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
   }
   
   function saveEscuela(form) {
+    if (db) {
+      mongoSaveEscuela(form);
+      return;
+    }
     updateEscuelas(escuelas => {
       const idx = escuelas.findIndex(e => e.id === form.id);
       if (idx >= 0) { const a = [...escuelas]; a[idx] = {...a[idx], ...form}; return a; }
@@ -2181,11 +2194,19 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
   }
   
   function deleteEscuela(id) {
+    if (db) {
+      mongoDeleteEscuela(id);
+      return;
+    }
     if (!confirm("¿Eliminar escuela?")) return;
     updateEscuelas(esc => esc.filter(e => e.id !== id));
   }
   
   function addDocente(escuelaId, docForm, titularId) {
+    if (db) {
+      mongoAddDocente(escuelaId, docForm, titularId);
+      return;
+    }
     updateEscuelas(escuelas => escuelas.map(esc => {
       if (esc.id !== escuelaId) return esc;
       if (titularId) {
@@ -2197,6 +2218,10 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
   }
   
   function updateDocente(escuelaId, docForm, titularId) {
+    if (db) {
+      mongoUpdateDocente(escuelaId, docForm, titularId);
+      return;
+    }
     updateEscuelas(escuelas => escuelas.map(esc => {
       if (esc.id !== escuelaId) return esc;
       if (titularId) {
@@ -2207,6 +2232,10 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
   }
   
   function deleteDocente(escuelaId, docId, titularId) {
+    if (db) {
+      mongoDeleteDocente(escuelaId, docId, titularId);
+      return;
+    }
     if (!confirm("¿Eliminar docente?")) return;
     updateEscuelas(escuelas => escuelas.map(esc => {
       if (esc.id !== escuelaId) return esc;
@@ -2218,56 +2247,104 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
   }
   
   function addAlumno(escuelaId, alumnoForm) {
+    if (db) {
+      mongoAddAlumno(escuelaId, alumnoForm);
+      return;
+    }
     updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, alumnos: [...esc.alumnos, alumnoForm] }));
   }
   
   function updateAlumno(escuelaId, alumnoForm) {
+    if (db) {
+      mongoUpdateAlumno(escuelaId, alumnoForm);
+      return;
+    }
     updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, alumnos: esc.alumnos.map(a => a.id === alumnoForm.id ? alumnoForm : a) }));
   }
   
   function deleteAlumno(escuelaId, alumnoId) {
+    if (db) {
+      mongoDeleteAlumno(escuelaId, alumnoId);
+      return;
+    }
     if (!confirm("¿Eliminar alumno?")) return;
     updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, alumnos: esc.alumnos.filter(a => a.id !== alumnoId) }));
   }
   
   // Visitas
   function addVisita(escuelaId, visitaForm) {
+    if (db) {
+      mongoAddVisita(escuelaId, visitaForm);
+      return;
+    }
     updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, visitas: [...(esc.visitas || []), visitaForm] }));
   }
   
   function updateVisita(escuelaId, visitaForm) {
+    if (db) {
+      mongoUpdateVisita(escuelaId, visitaForm);
+      return;
+    }
     updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, visitas: esc.visitas.map(v => v.id === visitaForm.id ? visitaForm : v) }));
   }
   
   function deleteVisita(escuelaId, visitaId) {
+    if (db) {
+      mongoDeleteVisita(escuelaId, visitaId);
+      return;
+    }
     if (!confirm("¿Eliminar visita?")) return;
     updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, visitas: esc.visitas.filter(v => v.id !== visitaId) }));
   }
   
   // Proyectos
   function addProyecto(escuelaId, proyectoForm) {
+    if (db) {
+      mongoAddProyecto(escuelaId, proyectoForm);
+      return;
+    }
     updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, proyectos: [...(esc.proyectos || []), proyectoForm] }));
   }
   
   function updateProyecto(escuelaId, proyectoForm) {
+    if (db) {
+      mongoUpdateProyecto(escuelaId, proyectoForm);
+      return;
+    }
     updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, proyectos: esc.proyectos.map(p => p.id === proyectoForm.id ? proyectoForm : p) }));
   }
   
   function deleteProyecto(escuelaId, proyectoId) {
+    if (db) {
+      mongoDeleteProyecto(escuelaId, proyectoId);
+      return;
+    }
     if (!confirm("¿Eliminar proyecto?")) return;
     updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, proyectos: esc.proyectos.filter(p => p.id !== proyectoId) }));
   }
   
   // Informes
   function addInforme(escuelaId, informeForm) {
+    if (db) {
+      mongoAddInforme(escuelaId, informeForm);
+      return;
+    }
     updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, informes: [...(esc.informes || []), informeForm] }));
   }
   
   function updateInforme(escuelaId, informeForm) {
+    if (db) {
+      mongoUpdateInforme(escuelaId, informeForm);
+      return;
+    }
     updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, informes: esc.informes.map(i => i.id === informeForm.id ? informeForm : i) }));
   }
   
   function deleteInforme(escuelaId, informeId) {
+    if (db) {
+      mongoDeleteInforme(escuelaId, informeId);
+      return;
+    }
     if (!confirm("¿Eliminar informe?")) return;
     updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, informes: esc.informes.filter(i => i.id !== informeId) }));
   }

@@ -1,7 +1,10 @@
 const Escuela = require('../models/Escuela');
-const { v4: uuidv4 } = require('uuid');
 
-// Crear informe
+const findEscuela = async (escuelaId) => {
+  if (!escuelaId) return null;
+  return Escuela.findById(escuelaId);
+};
+
 exports.createInforme = async (req, res) => {
   try {
     const { escuelaId, titulo, estado, fechaEntrega, observaciones } = req.body;
@@ -10,28 +13,24 @@ exports.createInforme = async (req, res) => {
       return res.status(400).json({ success: false, error: 'escuelaId es requerido' });
     }
 
-    const escuela = await Escuela.findById(escuelaId);
+    const escuela = await findEscuela(escuelaId);
     if (!escuela) {
       return res.status(404).json({ success: false, error: 'Escuela no encontrada' });
     }
 
-    const newInforme = {
-      _id: uuidv4(),
+    escuela.informes.push({
       titulo: titulo || 'Sin título',
       estado: estado || 'Pendiente',
-      fechaEntrega: fechaEntrega || new Date(),
-      observaciones: observaciones || '',
-      fechaCreacion: new Date()
-    };
-
-    escuela.informes = escuela.informes || [];
-    escuela.informes.push(newInforme);
+      fechaEntrega: fechaEntrega || null,
+      observaciones: observaciones || ''
+    });
 
     await escuela.save();
+    const informe = escuela.informes[escuela.informes.length - 1];
 
     res.status(201).json({
       success: true,
-      data: { informe: newInforme }
+      data: { informe }
     });
   } catch (error) {
     console.error('Error creating informe:', error);
@@ -39,34 +38,31 @@ exports.createInforme = async (req, res) => {
   }
 };
 
-// Obtener informes de una escuela
 exports.getInformes = async (req, res) => {
   try {
     const { escuelaId } = req.query;
 
     if (escuelaId) {
-      const escuela = await Escuela.findById(escuelaId);
+      const escuela = await findEscuela(escuelaId);
       if (!escuela) {
         return res.status(404).json({ success: false, error: 'Escuela no encontrada' });
       }
+
       return res.json({
         success: true,
         data: { informes: escuela.informes || [] }
       });
     }
 
-    // Obtener todos los informes de todas las escuelas
-    const escuelas = await Escuela.find({});
-    const allInformes = [];
-    escuelas.forEach(esc => {
-      (esc.informes || []).forEach(inf => {
-        allInformes.push({
-          ...inf.toObject ? inf.toObject() : inf,
-          escuelaId: esc._id,
-          escuela: esc.escuela
-        });
-      });
-    });
+    const escuelas = await Escuela.find({}, { escuela: 1, de: 1, informes: 1 }).lean();
+    const allInformes = escuelas.flatMap(esc =>
+      (esc.informes || []).map(inf => ({
+        ...inf,
+        escuelaId: esc._id,
+        escuela: esc.escuela,
+        de: esc.de
+      }))
+    );
 
     res.json({
       success: true,
@@ -78,7 +74,6 @@ exports.getInformes = async (req, res) => {
   }
 };
 
-// Obtener informe por ID
 exports.getInformeById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -88,12 +83,12 @@ exports.getInformeById = async (req, res) => {
       return res.status(400).json({ success: false, error: 'escuelaId es requerido' });
     }
 
-    const escuela = await Escuela.findById(escuelaId);
+    const escuela = await findEscuela(escuelaId);
     if (!escuela) {
       return res.status(404).json({ success: false, error: 'Escuela no encontrada' });
     }
 
-    const informe = (escuela.informes || []).find(i => i._id === id || i.id === id);
+    const informe = escuela.informes.id(id);
     if (!informe) {
       return res.status(404).json({ success: false, error: 'Informe no encontrado' });
     }
@@ -108,7 +103,6 @@ exports.getInformeById = async (req, res) => {
   }
 };
 
-// Actualizar informe
 exports.updateInforme = async (req, res) => {
   try {
     const { id } = req.params;
@@ -118,31 +112,26 @@ exports.updateInforme = async (req, res) => {
       return res.status(400).json({ success: false, error: 'escuelaId es requerido' });
     }
 
-    const escuela = await Escuela.findById(escuelaId);
+    const escuela = await findEscuela(escuelaId);
     if (!escuela) {
       return res.status(404).json({ success: false, error: 'Escuela no encontrada' });
     }
 
-    const informeIndex = (escuela.informes || []).findIndex(i => i._id === id || i.id === id);
-    if (informeIndex === -1) {
+    const informe = escuela.informes.id(id);
+    if (!informe) {
       return res.status(404).json({ success: false, error: 'Informe no encontrado' });
     }
 
-    const updatedInforme = {
-      ...escuela.informes[informeIndex],
-      titulo: titulo !== undefined ? titulo : escuela.informes[informeIndex].titulo,
-      estado: estado !== undefined ? estado : escuela.informes[informeIndex].estado,
-      fechaEntrega: fechaEntrega !== undefined ? fechaEntrega : escuela.informes[informeIndex].fechaEntrega,
-      observaciones: observaciones !== undefined ? observaciones : escuela.informes[informeIndex].observaciones,
-      fechaActualizacion: new Date()
-    };
+    if (titulo !== undefined) informe.titulo = titulo;
+    if (estado !== undefined) informe.estado = estado;
+    if (fechaEntrega !== undefined) informe.fechaEntrega = fechaEntrega;
+    if (observaciones !== undefined) informe.observaciones = observaciones;
 
-    escuela.informes[informeIndex] = updatedInforme;
     await escuela.save();
 
     res.json({
       success: true,
-      data: { informe: updatedInforme }
+      data: { informe }
     });
   } catch (error) {
     console.error('Error updating informe:', error);
@@ -150,7 +139,6 @@ exports.updateInforme = async (req, res) => {
   }
 };
 
-// Eliminar informe
 exports.deleteInforme = async (req, res) => {
   try {
     const { id } = req.params;
@@ -160,17 +148,17 @@ exports.deleteInforme = async (req, res) => {
       return res.status(400).json({ success: false, error: 'escuelaId es requerido' });
     }
 
-    const escuela = await Escuela.findById(escuelaId);
+    const escuela = await findEscuela(escuelaId);
     if (!escuela) {
       return res.status(404).json({ success: false, error: 'Escuela no encontrada' });
     }
 
-    const informeIndex = (escuela.informes || []).findIndex(i => i._id === id || i.id === id);
-    if (informeIndex === -1) {
+    const informe = escuela.informes.id(id);
+    if (!informe) {
       return res.status(404).json({ success: false, error: 'Informe no encontrado' });
     }
 
-    escuela.informes.splice(informeIndex, 1);
+    informe.deleteOne();
     await escuela.save();
 
     res.json({
