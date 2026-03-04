@@ -64,28 +64,35 @@ export function AcdmProvider({ children, currentUser: propCurrentUser, onLogout:
         (Array.isArray(currentUser?.permisos) ? currentUser.permisos : [])
             .map((permiso) => String(permiso || "").trim().toLowerCase())
     );
+    const caps = currentUser?.capabilities || {};
+    const hasCapabilities = Object.keys(caps).length > 0;
     const hasAdminPermissions = permisosSet.has("*")
         || permisosSet.has("gestionar_usuarios")
         || permisosSet.has("gestionar_roles_permisos")
         || permisosSet.has("gestionar_seguridad")
         || permisosSet.has("ver_sesiones_admin");
-    const isAdmin = currentUser?.isPrivilegedRole === true || hasAdminPermissions;
-    const canManageOperationalSections = isAdmin
-        || role === "supervisor"
-        || permisosSet.has("*")
-        || permisosSet.has("crear_escuela")
-        || permisosSet.has("editar_escuela")
-        || permisosSet.has("eliminar_escuela")
-        || permisosSet.has("crear_docente")
-        || permisosSet.has("editar_docente")
-        || permisosSet.has("eliminar_docente")
-        || permisosSet.has("crear_alumno")
-        || permisosSet.has("editar_alumno")
-        || permisosSet.has("eliminar_alumno");
-    const canExportData = isAdmin
-        || role === "supervisor"
-        || permisosSet.has("*")
-        || permisosSet.has("exportar_datos");
+    const isAdmin = currentUser?.isPrivilegedRole === true || caps.canManageUsers === true || hasAdminPermissions;
+    const isDeveloper = caps.isDeveloper === true || role === "desarrollador" || role === "desarollador";
+    const canManageOperationalSections = hasCapabilities
+        ? caps.canManageOperationalSections === true
+        : (isAdmin
+            || role === "supervisor"
+            || permisosSet.has("*")
+            || permisosSet.has("crear_escuela")
+            || permisosSet.has("editar_escuela")
+            || permisosSet.has("eliminar_escuela")
+            || permisosSet.has("crear_docente")
+            || permisosSet.has("editar_docente")
+            || permisosSet.has("eliminar_docente")
+            || permisosSet.has("crear_alumno")
+            || permisosSet.has("editar_alumno")
+            || permisosSet.has("eliminar_alumno"));
+    const canExportData = hasCapabilities
+        ? caps.canExportData === true
+        : (isAdmin
+            || role === "supervisor"
+            || permisosSet.has("*")
+            || permisosSet.has("exportar_datos"));
 
     useEffect(() => {
         localStorage.setItem("acdm_darkMode", darkMode);
@@ -133,6 +140,7 @@ export function AcdmProvider({ children, currentUser: propCurrentUser, onLogout:
         setCurrentUser,
         handleLogout,
         isAdmin,
+        isDeveloper,
         canManageOperationalSections,
         canExportData,
 

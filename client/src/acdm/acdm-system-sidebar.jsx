@@ -7,6 +7,7 @@ export function Sidebar({
   activeSection,
   onSectionChange,
   isAdmin,
+  isDeveloper,
   showHiddenAdmin,
   alertCount,
   onNewEscuela
@@ -27,8 +28,10 @@ export function Sidebar({
       ? [
           { id: "admin-users", icon: "👤", label: "Usuarios" },
           { id: "admin-sessions", icon: "🔐", label: "Sesiones" },
-          { id: "admin-roles", icon: "🎭", label: "Roles" },
-          { id: "admin-permissions", icon: "🧩", label: "Permisos" },
+          ...(isDeveloper ? [
+            { id: "admin-roles", icon: "🎭", label: "Roles" },
+            { id: "admin-permissions", icon: "🧩", label: "Permisos" }
+          ] : []),
           { id: "admin-traffic", icon: "📡", label: "Tráfico RT" },
           { id: "admin-security", icon: "🚫", label: "Seguridad IP" }
         ]

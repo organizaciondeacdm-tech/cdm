@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { diasRestantes, formatDate } from "../utils/dateUtils.js";
+import { encryptJsonBodyIfNeeded } from "../../utils/payloadCrypto.js";
 
 // ============================================================
 // ALERT PANEL
@@ -40,16 +41,18 @@ export function AlertPanel({ escuelas }) {
         setSendingEmail(true);
         const selectedAlerts = alerts.filter(a => selectedForEmail.has(alerts.indexOf(a)));
         try {
+            const headers = { "Content-Type": "application/json" };
+            const body = JSON.stringify({
+                to: emailData.to,
+                subject: emailData.subject || "Alertas del Sistema ACDM",
+                alerts: selectedAlerts.map(a => ({ title: a.title, desc: a.desc, severity: a.type })),
+                message: emailData.message,
+                timestamp: new Date().toLocaleString('es-AR')
+            });
             const response = await fetch("/api/send-alert-email", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    to: emailData.to,
-                    subject: emailData.subject || "Alertas del Sistema ACDM",
-                    alerts: selectedAlerts.map(a => ({ title: a.title, desc: a.desc, severity: a.type })),
-                    message: emailData.message,
-                    timestamp: new Date().toLocaleString('es-AR')
-                })
+                headers,
+                body: await encryptJsonBodyIfNeeded(body, headers)
             });
             const result = await response.json();
             if (result.success) {

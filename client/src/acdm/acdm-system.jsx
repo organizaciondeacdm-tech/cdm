@@ -26,7 +26,7 @@ import { formatDate } from "./utils/dateUtils.js";
 function AcdmContent() {
   const [feedback, setFeedback] = useState(null);
   const {
-    currentUser, setCurrentUser, activeSection, setActiveSection, search, viewMode, setViewMode, isAdmin, canManageOperationalSections,
+    currentUser, setCurrentUser, activeSection, setActiveSection, search, viewMode, setViewMode, isAdmin, isDeveloper, canManageOperationalSections,
     escuelas, loading,
     saveEscuela, deleteEscuela,
     addDocente, updateDocente, deleteDocente,
@@ -377,11 +377,11 @@ function AcdmContent() {
           <AdminControlCenter section="admin-sessions" currentUser={currentUser} onNavigateSection={setActiveSection} />
         )}
 
-        {activeSection === "admin-roles" && isAdmin && (
+        {activeSection === "admin-roles" && isAdmin && isDeveloper && (
           <AdminControlCenter section="admin-roles" currentUser={currentUser} onNavigateSection={setActiveSection} />
         )}
 
-        {activeSection === "admin-permissions" && isAdmin && (
+        {activeSection === "admin-permissions" && isAdmin && isDeveloper && (
           <AdminControlCenter section="admin-permissions" currentUser={currentUser} onNavigateSection={setActiveSection} />
         )}
 
