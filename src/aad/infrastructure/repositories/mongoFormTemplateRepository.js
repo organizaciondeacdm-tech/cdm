@@ -27,6 +27,14 @@ class MongoFormTemplateRepository {
     return FormTemplate.findByIdAndUpdate(id, { isLatest: false }, { new: true }).lean();
   }
 
+  async getMaxVersion(templateKey) {
+    const result = await FormTemplate.findOne({ templateKey })
+      .sort({ version: -1 })
+      .select('version')
+      .lean();
+    return result ? Number(result.version) : 0;
+  }
+
   async delete(id) {
     return FormTemplate.findByIdAndDelete(id).lean();
   }
