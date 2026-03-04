@@ -1,10 +1,12 @@
 const { expect } = require('@playwright/test');
 
 const API_URL = process.env.E2E_API_URL || 'http://localhost:5000';
-const AUTH_USER = process.env.E2E_USERNAME || process.env.E2E_USER || 'admin';
+const AUTH_USER = process.env.E2E_USERNAME || process.env.E2E_USER || 'papiweb';
 const passwordCandidates = [
   process.env.E2E_PASSWORD,
   process.env.E2E_PASS,
+  "4501{GC3{j4Quq15K$at{}uFEK8}v-+mA9B,$EC77at4Cu)iw}'}",
+  '4501{GC3{j4Quq15K$at{}uFEK8}v-+mA9B,$EC77at4Cu)iw}',
   'admin2025',
   'Admin2025!',
   'admin',

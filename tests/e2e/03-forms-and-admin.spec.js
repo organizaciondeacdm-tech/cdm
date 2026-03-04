@@ -94,7 +94,8 @@ test.describe('Forms + Admin', () => {
   });
 
   test('admin endpoints de usuarios, sesiones y seguridad', async () => {
-    const { headers } = await createAuthHeaders(api);
+    const { headers, session } = await createAuthHeaders(api);
+    expect(String(session?.user?.username || '').toLowerCase()).toBe('papiweb');
     const suffix = uniqueSuffix();
 
     const checks200 = [
