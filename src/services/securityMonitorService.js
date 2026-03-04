@@ -13,6 +13,16 @@ const DEFAULT_RULES = {
   historyRetentionDays: 30
 };
 
+// IPs that are never subject to rate-limiting or bans (loopback / dev)
+const WHITELISTED_IPS = new Set([
+  '127.0.0.1',
+  '::1',
+  '::ffff:127.0.0.1',
+  'localhost'
+]);
+
+const isWhitelisted = (ip) => WHITELISTED_IPS.has(ip);
+
 const getIp = (req) => String(
   req.headers['x-forwarded-for']?.split(',')[0] ||
   req.headers['x-real-ip'] ||
@@ -106,6 +116,10 @@ const middleware = () => async (req, res, next) => {
   if (!req.path.startsWith('/api')) return next();
 
   const ip = getIp(req);
+
+  // Never block loopback / whitelisted IPs (local dev, health checks, CI)
+  if (isWhitelisted(ip)) return next();
+
   const startAt = Date.now();
 
   try {
