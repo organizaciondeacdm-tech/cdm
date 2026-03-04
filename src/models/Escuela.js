@@ -1,5 +1,34 @@
 const mongoose = require('mongoose');
 
+const visitaSchema = new mongoose.Schema({
+  fecha: { type: Date, default: Date.now },
+  visitante: { type: String, trim: true, default: '' },
+  observaciones: { type: String, trim: true, default: '' }
+}, { _id: true, timestamps: true });
+
+const proyectoSchema = new mongoose.Schema({
+  nombre: { type: String, trim: true, required: true },
+  descripcion: { type: String, trim: true, default: '' },
+  estado: {
+    type: String,
+    enum: ['Completado', 'En Progreso', 'Pendiente', 'Pausado', 'Cancelado'],
+    default: 'En Progreso'
+  },
+  fechaInicio: { type: Date, default: Date.now },
+  fechaBaja: { type: Date }
+}, { _id: true, timestamps: true });
+
+const informeSchema = new mongoose.Schema({
+  titulo: { type: String, trim: true, required: true },
+  estado: {
+    type: String,
+    enum: ['Pendiente', 'En Progreso', 'En Revisión', 'Entregado', 'Aprobado', 'Rechazado'],
+    default: 'Pendiente'
+  },
+  fechaEntrega: { type: Date },
+  observaciones: { type: String, trim: true, default: '' }
+}, { _id: true, timestamps: true });
+
 const escuelaSchema = new mongoose.Schema({
   de: {
     type: String,
@@ -48,7 +77,7 @@ const escuelaSchema = new mongoose.Schema({
     },
     coordinates: {
       type: [Number], // [longitud, latitud]
-      required: true,
+      default: [-58.3816, -34.6037],
       index: '2dsphere'
     }
   },
@@ -115,6 +144,18 @@ const escuelaSchema = new mongoose.Schema({
   observaciones: {
     type: String,
     maxlength: 1000
+  },
+  visitas: {
+    type: [visitaSchema],
+    default: []
+  },
+  proyectos: {
+    type: [proyectoSchema],
+    default: []
+  },
+  informes: {
+    type: [informeSchema],
+    default: []
   },
   estado: {
     type: String,

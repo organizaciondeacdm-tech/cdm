@@ -13,6 +13,7 @@ const connectDB = require('./config/database');
 const errorHandler = require('./middleware/errorHandler');
 const { registrarAccion } = require('./services/auditoriaService');
 const JwtKeyManager = require('./utils/jwtKeyManager');
+const { getRuntimeEnvState } = require('./config/runtimeEnv');
 
 // Importar rutas
 const authRoutes = require('./routes/authRoutes');
@@ -238,6 +239,7 @@ app.get('/health', async (req, res) => {
       models: Object.keys(mongoose.connection.models).length
     },
     environment: process.env.VERCEL ? 'vercel' : process.env.NODE_ENV,
+    runtimeEnv: getRuntimeEnvState(),
     node: {
       version: process.version,
       platform: process.platform,

@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const winston = require('winston');
 const fs = require('fs');
 const path = require('path');
+const { loadRuntimeEnvFromMongo } = require('./runtimeEnv');
 
 // Crear directorio de logs si no existe (solo en desarrollo)
 const logsDir = path.join(__dirname, '../../logs');
@@ -75,6 +76,13 @@ const connectDB = async () => {
 
     logger.info(`MongoDB Connected: ${conn.connection.host}`);
     isConnected = true;
+
+    // Cargar configuración de entorno desde MongoDB (tiene prioridad sobre .env)
+    try {
+      await loadRuntimeEnvFromMongo({ override: true, logger });
+    } catch (runtimeEnvError) {
+      logger.warn(`Runtime env from MongoDB not loaded: ${runtimeEnvError.message}`);
+    }
     
     // Eventos de conexión
     mongoose.connection.on('error', (err) => {

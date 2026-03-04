@@ -1,0 +1,50 @@
+const ALLOWED_EXACT_KEYS = new Set([
+  'MONGODB_URI',
+  'MONGO_URI',
+  'NODE_ENV',
+  'PORT',
+  'CORS_ORIGIN',
+  'ENCRYPTION_KEY',
+  'BCRYPT_ROUNDS',
+  'JWT_SECRET',
+  'JWT_REFRESH_SECRET',
+  'JWT_EXPIRE',
+  'JWT_REFRESH_EXPIRE',
+  'JWT_EXPIRE_MINUTES',
+  'JWT_REFRESH_EXPIRE_DAYS',
+  'MAX_LOGIN_ATTEMPTS',
+  'LOGIN_LOCK_BASE_MINUTES',
+  'LOGIN_LOCK_MAX_MINUTES',
+  'LOGIN_RESPONSE_DELAY_MS',
+  'LOGIN_RATE_LIMIT_WINDOW_MINUTES',
+  'LOGIN_RATE_LIMIT_MAX',
+  'RATE_LIMIT_WINDOW',
+  'RATE_LIMIT_MAX',
+  'EMAIL_HOST',
+  'EMAIL_PORT',
+  'EMAIL_USER',
+  'EMAIL_PASS',
+  'EMAIL_PASSWORD',
+  'EMAIL_FROM',
+  'BACKUP_SCHEDULE',
+  'BACKUP_RETENTION_DAYS',
+  'BACKUP_PATH',
+  'VERCEL',
+  'VITE_API_URL'
+]);
+
+const ALLOWED_PREFIXES = [
+  'VITE_'
+];
+
+function isAllowedRuntimeEnvKey(key) {
+  if (!key || typeof key !== 'string') return false;
+  if (ALLOWED_EXACT_KEYS.has(key)) return true;
+  return ALLOWED_PREFIXES.some((prefix) => key.startsWith(prefix));
+}
+
+module.exports = {
+  ALLOWED_EXACT_KEYS,
+  ALLOWED_PREFIXES,
+  isAllowedRuntimeEnvKey
+};
