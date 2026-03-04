@@ -33,6 +33,7 @@ const PROD_ENV = {
   // Encriptación
   ENCRYPTION_KEY: 'LcV41GX3m&E80(U}eg0?@23d`3<5M*U/0Fv&I19F7?V{^q',
   BCRYPT_ROUNDS: '10',
+  VITE_AUTH_STORAGE_SECRET: 'change-this-runtime-storage-secret',
 
   // CORS — incluye el dominio de Vercel
   CORS_ORIGIN: [

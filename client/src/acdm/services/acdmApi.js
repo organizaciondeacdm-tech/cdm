@@ -2,18 +2,18 @@
  * API Service para ACDM
  * Maneja todas las llamadas HTTP al backend
  */
+import { clearAuthSession, setAuthSession } from '../../utils/authSession.js';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 class AcdmApiService {
   constructor(baseUrl = API_BASE_URL) {
     this.baseUrl = baseUrl;
-    this.token = localStorage.getItem('auth_token');
+    this.token = null;
   }
 
   setToken(token) {
     this.token = token;
-    localStorage.setItem('auth_token', token);
   }
 
   getHeaders() {
@@ -225,6 +225,16 @@ class AcdmApiService {
       // Guardar token si viene en la respuesta
       if (data.data?.tokens?.access) {
         this.setToken(data.data.tokens.access);
+        if (data.data?.tokens?.refresh && data.data?.user) {
+          await setAuthSession({
+            user: data.data.user,
+            tokens: {
+              access: data.data.tokens.access,
+              refresh: data.data.tokens.refresh
+            },
+            updatedAt: Date.now()
+          });
+        }
       } else if (data.accessToken) {
         this.setToken(data.accessToken);
       }
@@ -243,7 +253,7 @@ class AcdmApiService {
 
   async logout() {
     this.token = null;
-    localStorage.removeItem('auth_token');
+    await clearAuthSession();
   }
 }
 

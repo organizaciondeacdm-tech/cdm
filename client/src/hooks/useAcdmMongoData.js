@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getApiUrl } from '../utils/apiConfig.js';
+import { authFetch, getAuthSession } from '../utils/authSession.js';
 
 const toDateInput = (value) => {
   if (!value) return null;
@@ -137,19 +137,10 @@ export function useAcdmMongoData(currentUser) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const token = localStorage.getItem('authToken');
-
   const request = useCallback(async (path, options = {}) => {
-    if (!token) throw new Error('No hay token de autenticación');
-
-    const response = await fetch(`${getApiUrl()}${path}`, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        ...(options.headers || {})
-      }
-    });
+    const session = await getAuthSession();
+    if (!session?.tokens?.refresh) throw new Error('No hay sesión autenticada');
+    const response = await authFetch(path, options);
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -158,10 +149,10 @@ export function useAcdmMongoData(currentUser) {
     }
 
     return payload;
-  }, [token]);
+  }, []);
 
   const loadAllData = useCallback(async () => {
-    if (!currentUser || !token) {
+    if (!currentUser) {
       setLoading(false);
       return;
     }
@@ -189,7 +180,7 @@ export function useAcdmMongoData(currentUser) {
     } finally {
       setLoading(false);
     }
-  }, [currentUser, request, token]);
+  }, [currentUser, request]);
 
   useEffect(() => {
     loadAllData();

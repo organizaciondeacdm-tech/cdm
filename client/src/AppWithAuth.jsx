@@ -1,39 +1,45 @@
 import { useState, useEffect } from 'react';
 import App from './acdm/acdm-system.jsx';
 import { useMongoData } from './hooks/useMongoData.js';
+import { restoreUserFromSession } from './utils/authSession.js';
 
 /**
  * Wrapper que proporciona autenticación MongoDB a acdm-system.jsx
  */
 export default function AppWithAuth() {
-  const { login: mongoLogin, logout: mongoLogout, token } = useMongoData();
+  const { login: mongoLogin, logout: mongoLogout } = useMongoData();
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState('');
+  const [isRestoringSession, setIsRestoringSession] = useState(true);
 
-  // Intentar restaurar sesión desde localStorage
   useEffect(() => {
-    const savedToken = localStorage.getItem('authToken');
-    const savedUser = localStorage.getItem('currentUser');
-    
-    if (savedToken && savedUser) {
+    let mounted = true;
+
+    (async () => {
       try {
-        setCurrentUser(JSON.parse(savedUser));
-      } catch (err) {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('currentUser');
+        const user = await restoreUserFromSession();
+        if (mounted) {
+          setCurrentUser(user || null);
+        }
+      } finally {
+        if (mounted) {
+          setIsRestoringSession(false);
+        }
       }
-    }
+    })();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  // Manejar login
   const handleLogin = async (username, password) => {
     setIsLoggingIn(true);
     setLoginError('');
     try {
       const user = await mongoLogin(username, password);
       setCurrentUser(user);
-      localStorage.setItem('currentUser', JSON.stringify(user));
     } catch (err) {
       setLoginError(err.message);
       throw err;
@@ -42,19 +48,31 @@ export default function AppWithAuth() {
     }
   };
 
-  // Manejar logout
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setCurrentUser(null);
-    localStorage.removeItem('currentUser');
-    mongoLogout();
+    await mongoLogout();
   };
 
-  // Si el usuario está loguado, mostrar la app normal
+  if (isRestoringSession) {
+    return (
+      <div style={{
+        background: '#0a0e1a',
+        color: '#e8f4f8',
+        fontFamily: "'Exo 2', sans-serif",
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        Restaurando sesión...
+      </div>
+    );
+  }
+
   if (currentUser) {
     return <App currentUser={currentUser} onLogout={handleLogout} />;
   }
 
-  // Si no, mostrar el login
   return (
     <div style={{
       background: '#0a0e1a',
@@ -176,7 +194,7 @@ export default function AppWithAuth() {
           text-transform: uppercase;
         }
       `}</style>
-      
+
       <div className="login-box">
         <div className="papiweb-logo">
           <div className="papiweb-text">PAPIWEB</div>
@@ -184,7 +202,7 @@ export default function AppWithAuth() {
         </div>
         <h1 className="login-title">Sistema ACDM</h1>
         <h2 className="login-sub">Gestión de Asistentes Celadores/as</h2>
-        
+
         <form onSubmit={(e) => {
           e.preventDefault();
           const formData = new FormData(e.target);
@@ -196,7 +214,7 @@ export default function AppWithAuth() {
               {loginError}
             </div>
           )}
-          
+
           <div className="form-group">
             <label className="form-label">Usuario</label>
             <input
@@ -208,7 +226,7 @@ export default function AppWithAuth() {
               disabled={isLoggingIn}
             />
           </div>
-          
+
           <div className="form-group">
             <label className="form-label">Contraseña</label>
             <input
@@ -219,8 +237,8 @@ export default function AppWithAuth() {
               disabled={isLoggingIn}
             />
           </div>
-          
-          <button 
+
+          <button
             className="btn-primary"
             type="submit"
             disabled={isLoggingIn}
@@ -228,7 +246,7 @@ export default function AppWithAuth() {
             {isLoggingIn ? 'Ingresando...' : 'Ingresar →'}
           </button>
         </form>
-        
+
         <div style={{ fontSize: 11, color: '#4a6fa5', textAlign: 'center', marginTop: 16 }}>
           Demo: <span style={{ background: '#0f1626', padding: '1px 6px', borderRadius: 4 }}>admin</span> / <span style={{ background: '#0f1626', padding: '1px 6px', borderRadius: 4 }}>admin2025</span>
         </div>

@@ -1,34 +1,52 @@
 import { useState, useEffect, useCallback } from 'react';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+import { authFetch, getAuthSession, loginWithSession, logoutSession } from '../utils/authSession.js';
 
 /**
- * Hook personalizado para manejar datos de MongoDB a través del API
- * Reemplaza la lógica de localStorage con llamadas al backend
+ * Hook personalizado para manejar datos de MongoDB a través del API.
+ * Usa sesión encriptada y refresh automático.
  */
 export function useMongoData() {
   const [escuelas, setEscuelas] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('authToken'));
+  const [token, setToken] = useState(null);
 
-  // Headers para autenticación
-  const getHeaders = useCallback(() => ({
-    'Content-Type': 'application/json',
-    ...(token && { 'Authorization': `Bearer ${token}` })
-  }), [token]);
+  useEffect(() => {
+    let mounted = true;
 
-  // Cargar escuelas
+    (async () => {
+      const session = await getAuthSession();
+      if (!mounted) return;
+      setToken(session?.tokens?.access || null);
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const request = useCallback(async (path, options = {}) => {
+    const response = await authFetch(path, options);
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const message = payload.error || (payload.errors && payload.errors.length > 0
+        ? payload.errors.map((e) => e.msg || e.message).join(', ')
+        : `Error HTTP ${response.status}`);
+      throw new Error(message);
+    }
+
+    const session = await getAuthSession();
+    setToken(session?.tokens?.access || null);
+
+    return payload;
+  }, []);
+
   const loadEscuelas = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/api/escuelas`, {
-        headers: getHeaders()
-      });
-      if (!response.ok) throw new Error('Error al cargar escuelas');
-      const data = await response.json();
-      // El endpoint retorna data.escuelas dentro de data
+      const data = await request('/api/escuelas');
       setEscuelas(data.data?.escuelas || []);
     } catch (err) {
       setError(err.message);
@@ -36,200 +54,130 @@ export function useMongoData() {
     } finally {
       setLoading(false);
     }
-  }, [getHeaders]);
+  }, [request]);
 
-  // Crear/Actualizar escuela
   const saveEscuela = useCallback(async (escuela) => {
     try {
       const method = escuela._id ? 'PUT' : 'POST';
-      const url = escuela._id 
-        ? `${API_URL}/api/escuelas/${escuela._id}`
-        : `${API_URL}/api/escuelas`;
-
-      const response = await fetch(url, {
+      const url = escuela._id ? `/api/escuelas/${escuela._id}` : '/api/escuelas';
+      const data = await request(url, {
         method,
-        headers: getHeaders(),
         body: JSON.stringify(escuela)
       });
 
-      if (!response.ok) throw new Error('Error al guardar escuela');
-      const data = await response.json();
-      
-      // Actualizar estado local
       if (method === 'POST') {
-        setEscuelas([...escuelas, data.data]);
+        setEscuelas((prev) => [...prev, data.data]);
       } else {
-        setEscuelas(escuelas.map(e => e._id === data.data._id ? data.data : e));
+        setEscuelas((prev) => prev.map((e) => (e._id === data.data._id ? data.data : e)));
       }
+
       return data.data;
     } catch (err) {
       setError(err.message);
       throw err;
     }
-  }, [escuelas, getHeaders]);
+  }, [request]);
 
-  // Eliminar escuela
   const deleteEscuela = useCallback(async (id) => {
     try {
-      const response = await fetch(`${API_URL}/api/escuelas/${id}`, {
-        method: 'DELETE',
-        headers: getHeaders()
-      });
-
-      if (!response.ok) throw new Error('Error al eliminar escuela');
-      setEscuelas(escuelas.filter(e => e._id !== id));
+      await request(`/api/escuelas/${id}`, { method: 'DELETE' });
+      setEscuelas((prev) => prev.filter((e) => e._id !== id));
     } catch (err) {
       setError(err.message);
       throw err;
     }
-  }, [escuelas, getHeaders]);
+  }, [request]);
 
-  // Cargar alumnos de una escuela
   const loadAlumnos = useCallback(async (escuelaId) => {
     try {
-      const response = await fetch(`${API_URL}/api/alumnos?escuela=${escuelaId}`, {
-        headers: getHeaders()
-      });
-      if (!response.ok) throw new Error('Error al cargar alumnos');
-      const data = await response.json();
+      const data = await request(`/api/alumnos?escuela=${escuelaId}`);
       return data.data?.alumnos || [];
     } catch (err) {
       console.error('Error cargando alumnos:', err);
       return [];
     }
-  }, [getHeaders]);
+  }, [request]);
 
-  // Crear/Actualizar alumno
   const saveAlumno = useCallback(async (alumno) => {
     try {
       const method = alumno._id ? 'PUT' : 'POST';
-      const url = alumno._id 
-        ? `${API_URL}/api/alumnos/${alumno._id}`
-        : `${API_URL}/api/alumnos`;
-
-      const response = await fetch(url, {
+      const url = alumno._id ? `/api/alumnos/${alumno._id}` : '/api/alumnos';
+      const data = await request(url, {
         method,
-        headers: getHeaders(),
         body: JSON.stringify(alumno)
       });
-
-      if (!response.ok) throw new Error('Error al guardar alumno');
-      const data = await response.json();
       return data.data;
     } catch (err) {
       setError(err.message);
       throw err;
     }
-  }, [getHeaders]);
+  }, [request]);
 
-  // Eliminar alumno
   const deleteAlumno = useCallback(async (id) => {
     try {
-      const response = await fetch(`${API_URL}/api/alumnos/${id}`, {
-        method: 'DELETE',
-        headers: getHeaders()
-      });
-
-      if (!response.ok) throw new Error('Error al eliminar alumno');
+      await request(`/api/alumnos/${id}`, { method: 'DELETE' });
     } catch (err) {
       setError(err.message);
       throw err;
     }
-  }, [getHeaders]);
+  }, [request]);
 
-  // Cargar docentes de una escuela
   const loadDocentes = useCallback(async (escuelaId) => {
     try {
-      const response = await fetch(`${API_URL}/api/docentes?escuela=${escuelaId}`, {
-        headers: getHeaders()
-      });
-      if (!response.ok) throw new Error('Error al cargar docentes');
-      const data = await response.json();
+      const data = await request(`/api/docentes?escuela=${escuelaId}`);
       return data.data?.docentes || [];
     } catch (err) {
       console.error('Error cargando docentes:', err);
       return [];
     }
-  }, [getHeaders]);
+  }, [request]);
 
-  // Crear/Actualizar docente
   const saveDocente = useCallback(async (docente) => {
     try {
       const method = docente._id ? 'PUT' : 'POST';
-      const url = docente._id 
-        ? `${API_URL}/api/docentes/${docente._id}`
-        : `${API_URL}/api/docentes`;
-
-      const response = await fetch(url, {
+      const url = docente._id ? `/api/docentes/${docente._id}` : '/api/docentes';
+      const data = await request(url, {
         method,
-        headers: getHeaders(),
         body: JSON.stringify(docente)
       });
-
-      if (!response.ok) throw new Error('Error al guardar docente');
-      const data = await response.json();
       return data.data;
     } catch (err) {
       setError(err.message);
       throw err;
     }
-  }, [getHeaders]);
+  }, [request]);
 
-  // Eliminar docente
   const deleteDocente = useCallback(async (id) => {
     try {
-      const response = await fetch(`${API_URL}/api/docentes/${id}`, {
-        method: 'DELETE',
-        headers: getHeaders()
-      });
-
-      if (!response.ok) throw new Error('Error al eliminar docente');
+      await request(`/api/docentes/${id}`, { method: 'DELETE' });
     } catch (err) {
       setError(err.message);
       throw err;
     }
-  }, [getHeaders]);
+  }, [request]);
 
-  // Login
   const login = useCallback(async (username, password) => {
     try {
-      const response = await fetch(`${API_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
-
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || 'Credenciales inválidas');
-      }
-      const data = await response.json();
-      
-      // Guardar token (backend retorna en data.tokens.access)
-      const token = data.data?.tokens?.access;
-      if (!token) throw new Error('No se recibió token');
-      
-      localStorage.setItem('authToken', token);
-      setToken(token);
-      
-      return data.data.user;
+      const session = await loginWithSession(username, password);
+      setToken(session.tokens.access);
+      return session.user;
     } catch (err) {
       setError(err.message);
       throw err;
     }
   }, []);
 
-  // Logout
-  const logout = useCallback(() => {
-    localStorage.removeItem('authToken');
+  const logout = useCallback(async () => {
+    await logoutSession();
     setToken(null);
     setEscuelas([]);
   }, []);
 
-  // Cargar datos iniciales
   useEffect(() => {
     if (token) {
       loadEscuelas();
+    } else {
+      setLoading(false);
     }
   }, [token, loadEscuelas]);
 
@@ -239,19 +187,15 @@ export function useMongoData() {
     loading,
     error,
     token,
-    // Escuelas
     loadEscuelas,
     saveEscuela,
     deleteEscuela,
-    // Alumnos
     loadAlumnos,
     saveAlumno,
     deleteAlumno,
-    // Docentes
     loadDocentes,
     saveDocente,
     deleteDocente,
-    // Auth
     login,
     logout
   };

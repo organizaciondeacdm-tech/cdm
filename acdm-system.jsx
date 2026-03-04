@@ -1,102 +1,118 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
 // ============================================================
-// CRYPTO UTILS - Simple XOR + Base64 encryption for JSON DB
+// API LAYER — MongoDB backend
 // ============================================================
-const SECRET_KEY = "PAPIWEB_ACDM_2025_KEY";
-function xorEncrypt(text, key) {
-  let result = "";
-  for (let i = 0; i < text.length; i++) {
-    result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+const API_BASE = import.meta.env.VITE_API_URL || "";
+
+let _token = null;
+export function setAuthToken(t) { _token = t; }
+export function getAuthToken() { return _token; }
+
+async function apiFetch(path, options = {}) {
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  if (_token) headers["Authorization"] = `Bearer ${_token}`;
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message || res.statusText);
   }
-  return btoa(result);
-}
-function xorDecrypt(encoded, key) {
-  try {
-    const text = atob(encoded);
-    let result = "";
-    for (let i = 0; i < text.length; i++) {
-      result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
-    }
-    return result;
-  } catch { return null; }
-}
-function saveDB(data) {
-  const json = JSON.stringify(data);
-  localStorage.setItem("acdm_db", xorEncrypt(json, SECRET_KEY));
-}
-function loadDB() {
-  const enc = localStorage.getItem("acdm_db");
-  if (!enc) return null;
-  const dec = xorDecrypt(enc, SECRET_KEY);
-  if (!dec) return null;
-  try { return JSON.parse(dec); } catch { return null; }
+  return res.json();
 }
 
-// ============================================================
-// INITIAL DATA
-// ============================================================
-const INITIAL_DB = {
-  escuelas: [
-    {
-      id: "e1", de: "DE 01", escuela: "Escuela N°1 Julio Argentino Roca",
-      nivel: "Primario", direccion: "Av. Corrientes 1234, CABA",
-      lat: -34.6037, lng: -58.3816,
-      telefonos: ["011-4321-1234"], mail: "escuela1@bue.edu.ar",
-      jornada: "Completa", turno: "Mañana",
-      alumnos: [
-        { id: "a1", gradoSalaAnio: "3° Grado", nombre: "Martínez, Lucía", diagnostico: "TEA Nivel 1", observaciones: "Requiere acompañante en recreos" },
-        { id: "a2", gradoSalaAnio: "3° Grado", nombre: "García, Tomás", diagnostico: "TDAH", observaciones: "Medicación en horario escolar" },
-      ],
-      docentes: [
-        {
-          id: "d1", cargo: "Titular", nombreApellido: "López, María Elena",
-          estado: "Licencia", motivo: "Art. 102 - Enfermedad",
-          diasAutorizados: 30, fechaInicioLicencia: "2025-01-15", fechaFinLicencia: "2025-02-14",
-          suplentes: [
-            { id: "s1", cargo: "Suplente", nombreApellido: "Fernández, Ana Clara", estado: "Activo", motivo: "-", fechaIngreso: "2025-01-15" }
-          ]
-        },
-        {
-          id: "d2", cargo: "Titular", nombreApellido: "Rodríguez, Carlos",
-          estado: "Activo", motivo: "-", diasAutorizados: 0,
-          fechaInicioLicencia: null, fechaFinLicencia: null, suplentes: []
-        }
-      ]
-    },
-    {
-      id: "e2", de: "DE 02", escuela: "Jardín de Infantes N°5 María Montessori",
-      nivel: "Inicial", direccion: "Av. Santa Fe 567, CABA",
-      lat: -34.5958, lng: -58.3975,
-      telefonos: ["011-4765-5678", "011-4765-5679"], mail: "jardin5@bue.edu.ar",
-      jornada: "Simple", turno: "Tarde",
-      alumnos: [
-        { id: "a3", gradoSalaAnio: "Sala Roja", nombre: "Pérez, Santiago", diagnostico: "Síndrome de Down", observaciones: "Integración escolar plena" }
-      ],
-      docentes: [
-        {
-          id: "d3", cargo: "Titular", nombreApellido: "Gómez, Patricia",
-          estado: "Activo", motivo: "-", diasAutorizados: 0,
-          fechaInicioLicencia: null, fechaFinLicencia: null, suplentes: []
-        }
-      ]
-    },
-    {
-      id: "e3", de: "DE 03", escuela: "Escuela Secundaria N°12 Domingo F. Sarmiento",
-      nivel: "Secundario", direccion: "Calle Rivadavia 890, CABA",
-      lat: -34.6158, lng: -58.4053,
-      telefonos: ["011-4987-9012"], mail: "secundaria12@bue.edu.ar",
-      jornada: "Completa", turno: "Mañana",
-      alumnos: [],
-      docentes: []
-    }
-  ],
-  usuarios: [
-    { id: "u1", username: "admin", passwordHash: btoa("admin2025"), rol: "admin" },
-    { id: "u2", username: "viewer", passwordHash: btoa("viewer123"), rol: "viewer" }
-  ],
-  alertasLeidas: []
+const api = {
+  login: (username, password) =>
+    apiFetch("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
+
+  getEscuelas: (params = {}) => {
+    const q = new URLSearchParams({ limit: 200, ...params }).toString();
+    return apiFetch(`/api/escuelas?${q}`);
+  },
+  createEscuela: (data) =>
+    apiFetch("/api/escuelas", { method: "POST", body: JSON.stringify(data) }),
+  updateEscuela: (id, data) =>
+    apiFetch(`/api/escuelas/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteEscuela: (id) =>
+    apiFetch(`/api/escuelas/${id}`, { method: "DELETE" }),
+
+  getDocentes: (params = {}) => {
+    const q = new URLSearchParams({ limit: 500, ...params }).toString();
+    return apiFetch(`/api/docentes?${q}`);
+  },
+  createDocente: (data) =>
+    apiFetch("/api/docentes", { method: "POST", body: JSON.stringify(data) }),
+  updateDocente: (id, data) =>
+    apiFetch(`/api/docentes/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteDocente: (id) =>
+    apiFetch(`/api/docentes/${id}`, { method: "DELETE" }),
+
+  getAlumnos: (params = {}) => {
+    const q = new URLSearchParams({ limit: 500, ...params }).toString();
+    return apiFetch(`/api/alumnos?${q}`);
+  },
+  createAlumno: (data) =>
+    apiFetch("/api/alumnos", { method: "POST", body: JSON.stringify(data) }),
+  updateAlumno: (id, data) =>
+    apiFetch(`/api/alumnos/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteAlumno: (id) =>
+    apiFetch(`/api/alumnos/${id}`, { method: "DELETE" }),
 };
+
+// Normaliza documentos de MongoDB al formato esperado por el componente
+function normalizeEscuela(e) {
+  const coords = e.ubicacion?.coordinates;
+  return {
+    ...e,
+    id: e._id || e.id,
+    mail: e.email || e.mail || "",
+    telefonos: (e.telefonos || []).map(t => (typeof t === "object" ? t.numero : t)),
+    lat: coords ? coords[1] : (e.lat ?? null),
+    lng: coords ? coords[0] : (e.lng ?? null),
+    docentes: [],
+    alumnos: [],
+  };
+}
+function normalizeDocente(d) {
+  return {
+    ...d,
+    id: d._id || d.id,
+    escuelaId: d.escuela?._id || d.escuela || d.escuelaId,
+    nombreApellido: d.nombreApellido || d.nombre || "",
+    cargo: d.cargo || "Titular",
+    estado: d.estado || "Activo",
+    motivo: d.motivo || "-",
+    diasAutorizados: d.diasAutorizados || 0,
+    fechaInicioLicencia: d.fechaInicioLicencia ? d.fechaInicioLicencia.slice(0, 10) : null,
+    fechaFinLicencia: d.fechaFinLicencia ? d.fechaFinLicencia.slice(0, 10) : null,
+    suplentes: (d.suplentes || []).map(s => ({ ...s, id: s._id || s.id })),
+  };
+}
+function normalizeAlumno(a) {
+  return {
+    ...a,
+    id: a._id || a.id,
+    escuelaId: a.escuela?._id || a.escuela || a.escuelaId,
+    nombre: a.nombreApellido || a.nombre || "",
+    gradoSalaAnio: a.gradoSalaAnio || a.grado || "",
+    diagnostico: a.diagnostico || "",
+    observaciones: a.observaciones || "",
+  };
+}
+
+// Ensambla escuelas con sus docentes y alumnos
+function buildDB(escuelas, docentes, alumnos) {
+  const escMap = {};
+  const normalized = escuelas.map(e => { const n = normalizeEscuela(e); escMap[n.id] = n; return n; });
+  docentes.forEach(d => {
+    const nd = normalizeDocente(d);
+    if (nd.escuelaId && escMap[nd.escuelaId]) escMap[nd.escuelaId].docentes.push(nd);
+  });
+  alumnos.forEach(a => {
+    const na = normalizeAlumno(a);
+    if (na.escuelaId && escMap[na.escuelaId]) escMap[na.escuelaId].alumnos.push(na);
+  });
+  return { escuelas: normalized };
+}
 
 // ============================================================
 // DATE UTILS
@@ -1381,12 +1397,21 @@ function Login({ onLogin }) {
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
   
-  function doLogin() {
-    const db = loadDB() || INITIAL_DB;
-    const found = db.usuarios.find(u => u.username === user && u.passwordHash === btoa(pass));
-    if (found) { onLogin(found); setErr(""); }
-    else setErr("Credenciales incorrectas");
+  async function doLogin() {
+    if (!user || !pass) { setErr("Ingresá usuario y contraseña"); return; }
+    setLoading(true); setErr("");
+    try {
+      const res = await api.login(user.trim(), pass);
+      const token = res.token || res.accessToken;
+      setAuthToken(token);
+      onLogin({ username: res.user?.username || user, rol: res.user?.rol || "viewer", token });
+    } catch (e) {
+      setErr(e.message || "Credenciales incorrectas");
+    } finally {
+      setLoading(false);
+    }
   }
   
   return (
@@ -1411,10 +1436,10 @@ function Login({ onLogin }) {
           <input type="password" className="form-input" value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin()} placeholder="••••••••" />
         </div>
         {err && <div className="alert alert-danger" style={{marginBottom:12}}><span>⚠️</span>{err}</div>}
-        <button className="btn btn-primary" style={{width:'100%', justifyContent:'center', marginTop:8}} onClick={doLogin}>Ingresar →</button>
+        <button className="btn btn-primary" style={{width:'100%', justifyContent:'center', marginTop:8}} onClick={doLogin} disabled={loading}>{loading ? "Ingresando..." : "Ingresar →"}</button>
         <div className="hint-text">
-          Demo: <span className="hint-key">admin</span> / <span className="hint-key">admin2025</span>
-          <br/>Acceso rápido: <span className="hint-key">Ctrl+Alt+A</span>
+          Admin: <span className="hint-key">admin</span> / <span className="hint-key">admin2025</span><br/>
+          Atajos: <span className="hint-key">Ctrl+F</span> buscar · <span className="hint-key">Ctrl+E</span> exportar
         </div>
       </div>
     </div>
@@ -1426,7 +1451,9 @@ function Login({ onLogin }) {
 // ============================================================
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
-  const [db, setDB] = useState(() => loadDB() || INITIAL_DB);
+  const [db, setDB] = useState({ escuelas: [] });
+  const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState(null);
   const [activeSection, setActiveSection] = useState("dashboard");
   const [viewMode, setViewMode] = useState("full"); // full | compact | table
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -1437,90 +1464,102 @@ export default function App() {
   const [escuelaModal, setEscuelaModal] = useState(null);
   const [docenteModal, setDocenteModal] = useState(null);
   const [alumnoModal, setAlumnoModal] = useState(null);
-  const [addDocenteTarget, setAddDocenteTarget] = useState(null); // {escuelaId, titularId?}
-  const [addAlumnoTarget, setAddAlumnoTarget] = useState(null); // escuelaId
+  const [addDocenteTarget, setAddDocenteTarget] = useState(null);
+  const [addAlumnoTarget, setAddAlumnoTarget] = useState(null);
   
   const isAdmin = currentUser?.rol === "admin";
+
+  // Cargar datos desde MongoDB al autenticarse
+  async function fetchAll() {
+    setLoading(true); setApiError(null);
+    try {
+      const [escRes, docRes, aluRes] = await Promise.all([
+        api.getEscuelas(),
+        api.getDocentes(),
+        api.getAlumnos(),
+      ]);
+      const escuelas = (escRes.data || escRes.escuelas || escRes || []);
+      const docentes = (docRes.data || docRes.docentes || docRes || []);
+      const alumnos  = (aluRes.data || aluRes.alumnos  || aluRes || []);
+      setDB(buildDB(escuelas, docentes, alumnos));
+    } catch (e) {
+      setApiError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { if (currentUser) fetchAll(); }, [currentUser]);
   
-  // Persist on change
-  useEffect(() => { if (currentUser) saveDB(db); }, [db]);
-  
-  // Keyboard shortcut: Ctrl+Alt+A = admin login
+  // Keyboard shortcuts
   useEffect(() => {
     function handler(e) {
-      if (e.ctrlKey && e.altKey && e.key === "a") {
-        const db2 = loadDB() || INITIAL_DB;
-        const admin = db2.usuarios.find(u => u.rol === "admin");
-        if (admin) setCurrentUser(admin);
-      }
       if (e.ctrlKey && e.key === "f") { e.preventDefault(); document.querySelector(".search-main")?.focus(); }
       if (e.ctrlKey && e.key === "e" && isAdmin) setShowExport(true);
     }
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [isAdmin]);
-  
-  // DB operations
-  function updateEscuelas(updater) {
-    setDB(prev => { const next = {...prev, escuelas: updater(prev.escuelas)}; return next; });
+
+  // ── ESCUELAS ──
+  async function saveEscuela(form) {
+    const payload = {
+      ...form,
+      email: form.mail || form.email,
+      telefonos: (form.telefonos || []).map(t => ({ numero: t, tipo: "fijo", principal: false })),
+    };
+    if (form.id && !String(form.id).startsWith("e")) {
+      await api.updateEscuela(form.id, payload);
+    } else {
+      await api.createEscuela(payload);
+    }
+    await fetchAll();
   }
-  
-  function saveEscuela(form) {
-    updateEscuelas(escuelas => {
-      const idx = escuelas.findIndex(e => e.id === form.id);
-      if (idx >= 0) { const a = [...escuelas]; a[idx] = {...a[idx], ...form}; return a; }
-      return [...escuelas, form];
-    });
-  }
-  
-  function deleteEscuela(id) {
+
+  async function deleteEscuela(id) {
     if (!confirm("¿Eliminar escuela?")) return;
-    updateEscuelas(esc => esc.filter(e => e.id !== id));
+    await api.deleteEscuela(id);
+    await fetchAll();
   }
-  
-  function addDocente(escuelaId, docForm, titularId) {
-    updateEscuelas(escuelas => escuelas.map(esc => {
-      if (esc.id !== escuelaId) return esc;
-      if (titularId) {
-        // Add as suplente to titular
-        return { ...esc, docentes: esc.docentes.map(d => d.id === titularId ? { ...d, suplentes: [...(d.suplentes||[]), docForm] } : d) };
-      }
-      return { ...esc, docentes: [...esc.docentes, { ...docForm, suplentes: docForm.suplentes || [] }] };
-    }));
+
+  // ── DOCENTES ──
+  async function addDocente(escuelaId, docForm, titularId) {
+    const payload = {
+      ...docForm,
+      escuela: escuelaId,
+      // suplentes se guardan como subdocumentos en el titular si hay titularId
+      ...(titularId ? { titularId } : {}),
+    };
+    await api.createDocente(payload);
+    await fetchAll();
   }
-  
-  function updateDocente(escuelaId, docForm, titularId) {
-    updateEscuelas(escuelas => escuelas.map(esc => {
-      if (esc.id !== escuelaId) return esc;
-      if (titularId) {
-        return { ...esc, docentes: esc.docentes.map(d => d.id === titularId ? { ...d, suplentes: d.suplentes.map(s => s.id === docForm.id ? docForm : s) } : d) };
-      }
-      return { ...esc, docentes: esc.docentes.map(d => d.id === docForm.id ? { ...docForm, suplentes: d.suplentes } : d) };
-    }));
+
+  async function updateDocente(escuelaId, docForm, titularId) {
+    await api.updateDocente(docForm.id, { ...docForm, escuela: escuelaId });
+    await fetchAll();
   }
-  
-  function deleteDocente(escuelaId, docId, titularId) {
+
+  async function deleteDocente(escuelaId, docId, titularId) {
     if (!confirm("¿Eliminar docente?")) return;
-    updateEscuelas(escuelas => escuelas.map(esc => {
-      if (esc.id !== escuelaId) return esc;
-      if (titularId) {
-        return { ...esc, docentes: esc.docentes.map(d => d.id === titularId ? { ...d, suplentes: d.suplentes.filter(s => s.id !== docId) } : d) };
-      }
-      return { ...esc, docentes: esc.docentes.filter(d => d.id !== docId) };
-    }));
+    await api.deleteDocente(docId);
+    await fetchAll();
   }
-  
-  function addAlumno(escuelaId, alumnoForm) {
-    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, alumnos: [...esc.alumnos, alumnoForm] }));
+
+  // ── ALUMNOS ──
+  async function addAlumno(escuelaId, alumnoForm) {
+    await api.createAlumno({ ...alumnoForm, escuela: escuelaId, nombreApellido: alumnoForm.nombre });
+    await fetchAll();
   }
-  
-  function updateAlumno(escuelaId, alumnoForm) {
-    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, alumnos: esc.alumnos.map(a => a.id === alumnoForm.id ? alumnoForm : a) }));
+
+  async function updateAlumno(escuelaId, alumnoForm) {
+    await api.updateAlumno(alumnoForm.id, { ...alumnoForm, escuela: escuelaId, nombreApellido: alumnoForm.nombre });
+    await fetchAll();
   }
-  
-  function deleteAlumno(escuelaId, alumnoId) {
+
+  async function deleteAlumno(escuelaId, alumnoId) {
     if (!confirm("¿Eliminar alumno?")) return;
-    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, alumnos: esc.alumnos.filter(a => a.id !== alumnoId) }));
+    await api.deleteAlumno(alumnoId);
+    await fetchAll();
   }
   
   const alertCount = db.escuelas.reduce((a, esc) => {
@@ -1538,6 +1577,8 @@ export default function App() {
   );
   
   if (!currentUser) return <><style>{STYLES}</style><Login onLogin={setCurrentUser} /></>;
+  if (loading) return <><style>{STYLES}</style><div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',flexDirection:'column',gap:16,background:'var(--bg)',color:'var(--accent)'}}><div style={{fontSize:32,animation:'pulse 1s infinite'}}>⏳</div><div style={{fontFamily:'Rajdhani',fontSize:18,letterSpacing:2}}>Cargando datos desde MongoDB...</div></div></>;
+  if (apiError) return <><style>{STYLES}</style><div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',flexDirection:'column',gap:16,background:'var(--bg)',color:'var(--red)'}}><div style={{fontSize:32}}>⚠️</div><div style={{fontFamily:'Rajdhani',fontSize:18,letterSpacing:2}}>Error de conexión</div><div style={{fontSize:13,color:'var(--text2)',maxWidth:400,textAlign:'center'}}>{apiError}</div><button className="btn btn-primary" onClick={fetchAll}>Reintentar</button></div></>;
   
   const navItems = [
     { id: "dashboard", icon: "📊", label: "Dashboard" },
@@ -1576,7 +1617,7 @@ export default function App() {
             <div className="flex items-center gap-8">
               <span style={{fontSize:11, color:'var(--text2)'}}>{currentUser.username}</span>
               <span className={`badge ${isAdmin ? "badge-titular" : "badge-active"}`}>{currentUser.rol}</span>
-              <button className="btn btn-secondary btn-sm" onClick={() => setCurrentUser(null)}>Salir</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => { setAuthToken(null); setCurrentUser(null); }}>Salir</button>
             </div>
           </div>
         </header>
@@ -1606,11 +1647,13 @@ export default function App() {
             
             {!sidebarCollapsed && (
               <div style={{padding:'20px 16px', marginTop:'auto'}}>
+                <button className="btn btn-secondary btn-sm" style={{width:'100%', marginBottom:12}} onClick={fetchAll}>
+                  🔄 Sincronizar
+                </button>
                 <div style={{fontSize:9, color:'var(--text3)', letterSpacing:1, textTransform:'uppercase', lineHeight:1.6}}>
                   Atajos de teclado:<br/>
                   Ctrl+F: Buscar<br/>
-                  Ctrl+E: Exportar<br/>
-                  Ctrl+Alt+A: Admin
+                  Ctrl+E: Exportar
                 </div>
               </div>
             )}

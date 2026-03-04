@@ -5,52 +5,7 @@ import { UserMenu } from "./components/UserMenu.jsx";
 import { useAcdmMongoData } from "../hooks/useAcdmMongoData.js";
 
 // ============================================================
-// CRYPTO UTILS - Simple XOR + Base64 encryption for JSON DB
-// ============================================================
-// Genera una clave secreta segura y única para cifrado local
-const SECRET_KEY = (() => {
-  // Intenta obtener de localStorage o genera una nueva clave aleatoria
-  let key = localStorage.getItem("acdm_secret_key");
-  if (!key) {
-    // 32 caracteres aleatorios (A-Za-z0-9)
-    key = Array.from(crypto.getRandomValues(new Uint8Array(32)))
-      .map(b => "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"[b % 62])
-      .join("");
-    localStorage.setItem("acdm_secret_key", key);
-  }
-  return key;
-})();
-function xorEncrypt(text, key) {
-  let result = "";
-  for (let i = 0; i < text.length; i++) {
-    result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
-  }
-  return btoa(result);
-}
-function xorDecrypt(encoded, key) {
-  try {
-    const text = atob(encoded);
-    let result = "";
-    for (let i = 0; i < text.length; i++) {
-      result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
-    }
-    return result;
-  } catch { return null; }
-}
-function saveDB(data) {
-  const json = JSON.stringify(data);
-  localStorage.setItem("acdm_db", xorEncrypt(json, SECRET_KEY));
-}
-function loadDB() {
-  const enc = localStorage.getItem("acdm_db");
-  if (!enc) return null;
-  const dec = xorDecrypt(enc, SECRET_KEY);
-  if (!dec) return null;
-  try { return JSON.parse(dec); } catch { return null; }
-}
-
-// ============================================================
-// INITIAL DATA
+// INITIAL DATA — solo para referencia de estructura, no se usa en runtime
 // ============================================================
 const INITIAL_DB = {
   escuelas: [
@@ -2121,10 +2076,7 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
     deleteInforme: mongoDeleteInforme
   } = useAcdmMongoData(currentUser);
   
-  // Fallback a estado local si no hay db de mongo
-  const [localDb, setLocalDb] = useState(() => loadDB() || INITIAL_DB);
-  const activeDb = db || localDb;
-  const setDB = db ? () => {} : setLocalDb; // No hacer nada si usamos MongoDB
+  const activeDb = db || { escuelas: [], alumnos: [], docentes: [], usuarios: [], visitas: [], proyectos: [], informes: [] };
   
   const [activeSection, setActiveSection] = useState("dashboard");
   const [viewMode, setViewMode] = useState("full"); // full | compact | table
@@ -2149,205 +2101,39 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
   
   const isAdmin = currentUser?.rol === "admin";
   
-  // Persist local DB on change (solo si no usamos MongoDB)
-  useEffect(() => { 
-    if (currentUser && !db) {
-      saveDB(localDb);
-    }
-  }, [localDb, db, currentUser]);
-  
   // Persist dark mode preference
   useEffect(() => {
     localStorage.setItem("acdm_darkMode", darkMode);
   }, [darkMode]);
-  
-  // Keyboard shortcut: Ctrl+Alt+A = admin login
+
+  // Keyboard shortcuts
   useEffect(() => {
     function handler(e) {
-      if (e.ctrlKey && e.altKey && e.key === "a") {
-        const db2 = loadDB() || INITIAL_DB;
-        const admin = db2.usuarios.find(u => u.rol === "admin");
-        if (admin) setCurrentUser(admin);
-      }
       if (e.ctrlKey && e.key === "f") { e.preventDefault(); document.querySelector(".search-main")?.focus(); }
       if (e.ctrlKey && e.key === "e" && isAdmin) setShowExport(true);
     }
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [isAdmin]);
-  
-  // DB operations
-  function updateEscuelas(updater) {
-    setDB(prev => { const next = {...prev, escuelas: updater(prev.escuelas)}; return next; });
-  }
-  
-  function saveEscuela(form) {
-    if (db) {
-      mongoSaveEscuela(form);
-      return;
-    }
-    updateEscuelas(escuelas => {
-      const idx = escuelas.findIndex(e => e.id === form.id);
-      if (idx >= 0) { const a = [...escuelas]; a[idx] = {...a[idx], ...form}; return a; }
-      return [...escuelas, form];
-    });
-  }
-  
-  function deleteEscuela(id) {
-    if (db) {
-      mongoDeleteEscuela(id);
-      return;
-    }
-    if (!confirm("¿Eliminar escuela?")) return;
-    updateEscuelas(esc => esc.filter(e => e.id !== id));
-  }
-  
-  function addDocente(escuelaId, docForm, titularId) {
-    if (db) {
-      mongoAddDocente(escuelaId, docForm, titularId);
-      return;
-    }
-    updateEscuelas(escuelas => escuelas.map(esc => {
-      if (esc.id !== escuelaId) return esc;
-      if (titularId) {
-        // Add as suplente to titular
-        return { ...esc, docentes: esc.docentes.map(d => d.id === titularId ? { ...d, suplentes: [...(d.suplentes||[]), docForm] } : d) };
-      }
-      return { ...esc, docentes: [...esc.docentes, { ...docForm, suplentes: docForm.suplentes || [] }] };
-    }));
-  }
-  
-  function updateDocente(escuelaId, docForm, titularId) {
-    if (db) {
-      mongoUpdateDocente(escuelaId, docForm, titularId);
-      return;
-    }
-    updateEscuelas(escuelas => escuelas.map(esc => {
-      if (esc.id !== escuelaId) return esc;
-      if (titularId) {
-        return { ...esc, docentes: esc.docentes.map(d => d.id === titularId ? { ...d, suplentes: d.suplentes.map(s => s.id === docForm.id ? docForm : s) } : d) };
-      }
-      return { ...esc, docentes: esc.docentes.map(d => d.id === docForm.id ? { ...docForm, suplentes: d.suplentes } : d) };
-    }));
-  }
-  
-  function deleteDocente(escuelaId, docId, titularId) {
-    if (db) {
-      mongoDeleteDocente(escuelaId, docId, titularId);
-      return;
-    }
-    if (!confirm("¿Eliminar docente?")) return;
-    updateEscuelas(escuelas => escuelas.map(esc => {
-      if (esc.id !== escuelaId) return esc;
-      if (titularId) {
-        return { ...esc, docentes: esc.docentes.map(d => d.id === titularId ? { ...d, suplentes: d.suplentes.filter(s => s.id !== docId) } : d) };
-      }
-      return { ...esc, docentes: esc.docentes.filter(d => d.id !== docId) };
-    }));
-  }
-  
-  function addAlumno(escuelaId, alumnoForm) {
-    if (db) {
-      mongoAddAlumno(escuelaId, alumnoForm);
-      return;
-    }
-    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, alumnos: [...esc.alumnos, alumnoForm] }));
-  }
-  
-  function updateAlumno(escuelaId, alumnoForm) {
-    if (db) {
-      mongoUpdateAlumno(escuelaId, alumnoForm);
-      return;
-    }
-    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, alumnos: esc.alumnos.map(a => a.id === alumnoForm.id ? alumnoForm : a) }));
-  }
-  
-  function deleteAlumno(escuelaId, alumnoId) {
-    if (db) {
-      mongoDeleteAlumno(escuelaId, alumnoId);
-      return;
-    }
-    if (!confirm("¿Eliminar alumno?")) return;
-    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, alumnos: esc.alumnos.filter(a => a.id !== alumnoId) }));
-  }
-  
-  // Visitas
-  function addVisita(escuelaId, visitaForm) {
-    if (db) {
-      mongoAddVisita(escuelaId, visitaForm);
-      return;
-    }
-    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, visitas: [...(esc.visitas || []), visitaForm] }));
-  }
-  
-  function updateVisita(escuelaId, visitaForm) {
-    if (db) {
-      mongoUpdateVisita(escuelaId, visitaForm);
-      return;
-    }
-    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, visitas: esc.visitas.map(v => v.id === visitaForm.id ? visitaForm : v) }));
-  }
-  
-  function deleteVisita(escuelaId, visitaId) {
-    if (db) {
-      mongoDeleteVisita(escuelaId, visitaId);
-      return;
-    }
-    if (!confirm("¿Eliminar visita?")) return;
-    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, visitas: esc.visitas.filter(v => v.id !== visitaId) }));
-  }
-  
-  // Proyectos
-  function addProyecto(escuelaId, proyectoForm) {
-    if (db) {
-      mongoAddProyecto(escuelaId, proyectoForm);
-      return;
-    }
-    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, proyectos: [...(esc.proyectos || []), proyectoForm] }));
-  }
-  
-  function updateProyecto(escuelaId, proyectoForm) {
-    if (db) {
-      mongoUpdateProyecto(escuelaId, proyectoForm);
-      return;
-    }
-    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, proyectos: esc.proyectos.map(p => p.id === proyectoForm.id ? proyectoForm : p) }));
-  }
-  
-  function deleteProyecto(escuelaId, proyectoId) {
-    if (db) {
-      mongoDeleteProyecto(escuelaId, proyectoId);
-      return;
-    }
-    if (!confirm("¿Eliminar proyecto?")) return;
-    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, proyectos: esc.proyectos.filter(p => p.id !== proyectoId) }));
-  }
-  
-  // Informes
-  function addInforme(escuelaId, informeForm) {
-    if (db) {
-      mongoAddInforme(escuelaId, informeForm);
-      return;
-    }
-    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, informes: [...(esc.informes || []), informeForm] }));
-  }
-  
-  function updateInforme(escuelaId, informeForm) {
-    if (db) {
-      mongoUpdateInforme(escuelaId, informeForm);
-      return;
-    }
-    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, informes: esc.informes.map(i => i.id === informeForm.id ? informeForm : i) }));
-  }
-  
-  function deleteInforme(escuelaId, informeId) {
-    if (db) {
-      mongoDeleteInforme(escuelaId, informeId);
-      return;
-    }
-    if (!confirm("¿Eliminar informe?")) return;
-    updateEscuelas(escuelas => escuelas.map(esc => esc.id !== escuelaId ? esc : { ...esc, informes: esc.informes.filter(i => i.id !== informeId) }));
-  }
+
+  // ── CRUD directo a MongoDB ──
+  const saveEscuela   = mongoSaveEscuela;
+  const deleteEscuela = mongoDeleteEscuela;
+  const addDocente    = mongoAddDocente;
+  const updateDocente = mongoUpdateDocente;
+  const deleteDocente = mongoDeleteDocente;
+  const addAlumno     = mongoAddAlumno;
+  const updateAlumno  = mongoUpdateAlumno;
+  const deleteAlumno  = mongoDeleteAlumno;
+  const addVisita     = mongoAddVisita;
+  const updateVisita  = mongoUpdateVisita;
+  const deleteVisita  = mongoDeleteVisita;
+  const addProyecto   = mongoAddProyecto;
+  const updateProyecto = mongoUpdateProyecto;
+  const deleteProyecto = mongoDeleteProyecto;
+  const addInforme    = mongoAddInforme;
+  const updateInforme = mongoUpdateInforme;
+  const deleteInforme = mongoDeleteInforme;
   
   const alertCount = activeDb.escuelas.reduce((a, esc) => {
     if (esc.docentes.length === 0) a++;
