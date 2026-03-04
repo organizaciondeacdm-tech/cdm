@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const { BaseMongoModel, BaseMongoDocument, toObjectId } = require('./base/mongoModel');
+const { buildLookupKey, normalizeRole, normalizePermission, protectAcl, revealAcl } = require('../utils/accessControlCrypto');
 
 const parsePositiveIntEnv = (value, fallback) => {
   const parsed = parseInt(value, 10);
@@ -18,22 +19,85 @@ class User extends BaseMongoModel {
     updatedBy: { model: () => User, localField: 'updatedBy', isArray: false }
   };
 
-  static async preSave(payload, instance) {
-    if (!payload.passwordHash) return;
-    const incoming = String(payload.passwordHash);
+  static getRoleLookup(role) {
+    return buildLookupKey('role', normalizeRole(role));
+  }
 
-    const shouldHash = !incoming.startsWith('$2a$') && !incoming.startsWith('$2b$') && !incoming.startsWith('$2y$');
-    if (shouldHash) {
-      const rounds = parseInt(process.env.BCRYPT_ROUNDS, 10);
-      const salt = await bcrypt.genSalt(Number.isFinite(rounds) && rounds > 0 ? rounds : 10);
-      payload.passwordHash = await bcrypt.hash(incoming, salt);
-      payload.passwordChangedAt = new Date();
+  static transformOnRead(doc) {
+    return revealAcl(doc, 'rol', 'permisos');
+  }
+
+  static async preUpdate(update) {
+    const next = { ...(update || {}) };
+    next.$set = { ...(next.$set || {}) };
+
+    const hasRole = Object.prototype.hasOwnProperty.call(next.$set, 'rol');
+    const hasPermisos = Object.prototype.hasOwnProperty.call(next.$set, 'permisos');
+    if (!hasRole && !hasPermisos) return next;
+
+    const currentRole = hasRole ? next.$set.rol : 'viewer';
+    const currentPerms = hasPermisos ? next.$set.permisos : [];
+    const secured = protectAcl({
+      role: currentRole,
+      permissions: currentPerms,
+      recordedAt: new Date()
+    });
+
+    if (hasRole) {
+      next.$set.rol = secured.role;
+      next.$set.rolLookup = secured.roleLookup;
+    }
+    if (hasPermisos) {
+      next.$set.permisos = secured.permissions;
+      next.$set.permisosLookup = secured.permissionsLookup;
+    }
+
+    next.$set.aclSecurity = {
+      ...(next.$set.aclSecurity || {}),
+      scheme: 'aclv1',
+      securedAt: secured.securedAt,
+      recordedAt: secured.recordedAt
+    };
+
+    return next;
+  }
+
+  static async preSave(payload, instance) {
+    if (payload.passwordHash) {
+      const incoming = String(payload.passwordHash);
+      const shouldHash = !incoming.startsWith('$2a$') && !incoming.startsWith('$2b$') && !incoming.startsWith('$2y$');
+      if (shouldHash) {
+        const rounds = parseInt(process.env.BCRYPT_ROUNDS, 10);
+        const salt = await bcrypt.genSalt(Number.isFinite(rounds) && rounds > 0 ? rounds : 10);
+        payload.passwordHash = await bcrypt.hash(incoming, salt);
+        payload.passwordChangedAt = new Date();
+      }
     }
 
     if (payload.username) payload.username = String(payload.username).trim().toLowerCase();
     if (payload.email) payload.email = String(payload.email).trim().toLowerCase();
 
-    if (!payload.permisos) payload.permisos = [];
+    const normalizedRole = normalizeRole(payload.rol || 'viewer');
+    const normalizedPerms = (Array.isArray(payload.permisos) ? payload.permisos : [])
+      .map((p) => normalizePermission(p))
+      .filter(Boolean);
+    const secured = protectAcl({
+      role: normalizedRole,
+      permissions: normalizedPerms,
+      recordedAt: payload.createdAt || new Date()
+    });
+
+    payload.rol = secured.role;
+    payload.permisos = secured.permissions;
+    payload.rolLookup = secured.roleLookup;
+    payload.permisosLookup = secured.permissionsLookup;
+    payload.aclSecurity = {
+      ...(payload.aclSecurity || {}),
+      scheme: 'aclv1',
+      securedAt: secured.securedAt,
+      recordedAt: secured.recordedAt
+    };
+
     if (payload.createdBy) payload.createdBy = toObjectId(payload.createdBy);
     if (payload.updatedBy) payload.updatedBy = toObjectId(payload.updatedBy);
   }
@@ -103,7 +167,9 @@ User.documentPrototype.registerFailedLoginAttempt = async function registerFaile
 };
 
 User.documentPrototype.hasPermission = function hasPermission(permission) {
-  return this.rol === 'admin' || (this.permisos || []).includes(permission);
+  const permisos = Array.isArray(this.permisos) ? this.permisos : [];
+  const wanted = normalizePermission(permission);
+  return permisos.includes('*') || permisos.includes(wanted);
 };
 
 module.exports = User;

@@ -63,8 +63,11 @@ class Session extends BaseMongoModel {
     }).populate({ path: 'userId', select: 'username email rol permisos isActive nombre apellido' });
 
     if (!session) return null;
+
+    // Use updateOne to avoid triggering preSave hooks on populated entities
+    await this.updateOne({ _id: session._id }, { $set: { lastActivity: new Date() } });
     session.lastActivity = new Date();
-    await session.save();
+
     return session;
   }
 
