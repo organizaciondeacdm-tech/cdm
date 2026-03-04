@@ -1,5 +1,5 @@
 import React from 'react';
-import './PapiwebSpinner.css';
+import './infrastructure/styles/PapiwebSpinner.css';
 
 const PapiwebSpinner = () => {
     return (

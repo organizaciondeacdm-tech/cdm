@@ -99,33 +99,35 @@ export function Login({ onLogin }) {
     return (
         <div className="login-container">
             <div className="login-box">
-                <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                    <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'center' }}>
-                        <div className="papiweb-logo" style={{ padding: '8px 20px' }}>
-                            <div className="papiweb-text" style={{ fontSize: 22, letterSpacing: 3 }}>PAPIWEB</div>
-                            <div className="papiweb-sub">Desarrollos Informáticos</div>
-                        </div>
+                <div className="login-logo-container">
+                    <div className="papiweb-logo">
+                        <div className="papiweb-text">PAPIWEB</div>
+                        <div className="papiweb-sub">DESARROLLOS INFORMÁTICOS</div>
                     </div>
-                    <div className="login-title">Sistema ACDM</div>
-                    <div className="login-sub">Gestión de Asistentes Celadores/as</div>
+                </div>
+                <div style={{ textAlign: 'center', marginBottom: 24 }}>
+                    <div className="login-title">SISTEMA ACDM</div>
+                    <div className="login-sub">GESTIÓN DE ASISTENTES CELADORES/AS</div>
                 </div>
                 <div className="form-group">
-                    <label className="form-label">Usuario</label>
-                    <input className="form-input" value={user} onChange={e => setUser(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin()} placeholder="Usuario" autoFocus disabled={isSubmitting || cooldownSeconds > 0} />
+                    <label className="form-label login-label">USUARIO</label>
+                    <input className="form-input login-input" value={user} onChange={e => setUser(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin()} placeholder="admin" autoFocus disabled={isSubmitting || cooldownSeconds > 0} />
                 </div>
-                <div className="form-group">
-                    <label className="form-label">Contraseña</label>
-                    <input type="password" className="form-input" value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin()} placeholder="••••••••" disabled={isSubmitting || cooldownSeconds > 0} />
+                <div className="form-group" style={{ marginBottom: 24 }}>
+                    <label className="form-label login-label">CONTRASEÑA</label>
+                    <input type="password" className="form-input login-input" value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin()} placeholder="••••••••" disabled={isSubmitting || cooldownSeconds > 0} />
                 </div>
                 {err && <div className="alert alert-danger" style={{ marginBottom: 12 }}><span>⚠️</span>{err}</div>}
                 <button
-                    className="btn btn-primary"
-                    style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}
+                    className="btn btn-primary login-btn"
                     onClick={doLogin}
                     disabled={isSubmitting || cooldownSeconds > 0}
                 >
-                    {isSubmitting ? "Ingresando..." : cooldownSeconds > 0 ? `Reintentar en ${cooldownSeconds}s` : "Ingresar →"}
+                    {isSubmitting ? "INGRESANDO..." : cooldownSeconds > 0 ? `REINTENTAR EN ${cooldownSeconds}s` : "INGRESAR →"}
                 </button>
+                <div className="login-demo-text">
+                    Demo: admin / admin2025
+                </div>
             </div>
         </div>
     );
