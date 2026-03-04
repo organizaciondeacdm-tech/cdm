@@ -35,6 +35,12 @@ const normalizeAlumnoPayload = (payload = {}, { partial = false } = {}) => {
   return normalized;
 };
 
+const isAdminOrSuperUser = (user) => {
+  const rol = String(user?.rol || '');
+  const permisos = Array.isArray(user?.permisos) ? user.permisos : [];
+  return rol === 'admin' || permisos.includes('*');
+};
+
 const getAlumnos = async (req, res) => {
   try {
     const {
@@ -47,6 +53,11 @@ const getAlumnos = async (req, res) => {
     } = req.query;
 
     const query = { activo: true };
+
+    // Los usuarios no-admin solo ven sus propios registros
+    if (!isAdminOrSuperUser(req.user)) {
+      query.createdBy = req.user._id;
+    }
 
     if (escuela) query.escuela = escuela;
     if (gradoSalaAnio) query.gradoSalaAnio = gradoSalaAnio;

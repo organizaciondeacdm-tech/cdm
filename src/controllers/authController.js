@@ -9,12 +9,45 @@ const SessionService = require('../services/sessionService');
 const AuthThrottle = require('../models/AuthThrottle');
 
 const LOGIN_RESPONSE_DELAY_MS = parseInt(process.env.LOGIN_RESPONSE_DELAY_MS, 10) || 400;
-const AUTH_FAILURE_MAX_ATTEMPTS = parseInt(process.env.AUTH_FAILURE_MAX_ATTEMPTS, 10) || 3;
-const AUTH_FAILURE_WINDOW_MS = (parseInt(process.env.AUTH_FAILURE_WINDOW_MINUTES, 10) || 30) * 60 * 1000;
-const AUTH_BLOCK_MINUTES = parseInt(process.env.AUTH_FAILURE_BLOCK_MINUTES, 10) || 15;
+const AUTH_FAILURE_MAX_ATTEMPTS = parseInt(process.env.AUTH_FAILURE_MAX_ATTEMPTS, 10) || 10;
+const AUTH_FAILURE_WINDOW_MS = (parseInt(process.env.AUTH_FAILURE_WINDOW_MINUTES, 10) || 15) * 60 * 1000;
+const AUTH_BLOCK_MINUTES = parseInt(process.env.AUTH_FAILURE_BLOCK_MINUTES, 10) || 5;
 const AUTH_BLOCK_MS = AUTH_BLOCK_MINUTES * 60 * 1000;
 
+// Umbral de intentos fallidos para IPs desconocidas antes de bloquear
+const UNKNOWN_IP_MAX_ATTEMPTS = 6;
+// IPs conocidas por usuario — se actualiza en cada login exitoso (persistido en User.knownIps)
+const KNOWN_IP_MAX_STORED = 20;
+
+// IPs a monitorear por usuario
+const WATCHED_USERNAMES = ['andres'];
+const watchedIpLog = []; // en memoria — se puede persistir si es necesario
+
+const logWatchedAttempt = (username, ip, success) => {
+  if (!WATCHED_USERNAMES.includes(username.toLowerCase())) return;
+  const entry = { ts: new Date().toISOString(), username, ip, success };
+  watchedIpLog.push(entry);
+  if (watchedIpLog.length > 500) watchedIpLog.shift(); // cap 500 entries
+  console.log(`[AUTH-WATCH] usuario=${username} ip=${ip} exito=${success} ts=${entry.ts}`);
+};
+
+const getWatchedIpLog = (req, res) => {
+  const { username, limit = 100 } = req.query;
+  let log = [...watchedIpLog].reverse(); // más recientes primero
+  if (username) log = log.filter(e => e.username === username.toLowerCase());
+  res.json({ success: true, data: log.slice(0, Number(limit)), total: log.length });
+};
+
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Retorna el delay extra a aplicar según nro de intento (solo para IPs desconocidas)
+// intento 4 → 5s, intento 5 → 7s, intento 6+ → 10s
+const getUnknownIpDelay = (attemptCount) => {
+  if (attemptCount >= 6) return 10000;
+  if (attemptCount >= 5) return 7000;
+  if (attemptCount >= 4) return 5000;
+  return 0;
+};
 
 const getClientIp = (req) => String(
   req.headers['x-forwarded-for']?.split(',')[0] ||
@@ -84,6 +117,85 @@ const registerFailure = async (key) => {
 };
 
 const clearFailures = async (key) => {
+  await AuthThrottle.deleteOne({ key });
+};
+
+// -------------------------------------------------------
+// IPs conocidas por usuario
+// -------------------------------------------------------
+
+/**
+ * Verifica si una IP ya está en la lista de IPs conocidas del usuario.
+ * Un usuario "conoce" una IP si alguna vez hizo login exitoso desde ella.
+ */
+const isKnownIp = (user, ip) => {
+  const known = Array.isArray(user?.knownIps) ? user.knownIps : [];
+  return known.some((entry) => String(entry?.ip || entry) === String(ip));
+};
+
+/**
+ * Agrega una IP a la lista de IPs conocidas del usuario (max KNOWN_IP_MAX_STORED).
+ * Se llama en cada login exitoso.
+ */
+const registerKnownIp = async (user, ip) => {
+  try {
+    const known = Array.isArray(user.knownIps) ? [...user.knownIps] : [];
+    const alreadyKnown = known.some((entry) => String(entry?.ip || entry) === String(ip));
+    if (alreadyKnown) {
+      // Solo actualizar timestamp de último uso
+      await user.updateOne({
+        $set: { 'knownIps.$[elem].lastSeen': new Date() }
+      }, {
+        arrayFilters: [{ 'elem.ip': String(ip) }]
+      });
+      return;
+    }
+    const newEntry = { ip: String(ip), firstSeen: new Date(), lastSeen: new Date() };
+    if (known.length >= KNOWN_IP_MAX_STORED) {
+      // Sacar la más antigua (primer elemento)
+      await user.updateOne({
+        $pop: { knownIps: -1 },
+      });
+    }
+    await user.updateOne({ $push: { knownIps: newEntry } });
+  } catch (err) {
+    console.error('[AUTH] Error registrando IP conocida:', err.message);
+  }
+};
+
+// -------------------------------------------------------
+// Throttle específico para IPs desconocidas
+// -------------------------------------------------------
+
+const UNKNOWN_IP_BUCKET_PREFIX = 'unknownip:';
+
+const getUnknownIpAttempts = async (userId, ip) => {
+  const key = `${UNKNOWN_IP_BUCKET_PREFIX}${userId}:${ip}`;
+  const bucket = await cleanupFailureBucket(key);
+  return { key, attempts: bucket?.attempts?.length || 0, blockedUntil: bucket?.blockedUntil || null };
+};
+
+const registerUnknownIpFailure = async (userId, ip) => {
+  const key = `${UNKNOWN_IP_BUCKET_PREFIX}${userId}:${ip}`;
+  const now = Date.now();
+  const bucket = (await cleanupFailureBucket(key)) || (await AuthThrottle.getOrCreate(key));
+  const attempts = (bucket.attempts || [])
+    .map((ts) => new Date(ts).getTime())
+    .filter((ts) => now - ts <= AUTH_FAILURE_WINDOW_MS);
+
+  attempts.push(now);
+  bucket.attempts = attempts.map((ts) => new Date(ts));
+
+  if (attempts.length >= UNKNOWN_IP_MAX_ATTEMPTS) {
+    bucket.blockedUntil = new Date(now + AUTH_BLOCK_MS);
+  }
+
+  await bucket.save();
+  return { key, attempts: attempts.length, blockedUntil: bucket.blockedUntil ? new Date(bucket.blockedUntil).getTime() : null };
+};
+
+const clearUnknownIpFailures = async (userId, ip) => {
+  const key = `${UNKNOWN_IP_BUCKET_PREFIX}${userId}:${ip}`;
   await AuthThrottle.deleteOne({ key });
 };
 
@@ -160,7 +272,8 @@ const login = async (req, res) => {
     const rawUsername = req.body?.username ?? req.body?.email ?? '';
     const username = String(rawUsername).trim().toLowerCase();
     const password = String(req.body?.password ?? '');
-    const loginGuardKey = `login:${getClientIp(req)}:${username || 'unknown'}`;
+    const clientIp = getClientIp(req);
+    const loginGuardKey = `login:${clientIp}:${username || 'unknown'}`;
 
     console.log('Parsed credentials:', { username, passwordLength: password.length });
 
@@ -173,6 +286,7 @@ const login = async (req, res) => {
       });
     }
 
+    // Chequeo global de bloqueo (aplica a cualquier IP si hay exceso de intentos)
     const blockedUntil = await isFailureBucketBlocked(loginGuardKey);
     if (blockedUntil) {
       const retryAfterSeconds = Math.max(1, Math.ceil((blockedUntil - Date.now()) / 1000));
@@ -194,7 +308,7 @@ const login = async (req, res) => {
           { username: username.toLowerCase() },
           { email: username.toLowerCase() }
         ]
-      });  // Mongoose maneja timeouts automáticamente
+      });
     } catch (dbError) {
       console.error('Database error during login:', dbError.message);
       await wait(LOGIN_RESPONSE_DELAY_MS);
@@ -207,6 +321,7 @@ const login = async (req, res) => {
 
     console.log('User lookup result:', user ? 'found' : 'not found');
     if (!user) {
+      logWatchedAttempt(username, clientIp, false);
       const failure = await registerFailure(loginGuardKey);
       await wait(LOGIN_RESPONSE_DELAY_MS);
       if (failure.blockedUntil) {
@@ -248,6 +363,25 @@ const login = async (req, res) => {
       });
     }
 
+    // Determinar si la IP es conocida para este usuario (login exitoso previo)
+    const ipIsKnown = isKnownIp(user, clientIp);
+
+    // Para IPs desconocidas: verificar si ya está bloqueada por exceso de intentos fallidos
+    if (!ipIsKnown) {
+      const unknownIpState = await getUnknownIpAttempts(user._id, clientIp);
+      if (unknownIpState.blockedUntil && new Date(unknownIpState.blockedUntil).getTime() > Date.now()) {
+        const retryAfterSeconds = Math.max(1, Math.ceil((new Date(unknownIpState.blockedUntil).getTime() - Date.now()) / 1000));
+        res.set('Retry-After', String(retryAfterSeconds));
+        await wait(LOGIN_RESPONSE_DELAY_MS);
+        return res.status(429).json({
+          success: false,
+          error: `Demasiados intentos fallidos desde esta dirección. Reintente en ${retryAfterSeconds}s`,
+          retryAfterSeconds,
+          unknownIp: true
+        });
+      }
+    }
+
     console.log('Comparing password...');
     // Verificar contraseña
     let isMatch;
@@ -264,9 +398,39 @@ const login = async (req, res) => {
     
     console.log('Password match result:', isMatch);
     if (!isMatch) {
+      logWatchedAttempt(username, clientIp, false);
       const guardFailure = await registerFailure(loginGuardKey);
       const attemptResult = await user.registerFailedLoginAttempt();
-      await wait(LOGIN_RESPONSE_DELAY_MS);
+
+      // Para IPs desconocidas: registrar fallo y aplicar delay progresivo
+      let unknownIpAttempts = 0;
+      if (!ipIsKnown) {
+        const unknownResult = await registerUnknownIpFailure(user._id, clientIp);
+        unknownIpAttempts = unknownResult.attempts;
+        console.log(`[AUTH] IP desconocida ${clientIp} para usuario ${username}: intento ${unknownIpAttempts}/${UNKNOWN_IP_MAX_ATTEMPTS}`);
+
+        const extraDelay = getUnknownIpDelay(unknownIpAttempts);
+        if (extraDelay > 0) {
+          console.log(`[AUTH] Aplicando delay de ${extraDelay}ms por IP desconocida (intento ${unknownIpAttempts})`);
+          await wait(extraDelay);
+        } else {
+          await wait(LOGIN_RESPONSE_DELAY_MS);
+        }
+
+        // Bloqueo específico por IP desconocida al llegar a UNKNOWN_IP_MAX_ATTEMPTS
+        if (unknownResult.blockedUntil) {
+          const retryAfterSeconds = Math.max(1, Math.ceil((unknownResult.blockedUntil - Date.now()) / 1000));
+          res.set('Retry-After', String(retryAfterSeconds));
+          return res.status(429).json({
+            success: false,
+            error: `Demasiados intentos fallidos desde esta dirección. Reintente en ${retryAfterSeconds}s`,
+            retryAfterSeconds,
+            unknownIp: true
+          });
+        }
+      } else {
+        await wait(LOGIN_RESPONSE_DELAY_MS);
+      }
 
       if (guardFailure.blockedUntil) {
         const retryAfterSeconds = Math.max(1, Math.ceil((guardFailure.blockedUntil - Date.now()) / 1000));
@@ -297,7 +461,10 @@ const login = async (req, res) => {
         remainingAttempts: Math.min(
           attemptResult.remainingAttempts,
           guardFailure.remainingAttempts
-        )
+        ),
+        ...((!ipIsKnown && unknownIpAttempts > 0) && {
+          unknownIpWarning: `IP no reconocida. Intento ${unknownIpAttempts}/${UNKNOWN_IP_MAX_ATTEMPTS}`
+        })
       });
     }
 
@@ -317,6 +484,15 @@ const login = async (req, res) => {
       $unset: { lockUntil: 1 }
     });
     await clearFailures(loginGuardKey);
+
+    // Registrar la IP como conocida (login exitoso) y limpiar throttle de IP desconocida
+    await registerKnownIp(user, clientIp);
+    if (!ipIsKnown) {
+      await clearUnknownIpFailures(user._id, clientIp);
+    }
+
+    // Loguear login exitoso de usuarios monitoreados
+    logWatchedAttempt(username, clientIp, true);
 
     console.log('Generating tokens...');
     // Generar tokens
@@ -720,5 +896,6 @@ module.exports = {
   revokeSession,
   revokeAllSessions,
   getAllActiveSessions,
-  revokeSessionByAdmin
+  revokeSessionByAdmin,
+  getWatchedIpLog
 };

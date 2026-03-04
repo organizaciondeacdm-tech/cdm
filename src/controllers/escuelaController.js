@@ -89,6 +89,12 @@ const buildEscuelaPayload = (input = {}, { partial = false } = {}) => {
   return payload;
 };
 
+const isAdminOrSuperUser = (user) => {
+  const rol = String(user?.rol || '');
+  const permisos = Array.isArray(user?.permisos) ? user.permisos : [];;
+  return rol === 'admin' || permisos.includes('*');
+};
+
 const getEscuelas = async (req, res) => {
   try {
     const {
@@ -103,6 +109,11 @@ const getEscuelas = async (req, res) => {
     } = req.query;
 
     const query = {};
+
+    // Los usuarios no-admin solo ven sus propios registros
+    if (!isAdminOrSuperUser(req.user)) {
+      query.createdBy = req.user._id;
+    }
 
     if (de) query.de = de;
     if (nivel) query.nivel = nivel;
