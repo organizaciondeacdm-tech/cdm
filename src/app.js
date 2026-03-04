@@ -40,6 +40,7 @@ const Docente = require('./models/Docente');
 const Alumno = require('./models/Alumno');
 
 const app = express();
+const PUBLIC_RUNTIME_ENV_KEYS = ['VITE_API_URL', 'VITE_AUTH_STORAGE_SECRET'];
 
 // Variable global para la conexión (patrón Singleton)
 let connectionPromise = null;
@@ -169,6 +170,29 @@ app.use((req, res, next) => {
 });
 
 // Rutas
+app.get('/api/runtime-environment', async (_req, res) => {
+  try {
+    const data = PUBLIC_RUNTIME_ENV_KEYS.reduce((acc, key) => {
+      const value = process.env[key];
+      if (value !== undefined && value !== null && value !== '') {
+        acc[key] = String(value);
+      }
+      return acc;
+    }, {});
+
+    res.json({
+      success: true,
+      data,
+      runtimeEnv: getRuntimeEnvState()
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener runtime environment'
+    });
+  }
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/escuelas', escuelaRoutes);
 app.use('/api/docentes', docenteRoutes);
