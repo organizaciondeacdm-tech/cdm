@@ -59,7 +59,28 @@ export function AcdmProvider({ children, currentUser: propCurrentUser, onLogout:
         return saved !== null ? saved === "true" : true;
     });
 
+    const role = String(currentUser?.rol || "").trim().toLowerCase();
+    const permisosSet = new Set(
+        (Array.isArray(currentUser?.permisos) ? currentUser.permisos : [])
+            .map((permiso) => String(permiso || "").trim().toLowerCase())
+    );
     const isAdmin = currentUser?.isPrivilegedRole === true;
+    const canManageOperationalSections = isAdmin
+        || role === "supervisor"
+        || permisosSet.has("*")
+        || permisosSet.has("crear_escuela")
+        || permisosSet.has("editar_escuela")
+        || permisosSet.has("eliminar_escuela")
+        || permisosSet.has("crear_docente")
+        || permisosSet.has("editar_docente")
+        || permisosSet.has("eliminar_docente")
+        || permisosSet.has("crear_alumno")
+        || permisosSet.has("editar_alumno")
+        || permisosSet.has("eliminar_alumno");
+    const canExportData = isAdmin
+        || role === "supervisor"
+        || permisosSet.has("*")
+        || permisosSet.has("exportar_datos");
 
     useEffect(() => {
         localStorage.setItem("acdm_darkMode", darkMode);
@@ -76,7 +97,7 @@ export function AcdmProvider({ children, currentUser: propCurrentUser, onLogout:
                 document.querySelector(".search-main")?.focus();
             }
 
-            if (e.ctrlKey && key === "e" && isAdmin) {
+            if (e.ctrlKey && key === "e" && canExportData) {
                 e.preventDefault();
                 setShowExport(true);
                 setActiveSection("exportar");
@@ -94,7 +115,7 @@ export function AcdmProvider({ children, currentUser: propCurrentUser, onLogout:
 
         window.addEventListener("keydown", handler);
         return () => window.removeEventListener("keydown", handler);
-    }, [currentUser, isAdmin]);
+    }, [currentUser, isAdmin, canExportData]);
 
     const handleLogout = () => {
         setCurrentUser(null);
@@ -107,6 +128,8 @@ export function AcdmProvider({ children, currentUser: propCurrentUser, onLogout:
         setCurrentUser,
         handleLogout,
         isAdmin,
+        canManageOperationalSections,
+        canExportData,
 
         // App state
         activeSection,
