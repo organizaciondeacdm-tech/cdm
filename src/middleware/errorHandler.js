@@ -50,7 +50,7 @@ const errorHandler = (err, req, res, next) => {
     nodeVersion: process.version,
     platform: process.platform,
     environment: process.env.NODE_ENV || 'unknown',
-    // Verificar variables críticas
+    // Verificar variables críticas (ahora usando JwtKeyManager si está disponible)
     jwtSecretDefined: !!process.env.JWT_SECRET,
     jwtRefreshSecretDefined: !!process.env.JWT_REFRESH_SECRET,
     mongoUriDefined: !!process.env.MONGODB_URI

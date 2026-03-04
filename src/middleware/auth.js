@@ -1,31 +1,39 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const SessionService = require('../services/sessionService');
+const JwtKeyManager = require('../utils/jwtKeyManager');
 
 const authMiddleware = async (req, res, next) => {
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
-    
+
     if (!token) {
-      throw new Error();
+      return res.status(401).json({
+        success: false,
+        error: 'Token de acceso requerido'
+      });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findOne({ 
-      _id: decoded.userId,
-      isActive: true 
-    }).select('-passwordHash');
+    // Validar token usando SessionService
+    const session = await SessionService.validateAccessToken(token);
 
-    if (!user) {
-      throw new Error();
+    if (!session || !session.userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Token inválido o sesión expirada'
+      });
     }
 
-    req.user = user;
+    req.user = session.userId; // El populate ya trae el usuario completo
     req.token = token;
+    req.session = session;
+    req.sessionId = session._id; // Agregar sessionId para gestión de sesiones
     next();
   } catch (error) {
-    res.status(401).json({ 
+    console.error('Error en authMiddleware:', error);
+    res.status(401).json({
       success: false,
-      error: 'Por favor autentíquese' 
+      error: 'Por favor autentíquese'
     });
   }
 };

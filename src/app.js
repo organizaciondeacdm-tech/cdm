@@ -12,6 +12,7 @@ require('dotenv').config();
 const connectDB = require('./config/database');
 const errorHandler = require('./middleware/errorHandler');
 const { registrarAccion } = require('./services/auditoriaService');
+const JwtKeyManager = require('./utils/jwtKeyManager');
 
 // Importar rutas
 const authRoutes = require('./routes/authRoutes');
@@ -55,6 +56,12 @@ app.use('/api', async (req, res, next) => {
   // Intentar conectar a DB
   try {
     await ensureDbConnection();
+    
+    // Inicializar claves JWT después de conectar a DB
+    if (!JwtKeyManager.initialized) {
+      await JwtKeyManager.initialize();
+    }
+    
     next();
   } catch (error) {
     console.error('❌ Error en middleware DB:', error);

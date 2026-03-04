@@ -4,6 +4,8 @@ const { hashPassword, comparePassword } = require('../config/auth');
 const crypto = require('crypto');
 const TryCatchDecorator = require('../utils/decorators');
 const { Unauthorized, InternalServerError, BadRequest } = require('../utils/httpExceptions');
+const JwtKeyManager = require('../utils/jwtKeyManager');
+const SessionService = require('../services/sessionService');
 
 const LOGIN_RESPONSE_DELAY_MS = parseInt(process.env.LOGIN_RESPONSE_DELAY_MS, 10) || 400;
 
@@ -16,28 +18,29 @@ const generateTokens = (userId, rol) => {
     console.log('Generating access token...');
     const accessToken = jwt.sign(
       { userId, rol },
-      process.env.JWT_SECRET,
+      JwtKeyManager.getJwtSecret(),
       { expiresIn: process.env.JWT_EXPIRE }
     );
     console.log('Access token generated successfully');
 
     let refreshToken = null;
-    if (process.env.JWT_REFRESH_SECRET) {
-      console.log('Generating refresh token with JWT_REFRESH_SECRET...');
+    try {
+      console.log('Generating refresh token...');
       refreshToken = jwt.sign(
         { userId, type: 'refresh' },
-        process.env.JWT_REFRESH_SECRET,
+        JwtKeyManager.getJwtRefreshSecret(),
         { expiresIn: process.env.JWT_REFRESH_EXPIRE }
       );
-    } else {
-      console.log('JWT_REFRESH_SECRET not found, using JWT_SECRET for refresh token...');
+      console.log('Refresh token generated successfully');
+    } catch (refreshError) {
+      console.error('Error generating refresh token:', refreshError);
+      // Si falla el refresh token, usar la misma clave que el access token
       refreshToken = jwt.sign(
         { userId, type: 'refresh' },
-        process.env.JWT_SECRET,
+        JwtKeyManager.getJwtSecret(),
         { expiresIn: process.env.JWT_REFRESH_EXPIRE }
       );
     }
-    console.log('Refresh token generated successfully');
 
     return { accessToken, refreshToken };
   } catch (error) {
@@ -181,20 +184,15 @@ const login = async (req, res) => {
       throw tokenError; // Re-throw to be caught by outer catch
     }
 
-    // Guardar refresh token (temporalmente deshabilitado para debug)
-    // try {
-    //   const refreshTokenExpiry = new Date();
-    //   refreshTokenExpiry.setDate(refreshTokenExpiry.getDate() + 30);
-
-    //   user.refreshToken = {
-    //     token: refreshToken,
-    //     expiresAt: refreshTokenExpiry
-    //   };
-    //   await user.save();
-    // } catch (saveError) {
-    //   console.error('Error saving refresh token:', saveError.message);
-    //   // No fallar el login por esto
-    // }
+    // Crear sesión
+    try {
+      const deviceInfo = SessionService.parseDeviceInfo(req);
+      await SessionService.createSession(user, accessToken, refreshToken, deviceInfo);
+      console.log('Sesión creada exitosamente');
+    } catch (sessionError) {
+      console.error('Error creando sesión:', sessionError);
+      // No fallar el login por esto, pero loguear el error
+    }
 
     console.log('Login successful, sending response');
     res.json({
@@ -263,26 +261,19 @@ const login = async (req, res) => {
 
 const refreshToken = async (req, res) => {
   try {
-    const { refreshToken } = req.body;
+    const { refreshToken: token } = req.body;
 
-    if (!refreshToken) {
+    if (!token) {
       return res.status(401).json({
         success: false,
         error: 'Refresh token requerido'
       });
     }
 
-    // Verificar refresh token
-    const secret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET;
-    const decoded = jwt.verify(refreshToken, secret);
-    
-    const user = await User.findOne({
-      _id: decoded.userId,
-      'refreshToken.token': refreshToken,
-      'refreshToken.expiresAt': { $gt: new Date() }
-    });
+    // Validar refresh token usando SessionService
+    const session = await SessionService.validateRefreshToken(token);
 
-    if (!user) {
+    if (!session || !session.userId) {
       return res.status(401).json({
         success: false,
         error: 'Refresh token inválido o expirado'
@@ -290,22 +281,22 @@ const refreshToken = async (req, res) => {
     }
 
     // Generar nuevos tokens
-    const tokens = generateTokens(user._id, user.rol);
+    const { accessToken, refreshToken: newRefreshToken } = generateTokens(session.userId._id, session.userId.rol);
 
-    // Actualizar refresh token
-    const refreshTokenExpiry = new Date();
-    refreshTokenExpiry.setDate(refreshTokenExpiry.getDate() + 30);
+    // Invalidar la sesión anterior
+    await SessionService.invalidateSession(session._id);
 
-    user.refreshToken = {
-      token: tokens.refreshToken,
-      expiresAt: refreshTokenExpiry
-    };
-    await user.save();
+    // Crear nueva sesión
+    const deviceInfo = SessionService.parseDeviceInfo(req);
+    await SessionService.createSession(session.userId, accessToken, newRefreshToken, deviceInfo);
 
     res.json({
       success: true,
       data: {
-        tokens
+        tokens: {
+          access: accessToken,
+          refresh: newRefreshToken
+        }
       }
     });
 
@@ -319,15 +310,26 @@ const refreshToken = async (req, res) => {
 
 const logout = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
-    user.refreshToken = undefined;
-    await user.save();
+    const { allDevices = false } = req.body; // Parámetro opcional para cerrar todas las sesiones
+
+    if (allDevices) {
+      // Invalidar todas las sesiones del usuario
+      await SessionService.invalidateAllUserSessions(req.user._id);
+      console.log(`Todas las sesiones del usuario ${req.user.username} han sido invalidadas`);
+    } else {
+      // Invalidar solo la sesión actual
+      if (req.session) {
+        await SessionService.invalidateSession(req.session._id);
+        console.log(`Sesión ${req.session._id} invalidada para usuario ${req.user.username}`);
+      }
+    }
 
     res.json({
       success: true,
-      message: 'Sesión cerrada exitosamente'
+      message: allDevices ? 'Todas las sesiones cerradas exitosamente' : 'Sesión cerrada exitosamente'
     });
   } catch (error) {
+    console.error('Error en logout:', error);
     res.status(500).json({
       success: false,
       error: 'Error al cerrar sesión'
@@ -388,10 +390,150 @@ const getProfile = async (req, res) => {
   }
 };
 
+const getActiveSessions = async (req, res) => {
+  try {
+    const sessions = await SessionService.getActiveSessions(req.user._id);
+    
+    res.json({
+      success: true,
+      data: sessions
+    });
+  } catch (error) {
+    console.error('Error getting active sessions:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener sesiones activas'
+    });
+  }
+};
+
+const revokeSession = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    
+    if (!sessionId) {
+      return res.status(400).json({
+        success: false,
+        error: 'ID de sesión requerido'
+      });
+    }
+
+    const result = await SessionService.revokeSession(sessionId, req.user._id);
+    
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        error: 'Sesión no encontrada o no autorizada'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Sesión revocada exitosamente'
+    });
+  } catch (error) {
+    console.error('Error revoking session:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al revocar sesión'
+    });
+  }
+};
+
+const revokeAllSessions = async (req, res) => {
+  try {
+    const currentSessionId = req.sessionId; // Asumiendo que viene del middleware
+    
+    await SessionService.revokeAllSessions(req.user._id, currentSessionId);
+    
+    res.json({
+      success: true,
+      message: 'Todas las sesiones revocadas exitosamente (excepto la actual)'
+    });
+  } catch (error) {
+    console.error('Error revoking all sessions:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al revocar todas las sesiones'
+    });
+  }
+};
+
+const getAllActiveSessions = async (req, res) => {
+  try {
+    // Solo para administradores
+    if (req.user.rol !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Acceso denegado. Se requiere rol de administrador'
+      });
+    }
+
+    const sessions = await SessionService.getAllActiveSessions();
+    
+    res.json({
+      success: true,
+      data: sessions
+    });
+  } catch (error) {
+    console.error('Error getting all active sessions:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener todas las sesiones activas'
+    });
+  }
+};
+
+const revokeSessionByAdmin = async (req, res) => {
+  try {
+    // Solo para administradores
+    if (req.user.rol !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Acceso denegado. Se requiere rol de administrador'
+      });
+    }
+
+    const { sessionId } = req.params;
+    
+    if (!sessionId) {
+      return res.status(400).json({
+        success: false,
+        error: 'ID de sesión requerido'
+      });
+    }
+
+    const result = await SessionService.revokeSession(sessionId);
+    
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        error: 'Sesión no encontrada'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Sesión revocada exitosamente por administrador'
+    });
+  } catch (error) {
+    console.error('Error revoking session by admin:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al revocar sesión'
+    });
+  }
+};
+
 module.exports = {
   login,
   refreshToken,
   logout,
   changePassword,
-  getProfile
+  getProfile,
+  getActiveSessions,
+  revokeSession,
+  revokeAllSessions,
+  getAllActiveSessions,
+  revokeSessionByAdmin
 };

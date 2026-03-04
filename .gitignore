@@ -12,6 +12,7 @@ build/
 
 # Scripts
 install.sh.sh
+test-apis.sh
 
 # Environment
 .env

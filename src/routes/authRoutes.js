@@ -6,7 +6,12 @@ const {
   refreshToken, 
   logout, 
   changePassword,
-  getProfile 
+  getProfile,
+  getActiveSessions,
+  revokeSession,
+  revokeAllSessions,
+  getAllActiveSessions,
+  revokeSessionByAdmin
 } = require('../controllers/authController');
 const { authMiddleware } = require('../middleware/auth');
 const { validateUser } = require('../middleware/validation');
@@ -27,5 +32,14 @@ router.post('/refresh-token', refreshToken);
 router.post('/logout', authMiddleware, logout);
 router.post('/change-password', authMiddleware, changePassword);
 router.get('/profile', authMiddleware, getProfile);
+
+// Rutas de gestión de sesiones
+router.get('/sessions', authMiddleware, getActiveSessions);
+router.delete('/sessions/:sessionId', authMiddleware, revokeSession);
+router.delete('/sessions', authMiddleware, revokeAllSessions);
+
+// Rutas de administración de sesiones (solo admin)
+router.get('/admin/sessions', authMiddleware, getAllActiveSessions);
+router.delete('/admin/sessions/:sessionId', authMiddleware, revokeSessionByAdmin);
 
 module.exports = router;
