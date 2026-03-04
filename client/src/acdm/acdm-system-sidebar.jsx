@@ -17,6 +17,7 @@ export function Sidebar({
     { id: "visitas", icon: "👁️", label: "Visitas" },
     { id: "proyectos", icon: "📦", label: "Proyectos" },
     { id: "informes", icon: "📋", label: "Informes" },
+    { id: "formularios", icon: "📝", label: "Formularios" },
     { id: "alertas", icon: "🔔", label: "Alertas", badge: alertCount },
     { id: "estadisticas", icon: "📈", label: "Estadísticas" },
     { id: "calendario", icon: "📅", label: "Calendario" },

@@ -17,6 +17,7 @@ import { InformeModal } from "./components/InformeModal.jsx";
 import { SecretAdminPanel } from "./components/SecretAdminPanel.jsx";
 import { AdminControlCenter } from "./components/AdminControlCenter.jsx";
 import { DaysRemaining } from "./components/DaysRemaining.jsx";
+import { FormulariosSection } from "./sections/FormulariosSection.jsx";
 import { formatDate } from "./utils/dateUtils.js";
 
 function AcdmContent() {
@@ -313,6 +314,10 @@ function AcdmContent() {
               ))}
             </div>
           </div>
+        )}
+
+        {activeSection === "formularios" && (
+          <FormulariosSection />
         )}
 
         {activeSection === "exportar" && (

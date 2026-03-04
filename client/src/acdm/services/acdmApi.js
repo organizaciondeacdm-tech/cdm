@@ -358,6 +358,75 @@ class AcdmApiService {
     }
   }
 
+  // ==================== FORM ENGINE ====================
+  async getFormTemplates(params = {}) {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        query.append(key, value);
+      }
+    });
+    return this.request(`/form-engine/templates${query.toString() ? '?' + query.toString() : ''}`);
+  }
+
+  async createFormTemplate(data) {
+    return this.request('/form-engine/templates', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async updateFormTemplate(id, data) {
+    return this.request(`/form-engine/templates/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async deleteFormTemplate(id) {
+    return this.request(`/form-engine/templates/${id}`, { method: 'DELETE' });
+  }
+
+  async getFormSubmissions(params = {}) {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        query.append(key, value);
+      }
+    });
+    return this.request(`/form-engine/submissions${query.toString() ? '?' + query.toString() : ''}`);
+  }
+
+  async createFormSubmission(data) {
+    return this.request('/form-engine/submissions', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async updateFormSubmission(id, data) {
+    return this.request(`/form-engine/submissions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async deleteFormSubmission(id) {
+    return this.request(`/form-engine/submissions/${id}`, { method: 'DELETE' });
+  }
+
+  async bulkCreateFormSubmissions(data) {
+    return this.request('/form-engine/submissions/bulk', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async getFormSuggestions(source, query, limit = 8) {
+    const params = new URLSearchParams({ q: query, limit: limit.toString() });
+    return this.request(`/form-engine/suggestions/${source}?${params}`);
+  }
+
   async logout() {
     this.token = null;
     await clearAuthSession();
