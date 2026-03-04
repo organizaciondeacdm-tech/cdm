@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const baseEntityPlugin = require('./plugins/baseEntityPlugin');
 
 const visitaSchema = new mongoose.Schema({
   fecha: { type: Date, default: Date.now },
@@ -221,6 +222,11 @@ escuelaSchema.pre('save', function(next) {
     this.de = `DE ${deNum.padStart(2, '0')}`;
   }
   next();
+});
+
+escuelaSchema.plugin(baseEntityPlugin, {
+  entityName: 'Escuela',
+  sensitiveFields: ['email', 'emailSecundario', 'telefonos.numero', 'director.telefono', 'vicedirector.telefono', 'secretario.telefono']
 });
 
 module.exports = mongoose.model('Escuela', escuelaSchema);

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const baseEntityPlugin = require('./plugins/baseEntityPlugin');
 
 const docenteSchema = new mongoose.Schema({
   escuela: {
@@ -217,6 +218,11 @@ docenteSchema.pre('save', function(next) {
   }
 
   next();
+});
+
+docenteSchema.plugin(baseEntityPlugin, {
+  entityName: 'Docente',
+  sensitiveFields: ['dni', 'cuil', 'email', 'emailSecundario', 'telefonos.numero']
 });
 
 module.exports = mongoose.model('Docente', docenteSchema);

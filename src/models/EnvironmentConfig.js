@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const baseEntityPlugin = require('./plugins/baseEntityPlugin');
 
 const environmentConfigSchema = new mongoose.Schema({
   key: {
@@ -34,5 +35,10 @@ environmentConfigSchema.pre('save', function onSave(next) {
 environmentConfigSchema.statics.getEnabledConfig = function getEnabledConfig() {
   return this.find({ enabled: true }).lean();
 };
+
+environmentConfigSchema.plugin(baseEntityPlugin, {
+  entityName: 'EnvironmentConfig',
+  sensitiveFields: ['value']
+});
 
 module.exports = mongoose.model('EnvironmentConfig', environmentConfigSchema);

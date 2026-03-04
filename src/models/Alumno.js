@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const baseEntityPlugin = require('./plugins/baseEntityPlugin');
 
 const alumnoSchema = new mongoose.Schema({
   escuela: {
@@ -213,5 +214,10 @@ alumnoSchema.statics.findByDiagnostico = function(tipoDiagnostico) {
     activo: true 
   }).populate('escuela', 'escuela de');
 };
+
+alumnoSchema.plugin(baseEntityPlugin, {
+  entityName: 'Alumno',
+  sensitiveFields: ['dni', 'contactos.telefono', 'contactos.email', 'obraSocial.numeroAfiliado', 'emergencias.telefonoEmergencia']
+});
 
 module.exports = mongoose.model('Alumno', alumnoSchema);
