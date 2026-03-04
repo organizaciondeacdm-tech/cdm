@@ -1,5 +1,4 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -14,6 +13,7 @@ const errorHandler = require('./middleware/errorHandler');
 const { registrarAccion } = require('./services/auditoriaService');
 const JwtKeyManager = require('./utils/jwtKeyManager');
 const { getRuntimeEnvState } = require('./config/runtimeEnv');
+const { getDataSource } = require('./config/typeorm');
 
 // Importar rutas
 const authRoutes = require('./routes/authRoutes');
@@ -50,11 +50,17 @@ let connectionPromise = null;
 const ensureDbConnection = async () => {
   if (!connectionPromise) {
     console.log('🔄 Inicializando conexión a MongoDB...');
-    connectionPromise = connectDB().catch(err => {
-      console.error('❌ Error conectando a DB:', err);
-      connectionPromise = null;
-      throw err;
-    });
+    connectionPromise = connectDB()
+      .then(async (result) => {
+        // Initialize JWT keys exactly once, right after the DB is ready
+        await JwtKeyManager.initialize();
+        return result;
+      })
+      .catch(err => {
+        console.error('❌ Error conectando a DB:', err);
+        connectionPromise = null;
+        throw err;
+      });
   }
   return connectionPromise;
 };
@@ -75,12 +81,6 @@ app.use('/api', async (req, res, next) => {
   // Intentar conectar a DB
   try {
     await ensureDbConnection();
-    
-    // Inicializar claves JWT después de conectar a DB
-    if (!JwtKeyManager.initialized) {
-      await JwtKeyManager.initialize();
-    }
-    
     next();
   } catch (error) {
     console.error('❌ Error en middleware DB:', error);
@@ -885,36 +885,29 @@ app.post('/api/send-alert-email', authMiddleware, async (req, res) => {
 // Ruta de health check
 app.get('/health', async (req, res) => {
   let connectionError = null;
+  let dataSource = null;
   
   try {
-    // Intentar conectar a DB si no está conectada
-    if (mongoose.connection.readyState === 0) {
-      await ensureDbConnection();
-    }
+    await ensureDbConnection();
+    dataSource = getDataSource();
   } catch (error) {
     connectionError = error.message;
     console.error('Health check: No se pudo conectar a MongoDB:', error.message);
   }
 
-  const mongoStatus = mongoose.connection.readyState;
-  const mongoStatusMap = {
-    0: 'disconnected',
-    1: 'connected',
-    2: 'connecting',
-    3: 'disconnecting'
-  };
+  const isConnected = Boolean(dataSource?.isInitialized);
 
   const response = {
     status: 'OK',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     mongodb: {
-      status: mongoStatusMap[mongoStatus] || 'unknown',
-      readyState: mongoStatus,
-      host: mongoose.connection.host || 'N/A',
-      name: mongoose.connection.name || 'N/A',
-      port: mongoose.connection.port || 'N/A',
-      models: Object.keys(mongoose.connection.models).length
+      status: isConnected ? 'connected' : 'disconnected',
+      readyState: isConnected ? 1 : 0,
+      host: process.env.MONGODB_URI ? 'configured' : 'N/A',
+      name: 'mongodb',
+      port: 'N/A',
+      models: 'typeorm-mongo'
     },
     environment: process.env.VERCEL ? 'vercel' : process.env.NODE_ENV,
     runtimeEnv: getRuntimeEnvState(),

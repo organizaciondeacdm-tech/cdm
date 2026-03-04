@@ -15,7 +15,7 @@ async function cleanupSessions() {
     console.log('Conectando a MongoDB...');
     await mongoose.connect(process.env.MONGODB_URI || process.env.MONGO_URI, {
       useNewUrlParser: true,
-      useUnifiedTopology: true,
+
     });
 
     console.log('Limpiando sesiones expiradas...');
