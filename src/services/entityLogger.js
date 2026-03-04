@@ -1,24 +1,23 @@
-const winston = require('winston');
+const { createLogger } = require('./../utils/logger');
+
+// Console: 'warn' by default so routine create/update events don't flood stdout.
+// Set ENTITY_LOG_LEVEL=info (or debug) to see full entity audit in console.
+// File transports always capture at 'info' for the audit trail.
+const consoleLevel = process.env.ENTITY_LOG_LEVEL || 'warn';
 
 const transports = [
-  new winston.transports.Console({
-    format: winston.format.simple()
-  })
+  { type: 'console', format: 'simple', level: consoleLevel }
 ];
 
 if (!process.env.VERCEL) {
   transports.push(
-    new winston.transports.File({ filename: 'logs/entities.log' }),
-    new winston.transports.File({ filename: 'logs/entities-error.log', level: 'error' })
+    { type: 'file', filename: 'logs/entities.log', level: 'info' },
+    { type: 'file', filename: 'logs/entities-error.log', level: 'error' }
   );
 }
 
-const logger = winston.createLogger({
-  level: process.env.ENTITY_LOG_LEVEL || 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  ),
+const logger = createLogger({
+  level: 'info',
   transports
 });
 

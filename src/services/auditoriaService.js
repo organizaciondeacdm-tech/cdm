@@ -1,26 +1,20 @@
-const winston = require('winston');
+const { createLogger } = require('./../utils/logger');
 
 // Configurar logger según el entorno
 const transports = [
-  new winston.transports.Console({
-    format: winston.format.simple()
-  })
+  { type: 'console', format: 'simple' }
 ];
 
 // Solo agregar archivos de logs fuera de Vercel
 if (!process.env.VERCEL) {
   transports.push(
-    new winston.transports.File({ filename: 'logs/auditoria.log' }),
-    new winston.transports.File({ filename: 'logs/auditoria-error.log', level: 'error' })
+    { type: 'file', filename: 'logs/auditoria.log' },
+    { type: 'file', filename: 'logs/auditoria-error.log', level: 'error' }
   );
 }
 
-const logger = winston.createLogger({
+const logger = createLogger({
   level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  ),
   transports
 });
 
