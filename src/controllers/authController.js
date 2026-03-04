@@ -10,29 +10,40 @@ const LOGIN_RESPONSE_DELAY_MS = parseInt(process.env.LOGIN_RESPONSE_DELAY_MS, 10
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const generateTokens = (userId, rol) => {
-  const accessToken = jwt.sign(
-    { userId, rol },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRE }
-  );
+  console.log('generateTokens called with:', { userId: userId.toString(), rol });
 
-  let refreshToken = null;
-  if (process.env.JWT_REFRESH_SECRET) {
-    refreshToken = jwt.sign(
-      { userId, type: 'refresh' },
-      process.env.JWT_REFRESH_SECRET,
-      { expiresIn: process.env.JWT_REFRESH_EXPIRE }
-    );
-  } else {
-    // Fallback: generate a simple refresh token if secret not set
-    refreshToken = jwt.sign(
-      { userId, type: 'refresh' },
+  try {
+    console.log('Generating access token...');
+    const accessToken = jwt.sign(
+      { userId, rol },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_REFRESH_EXPIRE }
+      { expiresIn: process.env.JWT_EXPIRE }
     );
-  }
+    console.log('Access token generated successfully');
 
-  return { accessToken, refreshToken };
+    let refreshToken = null;
+    if (process.env.JWT_REFRESH_SECRET) {
+      console.log('Generating refresh token with JWT_REFRESH_SECRET...');
+      refreshToken = jwt.sign(
+        { userId, type: 'refresh' },
+        process.env.JWT_REFRESH_SECRET,
+        { expiresIn: process.env.JWT_REFRESH_EXPIRE }
+      );
+    } else {
+      console.log('JWT_REFRESH_SECRET not found, using JWT_SECRET for refresh token...');
+      refreshToken = jwt.sign(
+        { userId, type: 'refresh' },
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.JWT_REFRESH_EXPIRE }
+      );
+    }
+    console.log('Refresh token generated successfully');
+
+    return { accessToken, refreshToken };
+  } catch (error) {
+    console.error('Error in generateTokens:', error);
+    throw error;
+  }
 };
 
 const login = async (req, res) => {
@@ -162,9 +173,13 @@ const login = async (req, res) => {
 
     console.log('Generating tokens...');
     // Generar tokens
-    const { accessToken, refreshToken } = generateTokens(user._id, user.rol);
-
-    console.log('Tokens generated successfully');
+    try {
+      var { accessToken, refreshToken } = generateTokens(user._id, user.rol);
+      console.log('Tokens generated successfully, accessToken length:', accessToken ? accessToken.length : 'null');
+    } catch (tokenError) {
+      console.error('Error generating tokens:', tokenError);
+      throw tokenError; // Re-throw to be caught by outer catch
+    }
 
     // Guardar refresh token (temporalmente deshabilitado para debug)
     // try {
@@ -202,14 +217,40 @@ const login = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Login error:', error);
-
-    // Proporcionar información de debug en desarrollo
-    const debugInfo = process.env.NODE_ENV === 'development' ? {
+    console.error('Login error:', {
       message: error.message,
       stack: error.stack,
-      name: error.name
-    } : null;
+      name: error.name,
+      code: error.code,
+      errno: error.errno,
+      syscall: error.syscall,
+      hostname: error.hostname,
+      timestamp: new Date().toISOString()
+    });
+
+    // Proporcionar información de debug avanzada
+    const debugInfo = {
+      message: error.message,
+      name: error.name,
+      code: error.code,
+      timestamp: new Date().toISOString(),
+      // Incluir stack trace siempre para debugging
+      stack: error.stack,
+      // Información adicional del error
+      details: {
+        errno: error.errno,
+        syscall: error.syscall,
+        hostname: error.hostname,
+        // Agregar información del entorno
+        nodeVersion: process.version,
+        platform: process.platform,
+        environment: process.env.NODE_ENV || 'unknown',
+        // Verificar si las variables de entorno críticas están definidas
+        jwtSecretDefined: !!process.env.JWT_SECRET,
+        jwtRefreshSecretDefined: !!process.env.JWT_REFRESH_SECRET,
+        mongoUriDefined: !!process.env.MONGODB_URI
+      }
+    };
 
     const internalError = new InternalServerError(
       'Error en el servidor',
