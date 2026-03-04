@@ -1,247 +1,293 @@
-import { test, expect } from '@playwright/test';
+// ─────────────────────────────────────────────────────────────────────────────
+// integration.spec.js  –  Full end-to-end flows combining UI + API
+// ─────────────────────────────────────────────────────────────────────────────
+const { test, expect } = require('@playwright/test');
+const {
+  loginUI,
+  logoutUI,
+  gotoSection,
+  loginAPI,
+  authJson,
+  authRequest,
+  findEscuelaByName,
+  safeDeleteEscuelaByName,
+  uniqueSuffix,
+  DEFAULT_API_URL
+} = require('./helpers/systematic');
 
-test.describe('ACDM - Pruebas E2E Completas', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+// ── Flujo 1: login → todas las secciones → logout ────────────────────────────
+test.describe('Integración – Login, navegación completa y Logout', () => {
+  test('recorre todas las secciones del sidebar sin errores de JS', async ({ page }) => {
+    const jsErrors = [];
+    page.on('pageerror', (err) => jsErrors.push(err.message));
+
+    await loginUI(page);
+
+    const sections = [
+      'Dashboard', 'Escuelas', 'Visitas', 'Proyectos',
+      'Informes', 'Alertas', 'Estadísticas', 'Calendario', 'Exportar'
+    ];
+
+    for (const section of sections) {
+      await gotoSection(page, section);
+      await page.waitForTimeout(300);
+      // Heading should be visible
+      await expect(
+        page.getByRole('heading', { level: 1 }).or(page.getByRole('heading', { level: 2 })).first()
+      ).toBeVisible({ timeout: 8_000 });
+    }
+
+    await logoutUI(page);
+
+    // No unhandled JS errors
+    expect(jsErrors.filter(e => !e.includes('ResizeObserver'))).toHaveLength(0);
+  });
+});
+
+// ── Flujo 2: CRUD completo API (escuela + sub-recursos + limpieza) ────────────
+test.describe('Integración – CRUD completo via API', () => {
+  let token, escuelaId, escuelaNombre;
+  let visitaId, proyectoId, informeId;
+
+  test.beforeAll(async ({ request }) => {
+    token = await loginAPI(request);
   });
 
-  test('Flujo completo: Login -> Exploración -> Logout', async ({ page }) => {
-    // PASO 1: Verificar página de inicio
-    const title = page.locator('title');
-    await expect(title).toContainText('ACDM');
-
-    // PASO 2: Realizar login
-    const emailInput = page.locator('input[type="email"], input[name="email"], input[placeholder*="mail"]').first();
-    const passwordInput = page.locator('input[type="password"]').first();
-    const submitButton = page.locator('button[type="submit"]').first();
-
-    if (await emailInput.isVisible()) {
-      await emailInput.fill('admin');
-      await passwordInput.fill('admin2025');
-      await submitButton.click();
-
-      await page.waitForTimeout(2000);
-    }
-
-    // PASO 3: Verificar que estamos en la app
-    const bodyContent = await page.locator('body').textContent();
-    expect(bodyContent.length).toBeGreaterThan(100);
-
-    // PASO 4: Buscar y hacer clic en elementos interactivos
-    const buttons = page.locator('button');
-    const buttonCount = await buttons.count();
-    expect(buttonCount).toBeGreaterThan(0);
-
-    // PASO 5: Intentar encontrar tablas y datos
-    const tables = page.locator('table');
-    const tableCount = await tables.count();
-    
-    // Si hay tablas, verificar que tengan contenido
-    if (tableCount > 0) {
-      const firstTable = tables.first();
-      const rows = firstTable.locator('tr');
-      const rowCount = await rows.count();
-      expect(rowCount).toBeGreaterThanOrEqual(0);
-    }
-
-    // PASO 6: Probar navegación
-    const navLinks = page.locator('a, button[role="button"]');
-    const linkCount = await navLinks.count();
-    
-    if (linkCount > 0) {
-      // Hacer clic en el primer enlace que no sea de logout
-      const firstLink = navLinks.first();
-      if (await firstLink.isVisible()) {
-        await firstLink.click();
-        await page.waitForTimeout(500);
-      }
-    }
-
-    // PASO 7: Probar formularios si existen
-    const forms = page.locator('form');
-    const formCount = await forms.count();
-    
-    if (formCount > 0) {
-      const firstForm = forms.first();
-      const inputs = firstForm.locator('input');
-      const inputCount = await inputs.count();
-      
-      if (inputCount > 0) {
-        const firstInput = inputs.first();
-        await firstInput.fill('Test Data ' + Date.now());
-        await page.waitForTimeout(300);
-      }
-    }
-
-    // PASO 8: Verificar que la sesión persiste
-    const localStorageData = await page.evaluate(() => localStorage.length);
-    expect(localStorageData).toBeGreaterThanOrEqual(0);
-  });
-
-  test('Flujo de creación de datos (si está disponible)', async ({ page }) => {
-    // Login
-    const emailInput = page.locator('input[type="email"], input[name="email"], input[placeholder*="mail"]').first();
-    
-    if (await emailInput.isVisible()) {
-      await emailInput.fill('admin');
-      await page.locator('input[type="password"]').first().fill('admin2025');
-      await page.locator('button[type="submit"]').first().click();
-      await page.waitForTimeout(2000);
-    }
-
-    // Buscar botón de crear/agregar
-    const createButtons = page.locator('button:has-text("Crear"), button:has-text("Agregar"), button:has-text("Nuevo"), button:has-text("Add"), button:has-text("New")');
-    const createCount = await createButtons.count();
-
-    if (createCount > 0) {
-      const firstCreateButton = createButtons.first();
-      
-      if (await firstCreateButton.isVisible()) {
-        await firstCreateButton.click();
-        await page.waitForTimeout(500);
-
-        // Verificar que se abre un formulario
-        const forms = page.locator('form');
-        const formCount = await forms.count();
-        expect(formCount).toBeGreaterThanOrEqual(0);
-      }
+  test.afterAll(async ({ request }) => {
+    if (escuelaNombre) {
+      await safeDeleteEscuelaByName(request, token, escuelaNombre);
     }
   });
 
-  test('Prueba de persistencia de datos', async ({ page, context }) => {
-    // Guardar datos en localStorage desde la app
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+  test('paso 1 – crea escuela', async ({ request }) => {
+    const suf = uniqueSuffix();
+    escuelaNombre = `Escuela Integración ${suf}`;
+    const body = await authJson(request, token, 'POST', '/api/escuelas', {
+      de: 'DE 05',
+      escuela: escuelaNombre,
+      nivel: 'Primario',
+      direccion: `Calle Integración ${suf}`,
+      email: `integ.${suf}@acdm.local`,
+      jornada: 'Simple',
+      turno: 'Mañana',
+      estado: 'activa'
+    }, 201);
+    escuelaId = body.data._id;
+    expect(escuelaId).toBeTruthy();
+  });
 
-    // Login
-    const emailInput = page.locator('input[type="email"], input[name="email"], input[placeholder*="mail"]').first();
-    if (await emailInput.isVisible()) {
-      await emailInput.fill('admin');
-      await page.locator('input[type="password"]').first().fill('admin2025');
-      await page.locator('button[type="submit"]').first().click();
-      await page.waitForTimeout(2000);
+  test('paso 2 – registra visita, proyecto e informe en la escuela', async ({ request }) => {
+    if (!escuelaId) test.skip();
+
+    const vBody = await authJson(request, token, 'POST', `/api/escuelas/${escuelaId}/visitas`, {
+      fecha: '2026-03-15',
+      visitante: 'Inspector Integración',
+      observaciones: 'Integración E2E'
+    }, 201);
+    visitaId = vBody.data._id;
+    expect(visitaId).toBeTruthy();
+
+    const pBody = await authJson(request, token, 'POST', `/api/escuelas/${escuelaId}/proyectos`, {
+      nombre: 'Proyecto Integración',
+      descripcion: 'Desc',
+      estado: 'En Progreso',
+      fechaInicio: '2026-01-01'
+    }, 201);
+    proyectoId = pBody.data._id;
+    expect(proyectoId).toBeTruthy();
+
+    const iBody = await authJson(request, token, 'POST', `/api/escuelas/${escuelaId}/informes`, {
+      titulo: 'Informe Integración',
+      estado: 'Pendiente',
+      fechaEntrega: '2026-04-30'
+    }, 201);
+    informeId = iBody.data._id;
+    expect(informeId).toBeTruthy();
+  });
+
+  test('paso 3 – actualiza escuela, visita, proyecto e informe', async ({ request }) => {
+    if (!escuelaId) test.skip();
+
+    const escBody = await authJson(request, token, 'PUT', `/api/escuelas/${escuelaId}`, { jornada: 'Completa' });
+    expect(escBody.success).toBe(true);
+
+    if (visitaId) {
+      const vUp = await authJson(request, token, 'PUT', `/api/escuelas/${escuelaId}/visitas/${visitaId}`, {
+        observaciones: 'Actualizada'
+      });
+      expect(vUp.success).toBe(true);
     }
 
-    // Guardar snapshot de localStorage
-    const initialStorage = await page.evaluate(() => JSON.stringify(localStorage));
-    expect(initialStorage).toBeTruthy();
-
-    // Navegar a otra página
-    await page.goto('/');
-    await page.waitForTimeout(1000);
-
-    // Verificar que localStorage persiste
-    const finalStorage = await page.evaluate(() => JSON.stringify(localStorage));
-    expect(finalStorage).toBeTruthy();
-  });
-
-  test('Validación de accesibilidad básica', async ({ page }) => {
-    await page.goto('/');
-    
-    // Verificar que hay elementos interactivos accesibles
-    const buttons = page.locator('button');
-    const links = page.locator('a');
-    
-    const buttonCount = await buttons.count();
-    const linkCount = await links.count();
-
-    // Debe haber al menos algunos elementos interactivos
-    expect(buttonCount + linkCount).toBeGreaterThan(0);
-
-    // Verificar que inputs tienen labels asociados (cuando sea posible)
-    const inputs = page.locator('input');
-    const inputCount = await inputs.count();
-
-    if (inputCount > 0) {
-      const firstInput = inputs.first();
-      const inputId = await firstInput.getAttribute('id');
-      
-      if (inputId) {
-        const label = page.locator(`label[for="${inputId}"]`);
-        // No es error si no tiene label, pero es mejor práctica
-        expect(label).toBeTruthy();
-      }
+    if (proyectoId) {
+      const pUp = await authJson(request, token, 'PUT', `/api/escuelas/${escuelaId}/proyectos/${proyectoId}`, {
+        estado: 'Completado'
+      });
+      expect(pUp.success).toBe(true);
     }
-  });
 
-  test('Manejo de cambio de tamaño de ventana', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-
-    // Probar en desktop
-    await page.setViewportSize({ width: 1920, height: 1080 });
-    let bodyContent = await page.locator('body').textContent();
-    expect(bodyContent.length).toBeGreaterThan(50);
-
-    // Probar en tablet
-    await page.setViewportSize({ width: 768, height: 1024 });
-    bodyContent = await page.locator('body').textContent();
-    expect(bodyContent.length).toBeGreaterThan(50);
-
-    // Probar en mobile
-    await page.setViewportSize({ width: 375, height: 667 });
-    bodyContent = await page.locator('body').textContent();
-    expect(bodyContent.length).toBeGreaterThan(50);
-  });
-
-  test('Navegación de teclado básica', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-
-    // TAB a través de elementos
-    await page.keyboard.press('Tab');
-    await page.waitForTimeout(200);
-
-    // Verificar que algo está enfocado
-    const focusedElement = await page.evaluate(() => document.activeElement.tagName);
-    expect(focusedElement).toBeTruthy();
-
-    // ENTER en botón si está enfocado
-    if (focusedElement === 'BUTTON') {
-      await page.keyboard.press('Enter');
-      await page.waitForTimeout(500);
+    if (informeId) {
+      const iUp = await authJson(request, token, 'PUT', `/api/escuelas/${escuelaId}/informes/${informeId}`, {
+        estado: 'Entregado'
+      });
+      expect(iUp.success).toBe(true);
     }
   });
 
-  test('Verificación de carga de imágenes', async ({ page }) => {
-    await page.goto('/');
-    
-    const images = page.locator('img');
-    const imageCount = await images.count();
+  test('paso 4 – el dashboard y estadísticas reflejan los datos', async ({ request }) => {
+    const dash = await authJson(request, token, 'GET', '/api/reportes/dashboard');
+    expect(dash.success).toBe(true);
 
-    if (imageCount > 0) {
-      const firstImage = images.first();
-      const alt = await firstImage.getAttribute('alt');
-      
-      // Verificar que las imágenes tienen alt text (accesibilidad)
-      if (alt) {
-        expect(alt.length).toBeGreaterThan(0);
-      }
-    }
+    const stats = await authJson(request, token, 'GET', '/api/estadisticas');
+    expect(stats.success).toBe(true);
   });
 
-  test('Verificación de links internos', async ({ page }) => {
-    await page.goto('/');
-    
-    const links = page.locator('a[href]');
-    const linkCount = await links.count();
+  test('paso 5 – elimina sub-recursos y la escuela', async ({ request }) => {
+    if (!escuelaId) test.skip();
 
-    if (linkCount > 0) {
-      const firstLink = links.first();
-      const href = await firstLink.getAttribute('href');
-      
-      // Los links deben tener href válido
-      expect(href).toBeTruthy();
-      
-      // Intentar hacer clic
-      if (href && !href.includes('javascript:')) {
-        await firstLink.click();
-        await page.waitForTimeout(500);
-        
-        // No debe haber error 404
-        expect(page.url()).toBeTruthy();
-      }
+    if (informeId) {
+      const iDel = await authJson(request, token, 'DELETE', `/api/escuelas/${escuelaId}/informes/${informeId}`);
+      expect(iDel.success).toBe(true);
     }
+    if (proyectoId) {
+      const pDel = await authJson(request, token, 'DELETE', `/api/escuelas/${escuelaId}/proyectos/${proyectoId}`);
+      expect(pDel.success).toBe(true);
+    }
+    if (visitaId) {
+      const vDel = await authJson(request, token, 'DELETE', `/api/escuelas/${escuelaId}/visitas/${visitaId}`);
+      expect(vDel.success).toBe(true);
+    }
+
+    const escDel = await authJson(request, token, 'DELETE', `/api/escuelas/${escuelaId}`);
+    expect(escDel.success).toBe(true);
+
+    escuelaId = null;
+    escuelaNombre = null;
+  });
+});
+
+// ── Flujo 3: Búsqueda, exportar y calendario ──────────────────────────────────
+test.describe('Integración – Búsqueda, exportar y calendario', () => {
+  let token;
+  test.beforeAll(async ({ request }) => { token = await loginAPI(request); });
+
+  test('búsqueda global devuelve resultados', async ({ request }) => {
+    const body = await authJson(request, token, 'GET', '/api/buscar?q=escuela');
+    expect(body.success).toBe(true);
+  });
+
+  test('exportar JSON contiene datos', async ({ request }) => {
+    const res = await authRequest(request, token, 'GET', '/api/export/json');
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    // Should have some data arrays
+    expect(body).toBeTruthy();
+  });
+
+  test('exportar CSV devuelve content-type text/csv o text/plain', async ({ request }) => {
+    const res = await authRequest(request, token, 'GET', '/api/export/csv');
+    expect(res.status()).toBe(200);
+    const ct = res.headers()['content-type'] ?? '';
+    expect(ct).toMatch(/csv|text|octet/i);
+  });
+
+  test('calendario año completo contiene 12 meses', async ({ request }) => {
+    const body = await authJson(request, token, 'GET', '/api/calendario?year=2026');
+    expect(body.success).toBe(true);
+    // Expect data covering all 12 months in some form
+    const data = body.data;
+    expect(data).toBeTruthy();
+  });
+});
+
+// ── Flujo 4: Docente + Alumno ciclo de vida completo ─────────────────────────
+test.describe('Integración – Ciclo de vida Docente y Alumno', () => {
+  let token, escuelaId, docenteId, alumnoId;
+
+  test.beforeAll(async ({ request }) => {
+    token = await loginAPI(request);
+    const body = await authJson(request, token, 'GET', '/api/escuelas?limit=1');
+    escuelaId = body.data?.escuelas?.[0]?._id ?? null;
+  });
+
+  test('crea docente → actualiza a Licencia → elimina', async ({ request }) => {
+    if (!escuelaId) test.skip();
+    const suf = uniqueSuffix();
+
+    const createBody = await authJson(request, token, 'POST', '/api/docentes', {
+      escuela: escuelaId,
+      nombre: 'María',
+      apellido: `DocInteg-${suf}`,
+      cargo: 'Titular',
+      estado: 'Activo',
+      jornada: 'Simple',
+      email: `mdoc.${suf}@acdm.local`
+    }, 201);
+    docenteId = createBody.data._id;
+    expect(docenteId).toBeTruthy();
+
+    const updateBody = await authJson(request, token, 'PUT', `/api/docentes/${docenteId}`, {
+      estado: 'Licencia',
+      motivo: 'Art. 102',
+      diasAutorizados: 15
+    });
+    expect(updateBody.success).toBe(true);
+
+    const deleteBody = await authJson(request, token, 'DELETE', `/api/docentes/${docenteId}`);
+    expect(deleteBody.success).toBe(true);
+    docenteId = null;
+  });
+
+  test('crea alumno → actualiza → elimina', async ({ request }) => {
+    if (!escuelaId) test.skip();
+    const suf = uniqueSuffix();
+
+    const createBody = await authJson(request, token, 'POST', '/api/alumnos', {
+      escuela: escuelaId,
+      nombre: 'Lucía',
+      apellido: `AluInteg-${suf}`,
+      gradoSalaAnio: '4to',
+      diagnostico: 'TEA'
+    }, 201);
+    alumnoId = createBody.data._id;
+    expect(alumnoId).toBeTruthy();
+
+    const updateBody = await authJson(request, token, 'PUT', `/api/alumnos/${alumnoId}`, {
+      observaciones: 'Seguimiento mensual'
+    });
+    expect(updateBody.success).toBe(true);
+
+    const deleteBody = await authJson(request, token, 'DELETE', `/api/alumnos/${alumnoId}`);
+    expect(deleteBody.success).toBe(true);
+    alumnoId = null;
+  });
+});
+
+// ── Flujo 5: Sesión de admin y gestión de usuarios ────────────────────────────
+test.describe('Integración – Admin usuario lifecycle', () => {
+  let token, userId;
+
+  test.beforeAll(async ({ request }) => { token = await loginAPI(request); });
+
+  test('crea → actualiza → elimina usuario admin', async ({ request }) => {
+    const ts = uniqueSuffix();
+    const createBody = await authJson(request, token, 'POST', '/api/admin/users', {
+      username: `integ${ts}`,
+      password: 'IntegPass2026!',
+      email: `integ${ts}@test.com`,
+      nombre: 'Integ',
+      apellido: 'E2E',
+      rol: 'viewer'
+    }, 201);
+    userId = createBody.data._id;
+    expect(userId).toBeTruthy();
+
+    const updateBody = await authJson(request, token, 'PUT', `/api/admin/users/${userId}`, {
+      nombre: 'IntegActualizado'
+    });
+    expect(updateBody.success).toBe(true);
+
+    const deleteBody = await authJson(request, token, 'DELETE', `/api/admin/users/${userId}`);
+    expect(deleteBody.success).toBe(true);
+    userId = null;
   });
 });

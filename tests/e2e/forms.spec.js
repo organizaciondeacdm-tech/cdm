@@ -1,156 +1,248 @@
-import { test, expect } from '@playwright/test';
+// ─────────────────────────────────────────────────────────────────────────────
+// forms.spec.js  –  UI CRUD via modal forms (Escuelas, Visitas, Proyectos, Informes)
+// ─────────────────────────────────────────────────────────────────────────────
+const { test, expect } = require('@playwright/test');
+const {
+  loginUI,
+  gotoSection,
+  loginAPI,
+  authJson,
+  findEscuelaByName,
+  safeDeleteEscuelaByName,
+  uniqueSuffix
+} = require('./helpers/systematic');
 
-test.describe('ACDM - Pruebas de Formularios', () => {
+// ── Helper: open a modal by clicking a "New …" button ────────────────────────
+async function openNewModal(page, btnPattern) {
+  const btn = page.getByRole('button', { name: btnPattern }).first();
+  await btn.waitFor({ state: 'visible', timeout: 10_000 });
+  await btn.click();
+  // Wait for the modal backdrop or the modal itself
+  await page.locator('.modal, [role="dialog"]').first()
+    .waitFor({ state: 'visible', timeout: 8_000 });
+}
+
+// ── Helper: fill a modal field by its label text ─────────────────────────────
+async function fillModalField(page, labelText, value) {
+  const group = page
+    .locator('.modal .form-group, [role="dialog"] .form-group')
+    .filter({ hasText: labelText })
+    .first();
+
+  const input = group.locator('input, textarea').first();
+  await input.fill(String(value));
+}
+
+// ── Helper: save modal ────────────────────────────────────────────────────────
+async function saveModal(page) {
+  await page
+    .locator('.modal, [role="dialog"]')
+    .first()
+    .getByRole('button', { name: /Guardar|Crear|Aceptar/i })
+    .click();
+  // Wait for modal to close
+  await page.locator('.modal, [role="dialog"]').first()
+    .waitFor({ state: 'hidden', timeout: 10_000 });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('UI – CRUD Escuelas', () => {
+  let createdName = null;
+
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    
-    // Login automático
-    const emailInput = page.locator('input[type="email"], input[name="email"], input[placeholder*="mail"]').first();
+    await loginUI(page);
+  });
+
+  test.afterEach(async ({ request }) => {
+    if (!createdName) return;
+    const token = await loginAPI(request);
+    await safeDeleteEscuelaByName(request, token, createdName);
+    createdName = null;
+  });
+
+  test('crea una escuela desde el formulario modal', async ({ page, request }) => {
+    const suf = uniqueSuffix();
+    createdName = `Escuela UI E2E ${suf}`;
+
+    await gotoSection(page, 'Escuelas');
+
+    await openNewModal(page, /Nueva Escuela|Crear primera escuela/i);
+
+    await fillModalField(page, /Nombre de la Escuela/i, createdName);
+    await fillModalField(page, /Direcci[oó]n/i, `Calle UI ${suf}, CABA`);
+
+    // Email field
+    const emailInput = page
+      .locator('.modal input[type="email"], .modal input[name="email"], .modal input[placeholder*="mail"]')
+      .first();
     if (await emailInput.isVisible()) {
-      await emailInput.fill('admin');
-      await page.locator('input[type="password"]').first().fill('admin2025');
-      await page.locator('button[type="submit"]').first().click();
-      await page.waitForTimeout(2000);
+      await emailInput.fill(`ui.${suf}@acdm.local`);
     }
+
+    // DE field
+    const deGroup = page
+      .locator('.modal .form-group')
+      .filter({ hasText: /Distrito|DE\b/i })
+      .first();
+    if (await deGroup.isVisible()) {
+      const deInput = deGroup.locator('input').first();
+      if (await deInput.isVisible()) await deInput.fill('DE 09');
+    }
+
+    await saveModal(page);
+
+    // The new escuela name should appear somewhere on the page
+    await expect(
+      page.locator(`text=${createdName}`).first()
+    ).toBeVisible({ timeout: 10_000 });
+
+    // Confirm via API
+    const token = await loginAPI(request);
+    const esc = await findEscuelaByName(request, token, createdName);
+    expect(esc?._id).toBeTruthy();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('UI – CRUD Visitas', () => {
+  test.beforeEach(async ({ page }) => { await loginUI(page); });
+
+  test('sección Visitas carga y muestra el encabezado', async ({ page }) => {
+    await gotoSection(page, 'Visitas');
+    await expect(
+      page.getByRole('heading', { name: /Visitas/i }).first()
+    ).toBeVisible({ timeout: 8_000 });
   });
 
-  test('Debe permitir llenar formularios de texto', async ({ page }) => {
-    // Buscar inputs de texto
-    const textInputs = page.locator('input[type="text"]');
-    const count = await textInputs.count();
-    
-    if (count > 0) {
-      const firstInput = textInputs.first();
-      await firstInput.fill('Valor de prueba');
-      
-      const value = await firstInput.inputValue();
-      expect(value).toBe('Valor de prueba');
-    }
+  test('abre modal Nueva Visita (si hay escuelas)', async ({ page, request }) => {
+    const token = await loginAPI(request);
+    const body = await authJson(request, token, 'GET', '/api/escuelas?limit=1');
+    const hasEscuelas = (body.data?.escuelas?.length ?? 0) > 0;
+    if (!hasEscuelas) test.skip();
+
+    await gotoSection(page, 'Visitas');
+
+    const btn = page.getByRole('button', { name: /Nueva Visita/i }).first();
+    if (!await btn.isVisible({ timeout: 5_000 }).catch(() => false)) test.skip();
+
+    await btn.click();
+    await expect(
+      page.locator('.modal, [role="dialog"]').first()
+    ).toBeVisible({ timeout: 8_000 });
+
+    // Close without saving
+    const cancelBtn = page
+      .locator('.modal, [role="dialog"]')
+      .first()
+      .getByRole('button', { name: /Cancelar|Cerrar|×/i })
+      .first();
+    if (await cancelBtn.isVisible()) await cancelBtn.click();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('UI – CRUD Proyectos', () => {
+  test.beforeEach(async ({ page }) => { await loginUI(page); });
+
+  test('sección Proyectos carga y muestra el encabezado', async ({ page }) => {
+    await gotoSection(page, 'Proyectos');
+    await expect(
+      page.getByRole('heading', { name: /Proyectos/i }).first()
+    ).toBeVisible({ timeout: 8_000 });
   });
 
-  test('Debe permitir llenar formularios de email', async ({ page }) => {
-    // Buscar inputs de email
-    const emailInputs = page.locator('input[type="email"]');
-    const count = await emailInputs.count();
-    
-    if (count > 0) {
-      const firstInput = emailInputs.first();
-      await firstInput.fill('test@example.com');
-      
-      const value = await firstInput.inputValue();
-      expect(value).toBe('test@example.com');
-    }
-  });
+  test('abre modal Nuevo Proyecto (si hay escuelas)', async ({ page, request }) => {
+    const token = await loginAPI(request);
+    const body = await authJson(request, token, 'GET', '/api/escuelas?limit=1');
+    const hasEscuelas = (body.data?.escuelas?.length ?? 0) > 0;
+    if (!hasEscuelas) test.skip();
 
-  test('Debe permitir llenar formularios de número', async ({ page }) => {
-    // Buscar inputs de número
-    const numberInputs = page.locator('input[type="number"]');
-    const count = await numberInputs.count();
-    
-    if (count > 0) {
-      const firstInput = numberInputs.first();
-      await firstInput.fill('123');
-      
-      const value = await firstInput.inputValue();
-      expect(value).toBe('123');
-    }
-  });
+    await gotoSection(page, 'Proyectos');
 
-  test('Debe permitir llenar textarea', async ({ page }) => {
-    // Buscar textareas
-    const textareas = page.locator('textarea');
-    const count = await textareas.count();
-    
-    if (count > 0) {
-      const firstTextarea = textareas.first();
-      await firstTextarea.fill('Texto largo para prueba\nCon múltiples líneas');
-      
-      const value = await firstTextarea.textContent();
-      expect(value).toContain('Texto largo para prueba');
-    }
-  });
+    const btn = page.getByRole('button', { name: /Nuevo Proyecto/i }).first();
+    if (!await btn.isVisible({ timeout: 5_000 }).catch(() => false)) test.skip();
 
-  test('Debe permitir seleccionar opciones de dropdown', async ({ page }) => {
-    // Buscar selects
-    const selects = page.locator('select');
-    const count = await selects.count();
-    
-    if (count > 0) {
-      const firstSelect = selects.first();
-      
-      // Obtener opciones disponibles
-      const options = await firstSelect.locator('option').count();
-      
-      if (options > 1) {
-        // Seleccionar la segunda opción
-        await firstSelect.selectOption({ index: 1 });
-        
-        const selectedValue = await firstSelect.inputValue();
-        expect(selectedValue).toBeTruthy();
-      }
-    }
-  });
+    await btn.click();
+    await expect(
+      page.locator('.modal, [role="dialog"]').first()
+    ).toBeVisible({ timeout: 8_000 });
 
-  test('Debe validar campos requeridos', async ({ page }) => {
-    // Buscar formularios
-    const forms = page.locator('form').first();
-    
-    if (await forms.isVisible()) {
-      // Intentar enviar formulario vacío
-      const submitButton = forms.locator('button[type="submit"]').first();
-      
-      if (await submitButton.isVisible()) {
-        await submitButton.click();
-        await page.waitForTimeout(500);
-        
-        // Verificar que no se navega
-        expect(page.url()).toBeTruthy();
-      }
-    }
+    const cancelBtn = page
+      .locator('.modal, [role="dialog"]')
+      .first()
+      .getByRole('button', { name: /Cancelar|Cerrar|×/i })
+      .first();
+    if (await cancelBtn.isVisible()) await cancelBtn.click();
   });
+});
 
-  test('Debe permitir seleccionar con checkboxes', async ({ page }) => {
-    // Buscar checkboxes
-    const checkboxes = page.locator('input[type="checkbox"]');
-    const count = await checkboxes.count();
-    
-    if (count > 0) {
-      const firstCheckbox = checkboxes.first();
-      
-      const isChecked1 = await firstCheckbox.isChecked();
-      await firstCheckbox.check();
-      
-      const isChecked2 = await firstCheckbox.isChecked();
-      expect(isChecked2).toBe(true);
-    }
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('UI – CRUD Informes', () => {
+  test.beforeEach(async ({ page }) => { await loginUI(page); });
+
+  test('sección Informes carga y muestra el encabezado', async ({ page }) => {
+    await gotoSection(page, 'Informes');
+    await expect(
+      page.getByRole('heading', { name: /Informes/i }).first()
+    ).toBeVisible({ timeout: 8_000 });
   });
+});
 
-  test('Debe permitir seleccionar con radio buttons', async ({ page }) => {
-    // Buscar radio buttons
-    const radios = page.locator('input[type="radio"]');
-    const count = await radios.count();
-    
-    if (count > 0) {
-      const firstRadio = radios.first();
-      await firstRadio.check();
-      
-      const isChecked = await firstRadio.isChecked();
-      expect(isChecked).toBe(true);
-    }
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('UI – Sección Exportar', () => {
+  test.beforeEach(async ({ page }) => { await loginUI(page); });
+
+  test('muestra botones de exportación', async ({ page }) => {
+    await gotoSection(page, 'Exportar');
+    // At least one export button should exist
+    const exportButtons = page.getByRole('button', { name: /export|csv|json|pdf/i });
+    const count = await exportButtons.count();
+    expect(count).toBeGreaterThanOrEqual(1);
   });
+});
 
-  test('Debe permitir llenar campos de fecha', async ({ page }) => {
-    // Buscar inputs de fecha
-    const dateInputs = page.locator('input[type="date"]');
-    const count = await dateInputs.count();
-    
-    if (count > 0) {
-      const firstInput = dateInputs.first();
-      await firstInput.fill('2024-03-02');
-      
-      const value = await firstInput.inputValue();
-      expect(value).toBe('2024-03-02');
-    }
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('UI – Sección Estadísticas', () => {
+  test.beforeEach(async ({ page }) => { await loginUI(page); });
+
+  test('muestra gráficos o tarjetas de datos', async ({ page }) => {
+    await gotoSection(page, 'Estadísticas');
+    await expect(
+      page.getByRole('heading', { name: /Estad[íi]sticas/i }).first()
+    ).toBeVisible({ timeout: 8_000 });
+
+    // At least one card, chart container or numeric value should be present
+    const statCard = page.locator('[class*="card"], [class*="stat"], [class*="chart"]').first();
+    await expect(statCard).toBeVisible({ timeout: 5_000 });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('UI – Sección Alertas', () => {
+  test.beforeEach(async ({ page }) => { await loginUI(page); });
+
+  test('muestra el centro de alertas', async ({ page }) => {
+    await gotoSection(page, 'Alertas');
+    await expect(
+      page.getByRole('heading', { name: /Alertas/i }).first()
+    ).toBeVisible({ timeout: 8_000 });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('UI – Sección Calendario', () => {
+  test.beforeEach(async ({ page }) => { await loginUI(page); });
+
+  test('muestra la grilla del calendario', async ({ page }) => {
+    await gotoSection(page, 'Calendario');
+    await expect(
+      page.getByRole('heading', { name: /Calendario/i }).first()
+    ).toBeVisible({ timeout: 8_000 });
+
+    // Calendar grid: days or month header should appear
+    const calGrid = page
+      .locator('[class*="calendar"], [class*="cal-"], table')
+      .first();
+    await expect(calGrid).toBeVisible({ timeout: 5_000 });
   });
 });

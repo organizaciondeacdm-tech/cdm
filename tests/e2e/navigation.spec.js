@@ -1,90 +1,80 @@
-import { test, expect } from '@playwright/test';
+// ─────────────────────────────────────────────────────────────────────────────
+// navigation.spec.js  –  Sidebar navigation after login
+// ─────────────────────────────────────────────────────────────────────────────
+const { test, expect } = require('@playwright/test');
+const { loginUI, gotoSection } = require('./helpers/systematic');
 
-test.describe('ACDM - Pruebas de Navegación y UI', () => {
+// All nav items defined in acdm-system-sidebar.jsx
+const NAV_SECTIONS = [
+  { label: 'Dashboard',      heading: /Dashboard/i },
+  { label: 'Escuelas',       heading: /Escuelas/i },
+  { label: 'Visitas',        heading: /Visitas/i },
+  { label: 'Proyectos',      heading: /Proyectos/i },
+  { label: 'Informes',       heading: /Informes/i },
+  { label: 'Alertas',        heading: /Alertas/i },
+  { label: 'Estadísticas',   heading: /Estad[íi]sticas/i },
+  { label: 'Calendario',     heading: /Calendario/i },
+  { label: 'Exportar',       heading: /Exportar/i }
+];
+
+test.describe('Navegación – Sidebar', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    
-    // Login automático
-    const emailInput = page.locator('input[type="email"], input[name="email"], input[placeholder*="mail"]').first();
-    if (await emailInput.isVisible()) {
-      await emailInput.fill('admin');
-      await page.locator('input[type="password"]').first().fill('admin2025');
-      await page.locator('button[type="submit"]').first().click();
-      await page.waitForTimeout(2000);
+    await loginUI(page);
+  });
+
+  // ── Sidebar is visible ──────────────────────────────────────────────────
+  test('el sidebar es visible después del login', async ({ page }) => {
+    await expect(page.locator('.sidebar, nav.sidebar').first()).toBeVisible();
+  });
+
+  test('el sidebar contiene todos los ítems de navegación', async ({ page }) => {
+    for (const { label } of NAV_SECTIONS) {
+      await expect(
+        page.locator('.nav-item').filter({ hasText: label }).first()
+      ).toBeVisible();
     }
   });
 
-  test('Debe mostrar el layout principal', async ({ page }) => {
-    // Verificar que existen elementos principales
-    const bodyContent = await page.locator('body').count();
-    expect(bodyContent).toBeGreaterThan(0);
+  // ── Each section renders its heading ────────────────────────────────────
+  for (const { label, heading } of NAV_SECTIONS) {
+    test(`navega a "${label}" y muestra el encabezado correcto`, async ({ page }) => {
+      await gotoSection(page, label);
+      await expect(
+        page.getByRole('heading', { name: heading }).first()
+      ).toBeVisible({ timeout: 10_000 });
+    });
+  }
 
-    // Buscar navegación o sidebar
-    const navElements = await page.locator('nav, [role="navigation"], aside, [class*="sidebar"]').count();
-    expect(navElements).toBeGreaterThanOrEqual(0);
+  // ── Active state ─────────────────────────────────────────────────────────
+  test('el nav-item activo tiene la clase "active"', async ({ page }) => {
+    await gotoSection(page, 'Escuelas');
+    const activeItem = page.locator('.nav-item.active');
+    await expect(activeItem).toBeVisible();
+    await expect(activeItem).toContainText('Escuelas');
   });
 
-  test('Debe contener secciones principales', async ({ page }) => {
-    // Buscar secciones clave mencionadas en el código
-    const sections = ['escuela', 'docente', 'alumno', 'proyecto', 'visita'];
-    
-    // Buscar al menos algunas secciones
-    const pageText = await page.locator('body').textContent();
-    const foundSections = sections.filter(section => 
-      pageText.toLowerCase().includes(section.toLowerCase())
-    );
-    
-    // Debería encontrar al menos una sección
-    expect(foundSections.length).toBeGreaterThanOrEqual(0);
+  // ── Keyboard shortcuts hint ──────────────────────────────────────────────
+  test('el sidebar muestra los atajos de teclado', async ({ page }) => {
+    const sidebar = page.locator('.sidebar, nav.sidebar').first();
+    await expect(sidebar).toContainText(/Ctrl\+F/i);
   });
 
-  test('Debe responder a interacciones', async ({ page }) => {
-    // Buscar botones interactivos
-    const buttons = await page.locator('button').count();
-    expect(buttons).toBeGreaterThan(0);
+  // ── Collapse / expand ────────────────────────────────────────────────────
+  test('el sidebar se puede colapsar y expandir', async ({ page }) => {
+    // Click the collapse toggle button (if it exists)
+    const toggleBtn = page
+      .locator('button[class*="collapse"], button[title*="collapse"], button[aria-label*="collapse"], .sidebar-toggle')
+      .first();
 
-    // Intentar hacer clic en el primer botón disponible
-    const firstButton = page.locator('button').first();
-    if (await firstButton.isVisible()) {
-      await firstButton.click();
-      await page.waitForTimeout(500);
-      // La acción no debe causar error
-      expect(page.url()).toBeTruthy();
-    }
-  });
+    if (await toggleBtn.isVisible()) {
+      await toggleBtn.click();
+      await expect(page.locator('.sidebar.collapsed')).toBeVisible({ timeout: 5_000 });
 
-  test('Debe contener formularios', async ({ page }) => {
-    // Buscar formularios
-    const forms = await page.locator('form, [role="form"]').count();
-    
-    // Buscar inputs de formulario
-    const inputs = await page.locator('input').count();
-    expect(inputs).toBeGreaterThan(0);
-  });
-
-  test('Debe manejar redimensionamiento de ventana', async ({ page }) => {
-    // Verificar responsive design
-    await page.setViewportSize({ width: 1920, height: 1080 });
-    expect(page.viewportSize().width).toBe(1920);
-
-    await page.setViewportSize({ width: 768, height: 1024 });
-    expect(page.viewportSize().width).toBe(768);
-
-    await page.setViewportSize({ width: 375, height: 667 });
-    expect(page.viewportSize().width).toBe(375);
-  });
-
-  test('Debe mostrar datos en tablas si existen', async ({ page }) => {
-    // Buscar tablas
-    const tables = await page.locator('table, [role="table"]').count();
-    
-    // Buscar filas
-    const rows = await page.locator('tr, [role="row"]').count();
-    
-    // No es error si no hay tablas, pero si hay deben tener estructura
-    if (tables > 0) {
-      expect(rows).toBeGreaterThanOrEqual(tables);
+      await toggleBtn.click();
+      await expect(page.locator('.sidebar:not(.collapsed)')).toBeVisible({ timeout: 5_000 });
+    } else {
+      // Skip gracefully if no toggle button found
+      test.skip();
     }
   });
 });
