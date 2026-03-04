@@ -111,11 +111,14 @@ const generateTokens = (userId, rol) => {
     const accessJti = crypto.randomBytes(16).toString('hex');
     const refreshJti = crypto.randomBytes(16).toString('hex');
 
+    const jwtExpire = process.env.JWT_EXPIRE || '15m';
+    const jwtRefreshExpire = process.env.JWT_REFRESH_EXPIRE || '7d';
+
     console.log('Generating access token...');
     const accessToken = jwt.sign(
       { userId, rol, jti: accessJti },
       JwtKeyManager.getJwtSecret(),
-      { expiresIn: process.env.JWT_EXPIRE }
+      { expiresIn: jwtExpire }
     );
     console.log('Access token generated successfully');
 
@@ -125,7 +128,7 @@ const generateTokens = (userId, rol) => {
       refreshToken = jwt.sign(
         { userId, type: 'refresh', jti: refreshJti },
         JwtKeyManager.getJwtRefreshSecret(),
-        { expiresIn: process.env.JWT_REFRESH_EXPIRE }
+        { expiresIn: jwtRefreshExpire }
       );
       console.log('Refresh token generated successfully');
     } catch (refreshError) {

@@ -1,54 +1,20 @@
-const mongoose = require('mongoose');
-const baseEntityPlugin = require('./plugins/baseEntityPlugin');
+const { BaseMongoModel } = require('./base/mongoModel');
 
-const parsePositiveInt = (value, fallback) => {
-  const parsed = parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-};
+class AuthThrottle extends BaseMongoModel {
+  static collectionName = 'auth_throttles';
+  static sensitiveFields = ['key'];
 
-const AUTH_THROTTLE_TTL_DAYS = parsePositiveInt(process.env.AUTH_THROTTLE_TTL_DAYS, 7);
+  static async getOrCreate(key) {
+    let row = await this.findOne({ key });
+    if (row) return row;
 
-const authThrottleSchema = new mongoose.Schema({
-  key: {
-    type: String,
-    required: true,
-    unique: true,
-    index: true,
-    trim: true
-  },
-  attempts: {
-    type: [Date],
-    default: []
-  },
-  blockedUntil: {
-    type: Date,
-    default: null,
-    index: true
-  }
-}, {
-  timestamps: true
-});
-
-authThrottleSchema.index({ updatedAt: 1 }, { expireAfterSeconds: AUTH_THROTTLE_TTL_DAYS * 24 * 60 * 60 });
-
-authThrottleSchema.statics.getOrCreate = async function getOrCreate(key) {
-  let row = await this.findOne({ key });
-  if (row) return row;
-
-  try {
-    row = await this.create({ key });
-    return row;
-  } catch (error) {
-    if (error?.code === 11000) {
+    try {
+      row = await this.create({ key, attempts: [], blockedUntil: null });
+      return row;
+    } catch (error) {
       return this.findOne({ key });
     }
-    throw error;
   }
-};
+}
 
-authThrottleSchema.plugin(baseEntityPlugin, {
-  entityName: 'AuthThrottle',
-  sensitiveFields: ['key']
-});
-
-module.exports = mongoose.model('AuthThrottle', authThrottleSchema);
+module.exports = AuthThrottle;
