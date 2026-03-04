@@ -92,7 +92,7 @@ const buildEscuelaPayload = (input = {}, { partial = false } = {}) => {
 
 const isAdminOrSuperUser = async (user) => {
   const rol = String(user?.rol || '');
-  const permisos = Array.isArray(user?.permisos) ? user.permisos : [];;
+  const permisos = Array.isArray(user?.permisos) ? user.permisos : [];
   return await isPrivilegedRole(rol) || permisos.includes('*');
 };
 

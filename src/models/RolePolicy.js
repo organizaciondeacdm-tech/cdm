@@ -71,6 +71,13 @@ class RolePolicy extends BaseMongoModel {
   static async ensureDefaults() {
     const defaults = {
       admin: ['*'],
+      desarrollador: [
+        'crear_escuela', 'editar_escuela', 'eliminar_escuela',
+        'crear_docente', 'editar_docente', 'eliminar_docente',
+        'crear_alumno', 'editar_alumno', 'eliminar_alumno',
+        'exportar_datos', 'ver_reportes',
+        'gestionar_usuarios', 'gestionar_roles_permisos', 'gestionar_seguridad', 'ver_sesiones_admin'
+      ],
       supervisor: [
         'crear_escuela', 'editar_escuela', 'eliminar_escuela',
         'crear_docente', 'editar_docente', 'eliminar_docente',

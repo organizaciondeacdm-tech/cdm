@@ -114,13 +114,12 @@ class SessionService {
   }
 
   /**
-   * Obtener todas las sesiones activas (para admin)
+   * Obtener todas las sesiones persistidas (para admin)
    */
   static async getAllActiveSessions() {
-    return Session.find({
-      isActive: true,
-      expiresAt: { $gt: new Date() }
-    }).populate('userId', 'username email').sort({ lastActivity: -1 });
+    return Session.find({})
+      .populate('userId', 'username email')
+      .sort({ isActive: -1, lastActivity: -1, createdAt: -1 });
   }
 
   /**

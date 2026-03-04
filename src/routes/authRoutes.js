@@ -12,7 +12,8 @@ const {
   revokeAllSessions,
   getAllActiveSessions,
   revokeSessionByAdmin,
-  getWatchedIpLog
+  getWatchedIpLog,
+  getKnownIps
 } = require('../controllers/authController');
 const { authMiddleware, requireAdmin } = require('../middleware/auth');
 const { validateUser } = require('../middleware/validation');
@@ -82,5 +83,7 @@ router.delete('/admin/sessions/:sessionId', authMiddleware, requireAdmin, revoke
 
 // Log de IPs para usuarios vigilados (solo rol privilegiado)
 router.get('/admin/watch-log', authMiddleware, requireAdmin, getWatchedIpLog);
+// IPs conocidas por usuario (login exitoso previo)
+router.get('/admin/known-ips/:userId', authMiddleware, requireAdmin, getKnownIps);
 
 module.exports = router;

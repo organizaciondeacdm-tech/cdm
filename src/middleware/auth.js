@@ -97,7 +97,14 @@ const requireAdmin = async (req, res, next) => {
     const permisos = Array.isArray(req.user?.permisos) ? req.user.permisos : [];
     const permisosSet = new Set(permisos.map((p) => normalizePermission(p)));
     const hasPrivilegedRole = await isPrivilegedRole(role);
-    if (hasPrivilegedRole || permisosSet.has('*')) return next();
+    const hasAdminPermissions = (
+      permisosSet.has('*') ||
+      permisosSet.has('gestionar_usuarios') ||
+      permisosSet.has('gestionar_roles_permisos') ||
+      permisosSet.has('gestionar_seguridad') ||
+      permisosSet.has('ver_sesiones_admin')
+    );
+    if (hasPrivilegedRole || hasAdminPermissions) return next();
     return res.status(403).json({
       success: false,
       error: 'Se requieren permisos de administrador'
