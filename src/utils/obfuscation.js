@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+const { ObjectId } = require('mongodb');
 
 const DEFAULT_SENSITIVE_FIELDS = new Set([
   'password',
@@ -18,7 +18,7 @@ const DEFAULT_SENSITIVE_FIELDS = new Set([
   'iv'
 ]);
 
-const isObjectId = (value) => value instanceof mongoose.Types.ObjectId;
+const isObjectId = (value) => value instanceof ObjectId;
 
 const isPlainObject = (value) => (
   value &&
