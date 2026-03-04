@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const crypto = require('crypto');
+const baseEntityPlugin = require('./plugins/baseEntityPlugin');
 
 const jwtKeySchema = new mongoose.Schema({
   keyType: {
@@ -49,5 +50,10 @@ jwtKeySchema.statics.getOrCreateKey = async function(keyType) {
     throw error;
   }
 };
+
+jwtKeySchema.plugin(baseEntityPlugin, {
+  entityName: 'JwtKey',
+  sensitiveFields: ['keyValue']
+});
 
 module.exports = mongoose.model('JwtKey', jwtKeySchema);

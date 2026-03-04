@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const baseEntityPlugin = require('./plugins/baseEntityPlugin');
 
 const parsePositiveIntEnv = (value, fallback) => {
   const parsed = parseInt(value, 10);
@@ -188,5 +189,10 @@ userSchema.methods.registerFailedLoginAttempt = async function() {
 userSchema.methods.hasPermission = function(permission) {
   return this.rol === 'admin' || this.permisos.includes(permission);
 };
+
+userSchema.plugin(baseEntityPlugin, {
+  entityName: 'User',
+  sensitiveFields: ['passwordHash', 'email', 'refreshToken', 'twoFactorSecret', 'lastIP']
+});
 
 module.exports = mongoose.model('User', userSchema);

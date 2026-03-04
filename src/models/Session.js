@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const crypto = require('crypto');
+const baseEntityPlugin = require('./plugins/baseEntityPlugin');
 
 const SESSION_TOKEN_HASH_SECRET = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET || 'session-token-hash-secret';
 const hashToken = (token = '') => crypto
@@ -163,5 +164,10 @@ sessionSchema.statics.revokeAllSessions = function(userId, currentSessionId = nu
   
   return this.updateMany(query, { isActive: false });
 };
+
+sessionSchema.plugin(baseEntityPlugin, {
+  entityName: 'Session',
+  sensitiveFields: ['accessToken', 'refreshToken', 'deviceInfo.ip']
+});
 
 module.exports = mongoose.model('Session', sessionSchema);

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const baseEntityPlugin = require('./plugins/baseEntityPlugin');
 
 const formSubmissionSchema = new mongoose.Schema({
   templateId: {
@@ -29,5 +30,10 @@ const formSubmissionSchema = new mongoose.Schema({
 
 formSubmissionSchema.index({ templateId: 1, createdAt: -1 });
 formSubmissionSchema.index({ status: 1, createdAt: -1 });
+
+formSubmissionSchema.plugin(baseEntityPlugin, {
+  entityName: 'FormSubmission',
+  sensitiveFields: ['payload', 'encryptedPayload', 'iv', 'authTag', 'sessionId']
+});
 
 module.exports = mongoose.model('FormSubmission', formSubmissionSchema);

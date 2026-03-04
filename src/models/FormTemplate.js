@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const baseEntityPlugin = require('./plugins/baseEntityPlugin');
 
 const fieldSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
@@ -41,6 +42,11 @@ formTemplateSchema.pre('validate', function(next) {
       .replace(/[^a-z0-9-]/g, '');
   }
   next();
+});
+
+formTemplateSchema.plugin(baseEntityPlugin, {
+  entityName: 'FormTemplate',
+  sensitiveFields: []
 });
 
 module.exports = mongoose.model('FormTemplate', formTemplateSchema);
