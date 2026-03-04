@@ -437,30 +437,79 @@ const STYLES = `
   /* LOGIN */
   .login-container {
     min-height: 100vh; display: flex; align-items: center; justify-content: center;
-    background: radial-gradient(ellipse at 30% 50%, rgba(0,100,200,0.1) 0%, var(--bg) 70%);
-    position: relative; overflow: hidden;
-  }
-  .login-container::before {
-    content: ''; position: absolute; inset: 0;
-    background: repeating-linear-gradient(0deg, transparent, transparent 40px, rgba(0,212,255,0.02) 40px, rgba(0,212,255,0.02) 41px),
-                repeating-linear-gradient(90deg, transparent, transparent 40px, rgba(0,212,255,0.02) 40px, rgba(0,212,255,0.02) 41px);
+    background: #080b12; /* Darker navy background to match image */
   }
   .login-box {
-    background: var(--card); border: 1px solid var(--border2);
+    background: transparent;
+    border: 1px solid rgba(0,212,255,0.15); /* Very subtle border */
     border-radius: var(--radius); padding: 40px;
-    width: 400px; position: relative;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 40px rgba(0,212,255,0.1);
-    animation: slideIn 0.5s ease;
+    width: 360px; position: relative;
+    box-shadow: inset 0 0 40px rgba(0,212,255,0.02);
+    animation: fadeIn 0.4s ease;
   }
-  .login-box::before {
-    content: ''; position: absolute; top: 0; left: 20%; right: 20%; height: 1px;
-    background: linear-gradient(90deg, transparent, var(--accent), transparent);
-    animation: ledScan 3s linear infinite;
+  
+  .login-logo-container {
+    display: flex; justify-content: center; margin-bottom: 24px;
   }
-  .login-title { font-family: 'Rajdhani', sans-serif; font-size: 28px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); text-align: center; margin-bottom: 4px; }
-  .login-sub { font-size: 11px; color: var(--text3); text-align: center; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 28px; }
-  .hint-text { font-size: 11px; color: var(--text3); text-align: center; margin-top: 16px; }
-  .hint-key { background: var(--bg2); border: 1px solid var(--border); padding: 1px 6px; border-radius: 4px; font-family: monospace; font-size: 12px; color: var(--text2); }
+  .login-logo-container .papiweb-logo {
+     background: transparent;
+     border: 1px solid rgba(0,212,255,0.1);
+     padding: 10px 40px;
+  }
+  .login-logo-container .papiweb-text {
+     font-size: 16px; letter-spacing: 1.5px;
+     text-align: center;
+     background: #fff;
+     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+     background-clip: text;
+     filter: none; animation: none;
+  }
+  .login-logo-container .papiweb-sub {
+     color: rgba(0,212,255,0.6);
+     font-size: 8px;
+     letter-spacing: 0.5px;
+     margin-top: 4px;
+     text-align: center;
+  }
+
+  .login-title { font-family: 'Rajdhani', sans-serif; font-size: 24px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+  .login-sub { font-size: 10px; color: var(--text3); letter-spacing: 1px; text-transform: uppercase; }
+  
+  .login-label {
+      font-size: 9px;
+      color: rgba(255,255,255,0.6);
+      margin-bottom: 4px;
+  }
+  .login-input {
+      background: transparent !important;
+      border: 1px solid rgba(0,212,255,0.2) !important;
+      color: rgba(255,255,255,0.9) !important;
+  }
+  .login-input:focus {
+      border-color: rgba(0,212,255,0.5) !important;
+      box-shadow: 0 0 10px rgba(0,212,255,0.1) !important;
+  }
+  
+  .login-btn {
+      width: 100%;
+      justify-content: center;
+      padding: 12px;
+      background: linear-gradient(90deg, #00d4ff, #0088cc);
+      box-shadow: 0 0 20px rgba(0,212,255,0.4);
+      border: none;
+      color: #000;
+      font-weight: 700;
+  }
+  .login-btn:hover {
+      box-shadow: 0 0 30px rgba(0,212,255,0.6);
+  }
+
+  .login-demo-text {
+      font-size: 10px;
+      color: rgba(255,255,255,0.3);
+      text-align: center;
+      margin-top: 24px;
+  }
 
   /* PDF EXPORT */
   .pdf-preview {
