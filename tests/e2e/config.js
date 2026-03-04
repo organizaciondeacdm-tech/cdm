@@ -6,7 +6,7 @@
 
 export const TEST_CONFIG = {
   // URLs
-  APP_URL: 'http://localhost:5173',
+  APP_URL: 'http://localhost:3000',
   API_URL: 'http://localhost:5000',
   
   // Credenciales de prueba

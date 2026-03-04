@@ -1,7 +1,10 @@
+// In production/staging, only MONGODB_URI is needed at boot time.
+// All other secrets (JWT_SECRET, CORS_ORIGIN, ENCRYPTION_KEY, …) are loaded
+// from the EnvironmentConfig collection in MongoDB after connection.
 const requiredByEnv = {
   development: ['MONGODB_URI', 'JWT_SECRET', 'CORS_ORIGIN'],
-  staging: ['MONGODB_URI', 'JWT_SECRET', 'JWT_REFRESH_SECRET', 'CORS_ORIGIN', 'ENCRYPTION_KEY'],
-  production: ['MONGODB_URI', 'JWT_SECRET', 'JWT_REFRESH_SECRET', 'CORS_ORIGIN', 'ENCRYPTION_KEY']
+  staging: ['MONGODB_URI'],
+  production: ['MONGODB_URI']
 };
 
 function normalizeNodeEnv(raw) {
@@ -30,14 +33,18 @@ function validateEnv(env = process.env) {
   if (!encryptionKey && nodeEnv === 'development') {
     encryptionKey = `${env.JWT_SECRET}-dev-fallback`;
   }
+  // In production the real value will be injected from MongoDB after connectDB()
+  if (!encryptionKey && nodeEnv !== 'development') {
+    encryptionKey = null;
+  }
 
   return {
     nodeEnv,
-    port: Number(env.PORT || 5000),
+    port: Number(env.PORT || 3000),
     mongoUri: env.MONGODB_URI,
-    jwtSecret: env.JWT_SECRET,
-    jwtRefreshSecret: env.JWT_REFRESH_SECRET,
-    corsOrigin: env.CORS_ORIGIN,
+    jwtSecret: env.JWT_SECRET || null,
+    jwtRefreshSecret: env.JWT_REFRESH_SECRET || null,
+    corsOrigin: env.CORS_ORIGIN || null,
     encryptionKey,
     rateLimitWindow,
     rateLimitMax

@@ -11,6 +11,8 @@
     "build:frontend": "vite build",
     "preview": "vite preview",
     "seed": "node src/config/seed.js",
+    "sync:env": "node scripts/sync-env-to-mongo.js",
+    "sync:vercel": "node scripts/seed-vercel-env.js",
     "backup": "node src/services/backupService.js",
     "test": "playwright test",
     "test:ui": "playwright test --ui",

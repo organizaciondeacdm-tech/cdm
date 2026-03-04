@@ -311,7 +311,7 @@ app.get('/api/test', (req, res) => {
 });
 
 // Endpoint para enviar alertas por email (simplificado)
-app.post('/api/send-alert-email', async (req, res) => {
+app.post('/api/send-alert-email', authMiddleware, async (req, res) => {
   try {
     const { to, subject, alerts, message } = req.body;
 

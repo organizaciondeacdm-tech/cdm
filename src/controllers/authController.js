@@ -11,6 +11,23 @@ const LOGIN_RESPONSE_DELAY_MS = parseInt(process.env.LOGIN_RESPONSE_DELAY_MS, 10
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const serializeSession = (sessionDoc) => {
+  const session = sessionDoc?.toObject ? sessionDoc.toObject() : sessionDoc;
+  if (!session) return null;
+
+  return {
+    _id: session._id,
+    userId: session.userId,
+    username: session.username,
+    deviceInfo: session.deviceInfo,
+    isActive: session.isActive,
+    expiresAt: session.expiresAt,
+    refreshExpiresAt: session.refreshExpiresAt,
+    lastActivity: session.lastActivity,
+    createdAt: session.createdAt
+  };
+};
+
 const generateTokens = (userId, rol) => {
   console.log('generateTokens called with:', { userId: userId.toString(), rol });
 
@@ -396,7 +413,7 @@ const getActiveSessions = async (req, res) => {
     
     res.json({
       success: true,
-      data: sessions
+      data: sessions.map(serializeSession).filter(Boolean)
     });
   } catch (error) {
     console.error('Error getting active sessions:', error);
@@ -473,7 +490,7 @@ const getAllActiveSessions = async (req, res) => {
     
     res.json({
       success: true,
-      data: sessions
+      data: sessions.map(serializeSession).filter(Boolean)
     });
   } catch (error) {
     console.error('Error getting all active sessions:', error);
