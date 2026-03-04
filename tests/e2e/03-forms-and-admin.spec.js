@@ -162,6 +162,108 @@ test.describe('Forms + Admin', () => {
 
   });
 
+  test('admin usuarios: roles desarrollador/supervisor + permisos cifrados/normalizados', async () => {
+    const { headers } = await createAuthHeaders(api);
+    const suffix = uniqueSuffix();
+
+    const devPayload = {
+      username: `dev_${suffix}`,
+      password: 'E2ePassword1',
+      email: `dev.${suffix}@acdm.local`,
+      nombre: 'Dev',
+      apellido: 'E2E',
+      rol: 'desarollador'
+    };
+
+    const supPayload = {
+      username: `sup_${suffix}`,
+      password: 'E2ePassword1',
+      email: `sup.${suffix}@acdm.local`,
+      nombre: 'Sup',
+      apellido: 'E2E',
+      rol: 'supervisor'
+    };
+
+    const { response: createDevRes, json: createDevJson } = await requestJson(api, 'POST', '/api/admin/users', devPayload, headers);
+    expect(createDevRes.status()).toBe(201);
+    const devId = createDevJson?.data?._id;
+    expect(devId).toBeTruthy();
+
+    const { response: createSupRes, json: createSupJson } = await requestJson(api, 'POST', '/api/admin/users', supPayload, headers);
+    expect(createSupRes.status()).toBe(201);
+    const supId = createSupJson?.data?._id;
+    expect(supId).toBeTruthy();
+
+    const devGetRes = await api.get(`/api/admin/users/${devId}`, { headers });
+    expect(devGetRes.status()).toBe(200);
+    const devGetJson = await devGetRes.json();
+    expect(devGetJson?.data?.rol).toBe('desarrollador');
+    expect(Array.isArray(devGetJson?.data?.permisos)).toBeTruthy();
+    expect(String(devGetJson?.data?.permisos?.[0] || '')).toContain('permv1.');
+    expect(devGetJson?.data?.capabilities?.canManageUsers).toBeTruthy();
+
+    const supGetRes = await api.get(`/api/admin/users/${supId}`, { headers });
+    expect(supGetRes.status()).toBe(200);
+    const supGetJson = await supGetRes.json();
+    expect(supGetJson?.data?.rol).toBe('supervisor');
+    expect(Array.isArray(supGetJson?.data?.permisos)).toBeTruthy();
+    expect(String(supGetJson?.data?.permisos?.[0] || '')).toContain('permv1.');
+    expect(supGetJson?.data?.capabilities?.canManageOperationalSections).toBeTruthy();
+
+    const { response: bulkDeactivateRes } = await requestJson(api, 'POST', '/api/admin/users/bulk', {
+      action: 'deactivate',
+      userIds: [supId]
+    }, headers);
+    expect(bulkDeactivateRes.status()).toBe(200);
+
+    const { response: bulkActivateRes } = await requestJson(api, 'POST', '/api/admin/users/bulk', {
+      action: 'activate',
+      userIds: [supId]
+    }, headers);
+    expect(bulkActivateRes.status()).toBe(200);
+
+    const { response: roleBulkAddRes } = await requestJson(api, 'POST', '/api/admin/roles/bulk/permisos', {
+      roles: ['supervisor'],
+      permisos: ['ver_sesiones_admin'],
+      operation: 'add',
+      applyToUsers: false
+    }, headers);
+    expect(roleBulkAddRes.status()).toBe(200);
+
+    const { response: roleBulkRemoveRes } = await requestJson(api, 'POST', '/api/admin/roles/bulk/permisos', {
+      roles: ['supervisor'],
+      permisos: ['ver_sesiones_admin'],
+      operation: 'remove',
+      applyToUsers: false
+    }, headers);
+    expect(roleBulkRemoveRes.status()).toBe(200);
+
+    const { response: devLoginRes, json: devLoginJson } = await requestJson(api, 'POST', '/api/auth/login', {
+      username: devPayload.username,
+      password: devPayload.password
+    });
+    expect(devLoginRes.status()).toBe(200);
+    const devAccessToken = devLoginJson?.data?.tokens?.access;
+    expect(devAccessToken).toBeTruthy();
+
+    const { response: impersonateRes, json: impersonateJson } = await requestJson(
+      api,
+      'POST',
+      `/api/admin/users/${supId}/impersonate`,
+      {},
+      { Authorization: `Bearer ${devAccessToken}` }
+    );
+    expect(impersonateRes.status()).toBe(200);
+    expect(impersonateJson?.data?.user?._id).toBe(supId);
+    expect(impersonateJson?.data?.tokens?.access).toBeTruthy();
+    expect(impersonateJson?.data?.tokens?.refresh).toBeTruthy();
+
+    const { response: deleteDevRes } = await requestJson(api, 'DELETE', `/api/admin/users/${devId}`, {}, headers);
+    expect(deleteDevRes.status()).toBe(200);
+    const { response: deleteSupRes } = await requestJson(api, 'DELETE', `/api/admin/users/${supId}`, {}, headers);
+    expect(deleteSupRes.status()).toBe(200);
+  });
+
   test('admin escuelas CRUD en namespace /api/admin', async () => {
     const { headers } = await createAuthHeaders(api);
     const suffix = uniqueSuffix();

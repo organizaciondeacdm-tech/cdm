@@ -6,19 +6,139 @@ const PREFIX = 'aclv1';
 const rawSecret = process.env.ACL_CRYPTO_SECRET || process.env.ENCRYPTION_KEY || process.env.JWT_SECRET || 'fallback-change-this-key';
 const encKey = crypto.createHash('sha256').update(`enc:${rawSecret}`).digest();
 const hmacKey = crypto.createHash('sha256').update(`hmac:${rawSecret}`).digest();
+const PUBLIC_PERM_PREFIX = 'permv1';
+const PUBLIC_ROLE_PREFIX = 'rolev1';
+const PERM_ROTATION_MINUTES = Math.max(1, Number.parseInt(process.env.PERM_OBFUSCATION_ROTATION_MINUTES || '60', 10) || 60);
 
 const isEncryptedAclValue = (value) => {
   return typeof value === 'string' && value.startsWith(`${PREFIX}.`);
 };
 
-const normalizeRole = (value) => String(value || '').trim().toLowerCase();
+const normalizeRole = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'desarollador') return 'desarrollador';
+  return normalized;
+};
 const normalizePermission = (value) => String(value || '').trim();
+const getRotationBucket = (date = new Date()) => {
+  const at = date instanceof Date ? date : new Date(date);
+  const windowMs = PERM_ROTATION_MINUTES * 60 * 1000;
+  return Math.floor(at.getTime() / windowMs);
+};
 
 const buildLookupKey = (kind, normalizedValue) => {
   return crypto
     .createHmac('sha256', hmacKey)
     .update(`${kind}:${String(normalizedValue || '')}`)
     .digest('hex');
+};
+
+const buildPublicPermissionToken = (permission, bucket = getRotationBucket()) => {
+  const normalized = normalizePermission(permission);
+  if (!normalized) return '';
+  const digest = crypto
+    .createHmac('sha256', hmacKey)
+    .update(`perm-public:${bucket}:${normalized}`)
+    .digest('hex')
+    .slice(0, 32);
+  return `${PUBLIC_PERM_PREFIX}.${bucket}.${digest}`;
+};
+
+const buildPublicRoleToken = (role, bucket = getRotationBucket()) => {
+  const normalized = normalizeRole(role);
+  if (!normalized) return '';
+  const digest = crypto
+    .createHmac('sha256', hmacKey)
+    .update(`role-public:${bucket}:${normalized}`)
+    .digest('hex')
+    .slice(0, 32);
+  return `${PUBLIC_ROLE_PREFIX}.${bucket}.${digest}`;
+};
+
+const isPublicPermissionToken = (value) => (
+  typeof value === 'string' &&
+  value.startsWith(`${PUBLIC_PERM_PREFIX}.`) &&
+  value.split('.').length === 3
+);
+
+const isPublicRoleToken = (value) => (
+  typeof value === 'string' &&
+  value.startsWith(`${PUBLIC_ROLE_PREFIX}.`) &&
+  value.split('.').length === 3
+);
+
+const obfuscatePermissionForTransport = (permission, at = new Date()) => {
+  return buildPublicPermissionToken(permission, getRotationBucket(at));
+};
+
+const obfuscateRoleForTransport = (role, at = new Date()) => {
+  return buildPublicRoleToken(role, getRotationBucket(at));
+};
+
+const resolvePermissionFromTransport = (incomingValue, catalog = [], at = new Date()) => {
+  const value = String(incomingValue || '').trim();
+  if (!value) return null;
+
+  const catalogList = Array.isArray(catalog)
+    ? catalog.map((perm) => normalizePermission(perm)).filter(Boolean)
+    : [];
+  const catalogSet = new Set(catalogList);
+
+  if (catalogSet.has(value)) {
+    return value;
+  }
+
+  if (!isPublicPermissionToken(value)) {
+    return null;
+  }
+
+  const parsedBucket = Number.parseInt(value.split('.')[1], 10);
+  const currentBucket = getRotationBucket(at);
+  const candidateBuckets = [parsedBucket, currentBucket, currentBucket - 1, currentBucket + 1]
+    .filter((bucket, idx, arr) => Number.isFinite(bucket) && arr.indexOf(bucket) === idx);
+
+  for (const perm of catalogList) {
+    for (const bucket of candidateBuckets) {
+      if (buildPublicPermissionToken(perm, bucket) === value) {
+        return perm;
+      }
+    }
+  }
+
+  return null;
+};
+
+const resolveRoleFromTransport = (incomingValue, catalog = [], at = new Date()) => {
+  const value = String(incomingValue || '').trim();
+  if (!value) return null;
+
+  const catalogList = Array.isArray(catalog)
+    ? catalog.map((role) => normalizeRole(role)).filter(Boolean)
+    : [];
+  const catalogSet = new Set(catalogList);
+
+  if (catalogSet.has(normalizeRole(value))) {
+    return normalizeRole(value);
+  }
+
+  if (!isPublicRoleToken(value)) {
+    return null;
+  }
+
+  const parsedBucket = Number.parseInt(value.split('.')[1], 10);
+  const currentBucket = getRotationBucket(at);
+  const candidateBuckets = [parsedBucket, currentBucket, currentBucket - 1, currentBucket + 1]
+    .filter((bucket, idx, arr) => Number.isFinite(bucket) && arr.indexOf(bucket) === idx);
+
+  for (const role of catalogList) {
+    for (const bucket of candidateBuckets) {
+      if (buildPublicRoleToken(role, bucket) === value) {
+        return role;
+      }
+    }
+  }
+
+  return null;
 };
 
 const encryptAclValue = (plainValue, recordedAt = new Date()) => {
@@ -94,10 +214,19 @@ const revealAcl = (doc, roleField = 'rol', permissionsField = 'permisos') => {
 
 module.exports = {
   PREFIX,
+  PUBLIC_PERM_PREFIX,
+  PUBLIC_ROLE_PREFIX,
   isEncryptedAclValue,
   normalizeRole,
   normalizePermission,
+  getRotationBucket,
   buildLookupKey,
+  isPublicPermissionToken,
+  isPublicRoleToken,
+  obfuscateRoleForTransport,
+  obfuscatePermissionForTransport,
+  resolveRoleFromTransport,
+  resolvePermissionFromTransport,
   encryptAclValue,
   decryptAclValue,
   protectAcl,

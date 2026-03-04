@@ -1,4 +1,5 @@
 const { expect } = require('@playwright/test');
+const crypto = require('crypto');
 
 const API_URL = process.env.E2E_API_URL || 'http://localhost:5000';
 const AUTH_USER = process.env.E2E_USERNAME || process.env.E2E_USER || 'papiweb';
@@ -13,6 +14,34 @@ const passwordCandidates = [
   'admin2025!'
 ].filter(Boolean);
 let resolvedPassword = null;
+const PAYLOAD_ITERATIONS = 150000;
+const PAYLOAD_KEY_LENGTH = 32;
+const PAYLOAD_AUTH_TAG_LEN = 16;
+const PAYLOAD_ENVELOPE = 'acdm-payload-v1';
+
+const getPayloadSecret = () => (
+  process.env.VITE_AUTH_STORAGE_SECRET ||
+  process.env.ENCRYPTION_KEY ||
+  process.env.JWT_SECRET ||
+  'acdm-default-payload-secret-change-me'
+);
+
+const encryptPayloadForApi = (payload) => {
+  const iv = crypto.randomBytes(12);
+  const salt = crypto.randomBytes(16);
+  const key = crypto.pbkdf2Sync(String(getPayloadSecret()), salt, PAYLOAD_ITERATIONS, PAYLOAD_KEY_LENGTH, 'sha256');
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const plain = Buffer.from(JSON.stringify(payload || {}), 'utf8');
+  const encrypted = Buffer.concat([cipher.update(plain), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  const combined = Buffer.concat([encrypted, tag.subarray(0, PAYLOAD_AUTH_TAG_LEN)]);
+  return {
+    __enc: PAYLOAD_ENVELOPE,
+    iv: iv.toString('base64'),
+    salt: salt.toString('base64'),
+    data: combined.toString('base64')
+  };
+};
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -27,13 +56,14 @@ async function parseJsonSafe(response) {
 }
 
 async function requestJson(context, method, path, body, headers = {}) {
+  const encryptedBody = body === undefined ? undefined : encryptPayloadForApi(body);
   const response = await context.fetch(path, {
     method,
     headers: {
       'content-type': 'application/json',
       ...headers
     },
-    data: body
+    data: encryptedBody
   });
   const json = await parseJsonSafe(response);
   return { response, json };
