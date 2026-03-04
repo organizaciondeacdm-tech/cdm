@@ -1,59 +1,29 @@
-const mongoose = require('mongoose');
 const crypto = require('crypto');
-const baseEntityPlugin = require('./plugins/baseEntityPlugin');
+const { BaseMongoModel } = require('./base/mongoModel');
 
-const jwtKeySchema = new mongoose.Schema({
-  keyType: {
-    type: String,
-    required: true,
-    enum: ['JWT_SECRET', 'JWT_REFRESH_SECRET'],
-    unique: true
-  },
-  keyValue: {
-    type: String,
-    required: true
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
+class JwtKey extends BaseMongoModel {
+  static collectionName = 'jwt_keys';
+  static sensitiveFields = ['keyValue'];
+
+  static generateSecureKey(length = 64) {
+    return crypto.randomBytes(length).toString('base64');
   }
-});
 
-// Generar una clave segura
-jwtKeySchema.statics.generateSecureKey = function(length = 64) {
-  return crypto.randomBytes(length).toString('base64');
-};
+  static async getOrCreateKey(keyType) {
+    try {
+      let keyDoc = await this.findOne({ keyType });
 
-// Obtener o crear clave
-jwtKeySchema.statics.getOrCreateKey = async function(keyType) {
-  try {
-    let keyDoc = await this.findOne({ keyType });
+      if (!keyDoc) {
+        const keyValue = this.generateSecureKey();
+        keyDoc = await this.create({ keyType, keyValue });
+      }
 
-    if (!keyDoc) {
-      console.log(`Generando nueva clave ${keyType}...`);
-      const keyValue = this.generateSecureKey();
-      keyDoc = new this({
-        keyType,
-        keyValue
-      });
-      await keyDoc.save();
-      console.log(`Clave ${keyType} generada y guardada exitosamente`);
+      return keyDoc.keyValue;
+    } catch (error) {
+      console.error(`Error obteniendo/creando clave ${keyType}:`, error);
+      throw error;
     }
-
-    return keyDoc.keyValue;
-  } catch (error) {
-    console.error(`Error obteniendo/creando clave ${keyType}:`, error);
-    throw error;
   }
-};
+}
 
-jwtKeySchema.plugin(baseEntityPlugin, {
-  entityName: 'JwtKey',
-  sensitiveFields: ['keyValue']
-});
-
-module.exports = mongoose.model('JwtKey', jwtKeySchema);
+module.exports = JwtKey;
