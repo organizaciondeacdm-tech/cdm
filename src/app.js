@@ -22,6 +22,17 @@ const docenteRoutes = require('./routes/docenteRoutes');
 const alumnoRoutes = require('./routes/alumnoRoutes');
 const reporteRoutes = require('./routes/reporteRoutes');
 const informeRoutes = require('./routes/informeRoutes');
+const formEngineRoutes = require('./routes/formEngineRoutes');
+const { generarDashboard } = require('./controllers/reporteController');
+const {
+  createEscuela,
+  getEscuelas,
+  getEscuelaById,
+  updateEscuela,
+  deleteEscuela
+} = require('./controllers/escuelaController');
+const { validateEscuela } = require('./middleware/validation');
+const User = require('./models/User');
 const { sendEmail } = require('./services/emailService');
 const { authMiddleware } = require('./middleware/auth');
 const Escuela = require('./models/Escuela');
@@ -164,6 +175,223 @@ app.use('/api/docentes', docenteRoutes);
 app.use('/api/alumnos', alumnoRoutes);
 app.use('/api/reportes', reporteRoutes);
 app.use('/api/informes', informeRoutes);
+app.use('/api/forms', formEngineRoutes);
+
+app.get('/api/schemas', authMiddleware, (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      escuela: {
+        required: ['de', 'escuela', 'nivel', 'direccion', 'email', 'jornada', 'turno'],
+        sample: {
+          de: 'DE 01',
+          escuela: 'Escuela Modelo',
+          nivel: 'Primario',
+          direccion: 'Calle Falsa 123, CABA',
+          email: 'escuela@acdm.local',
+          jornada: 'Simple',
+          turno: 'Mañana'
+        }
+      },
+      visita: {
+        required: [],
+        sample: {
+          fecha: new Date().toISOString(),
+          visitante: 'Supervisor Distrital',
+          observaciones: 'Visita de seguimiento'
+        }
+      },
+      proyecto: {
+        required: ['nombre'],
+        sample: {
+          nombre: 'Proyecto de Inclusión',
+          descripcion: 'Acompañamiento pedagógico',
+          estado: 'En Progreso',
+          fechaInicio: new Date().toISOString(),
+          fechaBaja: null
+        }
+      },
+      informe: {
+        required: ['titulo'],
+        sample: {
+          titulo: 'Informe Trimestral',
+          estado: 'Pendiente',
+          fechaEntrega: new Date().toISOString(),
+          observaciones: 'Sin observaciones'
+        }
+      },
+      calendario: {
+        query: {
+          year: 'YYYY (opcional)',
+          month: '1-12 (opcional)'
+        }
+      }
+    }
+  });
+});
+
+app.get('/api/dashboard', authMiddleware, generarDashboard);
+
+// ──────────────────────────────────────────────────────
+// 📅  CALENDARIO  – eventos del mes/año
+// ──────────────────────────────────────────────────────
+app.get('/api/calendario', authMiddleware, async (req, res) => {
+  try {
+    const { year, month } = req.query;
+    const now = new Date();
+    const y = parseInt(year, 10) || now.getFullYear();
+    const m = parseInt(month, 10);
+    const start = Number.isNaN(m)
+      ? new Date(y, 0, 1)
+      : new Date(y, m - 1, 1);
+    const end = Number.isNaN(m)
+      ? new Date(y + 1, 0, 1)
+      : new Date(y, m, 1);
+
+    const escuelas = await Escuela.find({}).select('escuela de visitas proyectos informes docentes').lean();
+    const docentes = await Docente.find({ activo: true, estado: 'Licencia' })
+      .populate('escuela', 'escuela de')
+      .select('nombre apellido escuela fechaInicioLicencia fechaFinLicencia motivo')
+      .lean();
+
+    const eventos = [];
+
+    escuelas.forEach(esc => {
+      (esc.visitas || []).forEach(v => {
+        const f = new Date(v.fecha);
+        if (f >= start && f < end) {
+          eventos.push({ tipo: 'visita', fecha: v.fecha, escuela: esc.escuela, de: esc.de,
+            descripcion: v.observaciones || 'Visita programada', id: v._id });
+        }
+      });
+      (esc.proyectos || []).forEach(p => {
+        const f = new Date(p.fechaInicio);
+        if (f >= start && f < end) {
+          eventos.push({ tipo: 'proyecto', fecha: p.fechaInicio, escuela: esc.escuela, de: esc.de,
+            descripcion: p.nombre, estado: p.estado, id: p._id });
+        }
+      });
+      (esc.informes || []).forEach(i => {
+        if (!i.fechaEntrega) return;
+        const f = new Date(i.fechaEntrega);
+        if (f >= start && f < end) {
+          eventos.push({ tipo: 'informe', fecha: i.fechaEntrega, escuela: esc.escuela, de: esc.de,
+            descripcion: i.titulo, estado: i.estado, id: i._id });
+        }
+      });
+    });
+
+    docentes.forEach(d => {
+      if (d.fechaFinLicencia) {
+        const f = new Date(d.fechaFinLicencia);
+        if (f >= start && f < end) {
+          eventos.push({ tipo: 'licencia', fecha: d.fechaFinLicencia,
+            escuela: d.escuela?.escuela, de: d.escuela?.de,
+            descripcion: `Fin licencia: ${d.apellido}, ${d.nombre} (${d.motivo || '-'})`, id: d._id });
+        }
+      }
+    });
+
+    eventos.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+    res.json({ success: true, data: eventos, periodo: { year: y, month: m || 'all' } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al obtener calendario' });
+  }
+});
+
+// ──────────────────────────────────────────────────────
+// 📄  EXPORTAR PDF global (via reportes/escuelas?formato=pdf)
+// + alias de conveniencia
+// ──────────────────────────────────────────────────────
+app.get('/api/export/pdf', authMiddleware, (req, res) => {
+  req.query.formato = 'pdf';
+  res.redirect(307, '/api/reportes/escuelas?formato=pdf');
+});
+
+// ──────────────────────────────────────────────────────
+// 👤  ADMIN – gestión de usuarios
+// ──────────────────────────────────────────────────────
+const requireAdmin = (req, res, next) => {
+  if (!req.user || req.user.rol !== 'admin') {
+    return res.status(403).json({ success: false, error: 'Acceso restringido a administradores' });
+  }
+  next();
+};
+
+// Listar usuarios
+app.get('/api/admin/users', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const users = await User.find({}).select('-passwordHash').lean();
+    res.json({ success: true, data: users });
+  } catch (e) {
+    res.status(500).json({ success: false, error: 'Error al listar usuarios' });
+  }
+});
+
+// Obtener usuario por ID
+app.get('/api/admin/users/:id', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select('-passwordHash').lean();
+    if (!user) return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
+    res.json({ success: true, data: user });
+  } catch (e) {
+    res.status(500).json({ success: false, error: 'Error al obtener usuario' });
+  }
+});
+
+// Crear usuario
+app.post('/api/admin/users', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const { username, password, email, nombre, apellido, rol, permisos } = req.body;
+    if (!username || !password || !email) {
+      return res.status(400).json({ success: false, error: 'username, password y email son requeridos' });
+    }
+    const existing = await User.findOne({ $or: [{ username }, { email }] });
+    if (existing) return res.status(400).json({ success: false, error: 'Usuario o email ya existe' });
+    const user = await User.create({ username, passwordHash: password, email, nombre, apellido,
+      rol: rol || 'viewer', permisos: permisos || [] });
+    const { passwordHash: _, ...safe } = user.toObject();
+    res.status(201).json({ success: true, data: safe, message: 'Usuario creado exitosamente' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: 'Error al crear usuario' });
+  }
+});
+
+// Actualizar usuario
+app.put('/api/admin/users/:id', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const { password, ...rest } = req.body;
+    const update = { ...rest };
+    if (password) update.passwordHash = password;
+    const user = await User.findByIdAndUpdate(req.params.id, { $set: update }, { new: true }).select('-passwordHash');
+    if (!user) return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
+    res.json({ success: true, data: user, message: 'Usuario actualizado exitosamente' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: 'Error al actualizar usuario' });
+  }
+});
+
+// Eliminar usuario
+app.delete('/api/admin/users/:id', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    if (String(req.params.id) === String(req.user._id)) {
+      return res.status(400).json({ success: false, error: 'No puedes eliminar tu propio usuario' });
+    }
+    const user = await User.findByIdAndDelete(req.params.id);
+    if (!user) return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
+    res.json({ success: true, message: 'Usuario eliminado exitosamente' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: 'Error al eliminar usuario' });
+  }
+});
+
+// Admin: gestión de escuelas (incluye "Nueva Escuela")
+app.get('/api/admin/escuelas', authMiddleware, requireAdmin, getEscuelas);
+app.post('/api/admin/escuelas', authMiddleware, requireAdmin, validateEscuela, createEscuela);
+app.get('/api/admin/escuelas/:id', authMiddleware, requireAdmin, getEscuelaById);
+app.put('/api/admin/escuelas/:id', authMiddleware, requireAdmin, validateEscuela, updateEscuela);
+app.delete('/api/admin/escuelas/:id', authMiddleware, requireAdmin, deleteEscuela);
 
 app.get('/api/estadisticas', authMiddleware, async (req, res) => {
   try {
@@ -298,6 +526,69 @@ app.get('/api/export/csv', authMiddleware, async (req, res) => {
     res.send([header, ...rows].join('\n'));
   } catch (error) {
     res.status(500).json({ success: false, error: 'Error al exportar CSV' });
+  }
+});
+
+app.get('/api/export/html', authMiddleware, async (req, res) => {
+  try {
+    const escuelas = await Escuela.find({})
+      .populate({ path: 'docentes', match: { activo: true } })
+      .populate({ path: 'alumnos', match: { activo: true } })
+      .lean();
+
+    const rows = escuelas.map((esc) => `
+      <tr>
+        <td>${esc.de || ''}</td>
+        <td>${esc.escuela || ''}</td>
+        <td>${esc.nivel || ''}</td>
+        <td>${(esc.docentes || []).length}</td>
+        <td>${(esc.alumnos || []).length}</td>
+        <td>${(esc.visitas || []).length}</td>
+        <td>${(esc.proyectos || []).length}</td>
+        <td>${(esc.informes || []).length}</td>
+      </tr>
+    `).join('');
+
+    const html = `<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ACDM Export HTML</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 16px; }
+      h1 { margin-bottom: 6px; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+      th { background: #f4f4f4; }
+    </style>
+  </head>
+  <body>
+    <h1>Exportación ACDM</h1>
+    <p>Generado: ${new Date().toISOString()}</p>
+    <table>
+      <thead>
+        <tr>
+          <th>DE</th>
+          <th>Escuela</th>
+          <th>Nivel</th>
+          <th>Docentes</th>
+          <th>Alumnos</th>
+          <th>Visitas</th>
+          <th>Proyectos</th>
+          <th>Informes</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename=acdm-export.html');
+    res.send(html);
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al exportar HTML' });
   }
 });
 

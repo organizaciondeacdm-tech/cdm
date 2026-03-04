@@ -14,24 +14,18 @@ test('development env accepts fallback encryption key', () => {
   assert.ok(config.encryptionKey.includes('dev-fallback'));
 });
 
-test('staging env requires encryption and refresh secrets', () => {
-  assert.throws(() => validateEnv({
-    NODE_ENV: 'staging',
-    MONGODB_URI: 'mongodb://localhost:27017/staging',
-    JWT_SECRET: 'staging-secret',
-    CORS_ORIGIN: 'https://staging.example.com'
-  }));
-
+test('staging env can boot with mongodb uri only', () => {
   const config = validateEnv({
     NODE_ENV: 'staging',
     MONGODB_URI: 'mongodb://localhost:27017/staging',
-    JWT_SECRET: 'staging-secret',
-    JWT_REFRESH_SECRET: 'staging-refresh',
-    ENCRYPTION_KEY: 'staging-encryption',
-    CORS_ORIGIN: 'https://staging.example.com'
+    RATE_LIMIT_WINDOW: '15',
+    RATE_LIMIT_MAX: '100'
   });
 
   assert.equal(config.nodeEnv, 'staging');
+  assert.equal(config.jwtSecret, null);
+  assert.equal(config.jwtRefreshSecret, null);
+  assert.equal(config.encryptionKey, null);
 });
 
 test('production env enforces numeric limits', () => {

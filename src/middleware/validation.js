@@ -17,6 +17,7 @@ const validateEscuela = [
     .matches(/^DE\s\d{2}$/)
     .withMessage('DE debe tener formato DE 01'),
   body('escuela')
+    .if((value, { req }) => req.method === 'POST' || value !== undefined)
     .notEmpty()
     .trim()
     .withMessage('Nombre de escuela es requerido'),
@@ -25,6 +26,7 @@ const validateEscuela = [
     .isIn(['Inicial', 'Primario', 'Secundario', 'Especial', 'Técnica', 'Adultos'])
     .withMessage('Nivel inválido'),
   body('direccion')
+    .if((value, { req }) => req.method === 'POST' || value !== undefined)
     .notEmpty()
     .withMessage('Dirección es requerida'),
   body('localidad')
@@ -32,11 +34,11 @@ const validateEscuela = [
   body()
     .custom((_, { req }) => {
       const email = req.body.email || req.body.mail;
-      if (!email) {
+      if (!email && req.method === 'POST') {
         throw new Error('Email inválido');
       }
       const emailRegex = /^\S+@\S+\.\S+$/;
-      if (!emailRegex.test(email)) {
+      if (email && !emailRegex.test(email)) {
         throw new Error('Email inválido');
       }
       return true;
