@@ -38,6 +38,8 @@ const { authMiddleware } = require('./middleware/auth');
 const Escuela = require('./models/Escuela');
 const Docente = require('./models/Docente');
 const Alumno = require('./models/Alumno');
+const securityMonitorService = require('./services/securityMonitorService');
+const RolePolicy = require('./models/RolePolicy');
 
 const app = express();
 const PUBLIC_RUNTIME_ENV_KEYS = ['VITE_API_URL', 'VITE_AUTH_STORAGE_SECRET'];
@@ -107,6 +109,9 @@ app.use(cors({
   credentials: true,
   optionsSuccessStatus: 200
 }));
+
+// Monitoreo y protección adicional por IP (ban, ráfagas, histórico)
+app.use(securityMonitorService.middleware());
 
 // Rate limiting (disabled in test/development environments)
 const isTestEnv = process.env.NODE_ENV === 'test' || process.env.E2E_DISABLE_RATE_LIMIT === '1';
@@ -202,6 +207,7 @@ app.use('/api/alumnos', alumnoRoutes);
 app.use('/api/reportes', reporteRoutes);
 app.use('/api/informes', informeRoutes);
 app.use('/api/forms', formEngineRoutes);
+app.use('/api/form-engine', formEngineRoutes);
 
 app.get('/api/schemas', authMiddleware, (req, res) => {
   res.json({
@@ -345,6 +351,17 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
+const getPermissionCatalog = () => {
+  const permisosPath = User.schema.path('permisos');
+  const caster = permisosPath && permisosPath.caster;
+  return (caster?.enumValues || []).filter(Boolean);
+};
+
+const getRoleDefaultPermissions = async (role) => {
+  const policy = await RolePolicy.getByRole(role);
+  return Array.isArray(policy?.defaultPermissions) ? policy.defaultPermissions : [];
+};
+
 // Listar usuarios
 app.get('/api/admin/users', authMiddleware, requireAdmin, async (req, res) => {
   try {
@@ -375,8 +392,14 @@ app.post('/api/admin/users', authMiddleware, requireAdmin, async (req, res) => {
     }
     const existing = await User.findOne({ $or: [{ username }, { email }] });
     if (existing) return res.status(400).json({ success: false, error: 'Usuario o email ya existe' });
+    const targetRole = rol || 'viewer';
+    const permissionCatalog = new Set(getPermissionCatalog());
+    const roleDefaultPermissions = await getRoleDefaultPermissions(targetRole);
+    const normalizedPerms = (Array.isArray(permisos) && permisos.length > 0 ? permisos : roleDefaultPermissions)
+      .filter((p) => p === '*' || permissionCatalog.has(p));
+
     const user = await User.create({ username, passwordHash: password, email, nombre, apellido,
-      rol: rol || 'viewer', permisos: permisos || [] });
+      rol: targetRole, permisos: normalizedPerms });
     const { passwordHash: _, ...safe } = user.toObject();
     res.status(201).json({ success: true, data: safe, message: 'Usuario creado exitosamente' });
   } catch (e) {
@@ -389,6 +412,9 @@ app.put('/api/admin/users/:id', authMiddleware, requireAdmin, async (req, res) =
   try {
     const { password, ...rest } = req.body;
     const update = { ...rest };
+    if (update.rol && (!Array.isArray(update.permisos) || update.permisos.length === 0)) {
+      update.permisos = await getRoleDefaultPermissions(update.rol);
+    }
     if (password) update.passwordHash = password;
     const user = await User.findByIdAndUpdate(req.params.id, { $set: update }, { new: true }).select('-passwordHash');
     if (!user) return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
@@ -409,6 +435,190 @@ app.delete('/api/admin/users/:id', authMiddleware, requireAdmin, async (req, res
     res.json({ success: true, message: 'Usuario eliminado exitosamente' });
   } catch (e) {
     res.status(500).json({ success: false, error: 'Error al eliminar usuario' });
+  }
+});
+
+// Roles y permisos (plantillas para administración)
+app.get('/api/admin/roles', authMiddleware, requireAdmin, async (_req, res) => {
+  try {
+    await RolePolicy.ensureDefaults();
+    const roleStats = await User.aggregate([
+      { $group: { _id: '$rol', total: { $sum: 1 } } }
+    ]);
+    const byRole = roleStats.reduce((acc, row) => {
+      acc[row._id] = row.total;
+      return acc;
+    }, {});
+
+    const policies = await RolePolicy.getAllPolicies();
+    const roles = policies.map((policy) => ({
+      role: policy.role,
+      totalUsers: byRole[policy.role] || 0,
+      defaultPermissions: policy.defaultPermissions || []
+    }));
+
+    res.json({ success: true, data: roles });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al obtener roles' });
+  }
+});
+
+app.put('/api/admin/roles/:role/permisos', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const role = String(req.params.role || '').trim();
+    await RolePolicy.ensureDefaults();
+    const currentPolicy = await RolePolicy.getByRole(role);
+    if (!currentPolicy) {
+      return res.status(400).json({ success: false, error: 'Rol inválido' });
+    }
+
+    const catalog = new Set(getPermissionCatalog());
+    const rawPerms = Array.isArray(req.body?.permisos) ? req.body.permisos : [];
+    const nextPerms = rawPerms
+      .map((p) => String(p || '').trim())
+      .filter((p) => p === '*' || catalog.has(p));
+
+    await RolePolicy.updateOne(
+      { role },
+      { $set: { defaultPermissions: nextPerms } },
+      { upsert: true }
+    );
+
+    if (req.body?.applyToUsers === true) {
+      await User.updateMany({ rol: role }, { $set: { permisos: nextPerms } });
+    }
+
+    res.json({
+      success: true,
+      data: { role, defaultPermissions: nextPerms },
+      message: 'Permisos del rol actualizados'
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al actualizar permisos del rol' });
+  }
+});
+
+app.get('/api/admin/permisos', authMiddleware, requireAdmin, async (_req, res) => {
+  try {
+    const catalog = getPermissionCatalog();
+    const usage = await User.aggregate([
+      { $unwind: { path: '$permisos', preserveNullAndEmptyArrays: false } },
+      { $group: { _id: '$permisos', total: { $sum: 1 } } }
+    ]);
+    const byPerm = usage.reduce((acc, row) => {
+      acc[row._id] = row.total;
+      return acc;
+    }, {});
+
+    res.json({
+      success: true,
+      data: catalog.map((perm) => ({ permiso: perm, assignedUsers: byPerm[perm] || 0 }))
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al obtener permisos' });
+  }
+});
+
+// Seguridad avanzada: tráfico, histórico, bans de IP y reglas
+app.get('/api/admin/security/traffic/realtime', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const data = await securityMonitorService.getTrafficRealtime();
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al obtener tráfico en tiempo real' });
+  }
+});
+
+app.get('/api/admin/security/traffic/history', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit, 10) || 300;
+    const data = await securityMonitorService.getTrafficHistory({ limit });
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al obtener histórico de tráfico' });
+  }
+});
+
+app.get('/api/admin/security/bans', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const data = await securityMonitorService.getBannedIps();
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al obtener bans de IP' });
+  }
+});
+
+app.post('/api/admin/security/bans', authMiddleware, requireAdmin, async (req, res) => {
+  const ip = String(req.body?.ip || '').trim();
+  const minutes = parseInt(req.body?.minutes, 10) || 60;
+  const reason = String(req.body?.reason || 'Ban manual por administrador');
+  const permanent = Boolean(req.body?.permanent);
+
+  if (!ip) {
+    return res.status(400).json({ success: false, error: 'ip es requerido' });
+  }
+
+  try {
+    const record = await securityMonitorService.blockIp(ip, { minutes, reason, permanent });
+    res.status(201).json({
+      success: true,
+      data: {
+        ip,
+        manualBan: record.manualBan,
+        blockedUntil: record.blockedUntil,
+        reason: record.banReason
+      },
+      message: 'IP bloqueada'
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al bloquear IP' });
+  }
+});
+
+app.delete('/api/admin/security/bans/:ip', authMiddleware, requireAdmin, async (req, res) => {
+  const ip = String(req.params.ip || '').trim();
+  if (!ip) {
+    return res.status(400).json({ success: false, error: 'ip es requerido' });
+  }
+
+  try {
+    await securityMonitorService.unblockIp(ip);
+    res.json({ success: true, message: 'IP desbloqueada' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al desbloquear IP' });
+  }
+});
+
+app.get('/api/admin/security/rules', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const data = await securityMonitorService.getRules();
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al obtener reglas de seguridad' });
+  }
+});
+
+app.put('/api/admin/security/rules', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const data = await securityMonitorService.setRules(req.body || {});
+    res.json({ success: true, data, message: 'Reglas de protección actualizadas' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al actualizar reglas de seguridad' });
+  }
+});
+
+app.post('/api/admin/security/cleanup', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const data = await securityMonitorService.cleanupNow({
+      historyRetentionDays: req.body?.historyRetentionDays
+    });
+    res.json({
+      success: true,
+      data,
+      message: 'Limpieza de seguridad ejecutada'
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al ejecutar limpieza de seguridad' });
   }
 });
 

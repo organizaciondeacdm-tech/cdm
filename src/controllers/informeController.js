@@ -5,6 +5,18 @@ const findEscuela = async (escuelaId) => {
   return Escuela.findById(escuelaId);
 };
 
+const findEscuelaByInformeId = async (informeId) => {
+  if (!informeId) return null;
+  return Escuela.findOne({ 'informes._id': informeId });
+};
+
+const resolveEscuelaForInforme = async (informeId, escuelaId) => {
+  if (escuelaId) {
+    return findEscuela(escuelaId);
+  }
+  return findEscuelaByInformeId(informeId);
+};
+
 exports.createInforme = async (req, res) => {
   try {
     let { escuelaId, titulo, estado, fechaEntrega, observaciones } = req.body;
@@ -84,13 +96,9 @@ exports.getInformeById = async (req, res) => {
     const { id } = req.params;
     const { escuelaId } = req.query;
 
-    if (!escuelaId) {
-      return res.status(400).json({ success: false, error: 'escuelaId es requerido' });
-    }
-
-    const escuela = await findEscuela(escuelaId);
+    const escuela = await resolveEscuelaForInforme(id, escuelaId);
     if (!escuela) {
-      return res.status(404).json({ success: false, error: 'Escuela no encontrada' });
+      return res.status(404).json({ success: false, error: 'Informe no encontrado' });
     }
 
     const informe = escuela.informes.id(id);
@@ -112,14 +120,11 @@ exports.updateInforme = async (req, res) => {
   try {
     const { id } = req.params;
     const { escuelaId, titulo, estado, fechaEntrega, observaciones } = req.body;
+    const escuelaIdFromQuery = req.query?.escuelaId;
 
-    if (!escuelaId) {
-      return res.status(400).json({ success: false, error: 'escuelaId es requerido' });
-    }
-
-    const escuela = await findEscuela(escuelaId);
+    const escuela = await resolveEscuelaForInforme(id, escuelaId || escuelaIdFromQuery);
     if (!escuela) {
-      return res.status(404).json({ success: false, error: 'Escuela no encontrada' });
+      return res.status(404).json({ success: false, error: 'Informe no encontrado' });
     }
 
     const informe = escuela.informes.id(id);
@@ -148,14 +153,11 @@ exports.deleteInforme = async (req, res) => {
   try {
     const { id } = req.params;
     const { escuelaId } = req.query;
+    const escuelaIdFromBody = req.body?.escuelaId;
 
-    if (!escuelaId) {
-      return res.status(400).json({ success: false, error: 'escuelaId es requerido' });
-    }
-
-    const escuela = await findEscuela(escuelaId);
+    const escuela = await resolveEscuelaForInforme(id, escuelaId || escuelaIdFromBody);
     if (!escuela) {
-      return res.status(404).json({ success: false, error: 'Escuela no encontrada' });
+      return res.status(404).json({ success: false, error: 'Informe no encontrado' });
     }
 
     const informe = escuela.informes.id(id);

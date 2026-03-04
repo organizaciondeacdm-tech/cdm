@@ -106,7 +106,11 @@ const getEscuelas = async (req, res) => {
 
     if (de) query.de = de;
     if (nivel) query.nivel = nivel;
-    if (estado) query.estado = estado;
+    if (estado) {
+      query.estado = estado;
+    } else {
+      query.estado = { $ne: 'inactiva' };
+    }
     if (search) {
       query.$or = [
         { escuela: { $regex: search, $options: 'i' } },

@@ -6,10 +6,86 @@ const TryCatchDecorator = require('../utils/decorators');
 const { Unauthorized, InternalServerError, BadRequest } = require('../utils/httpExceptions');
 const JwtKeyManager = require('../utils/jwtKeyManager');
 const SessionService = require('../services/sessionService');
+const AuthThrottle = require('../models/AuthThrottle');
 
 const LOGIN_RESPONSE_DELAY_MS = parseInt(process.env.LOGIN_RESPONSE_DELAY_MS, 10) || 400;
+const AUTH_FAILURE_MAX_ATTEMPTS = parseInt(process.env.AUTH_FAILURE_MAX_ATTEMPTS, 10) || 3;
+const AUTH_FAILURE_WINDOW_MS = (parseInt(process.env.AUTH_FAILURE_WINDOW_MINUTES, 10) || 30) * 60 * 1000;
+const AUTH_BLOCK_MINUTES = parseInt(process.env.AUTH_FAILURE_BLOCK_MINUTES, 10) || 15;
+const AUTH_BLOCK_MS = AUTH_BLOCK_MINUTES * 60 * 1000;
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const getClientIp = (req) => String(
+  req.headers['x-forwarded-for']?.split(',')[0] ||
+  req.headers['x-real-ip'] ||
+  req.connection?.remoteAddress ||
+  req.socket?.remoteAddress ||
+  req.ip ||
+  'unknown'
+).trim();
+
+const cleanupFailureBucket = async (key) => {
+  const now = Date.now();
+  const bucket = await AuthThrottle.findOne({ key });
+  if (!bucket) return null;
+
+  if (bucket.blockedUntil && new Date(bucket.blockedUntil).getTime() > now) {
+    return bucket;
+  }
+
+  const attempts = (bucket.attempts || [])
+    .map((ts) => new Date(ts).getTime())
+    .filter((ts) => now - ts <= AUTH_FAILURE_WINDOW_MS)
+    .map((ts) => new Date(ts));
+
+  if (bucket.blockedUntil && new Date(bucket.blockedUntil).getTime() <= now) {
+    bucket.blockedUntil = null;
+  }
+
+  if (!attempts.length && !bucket.blockedUntil) {
+    await AuthThrottle.deleteOne({ _id: bucket._id });
+    return null;
+  }
+
+  bucket.attempts = attempts;
+  await bucket.save();
+  return bucket;
+};
+
+const isFailureBucketBlocked = async (key) => {
+  const bucket = await cleanupFailureBucket(key);
+  if (!bucket?.blockedUntil) return null;
+  const blockedUntil = new Date(bucket.blockedUntil).getTime();
+  if (blockedUntil <= Date.now()) return null;
+  return blockedUntil;
+};
+
+const registerFailure = async (key) => {
+  const now = Date.now();
+  const bucket = (await cleanupFailureBucket(key)) || (await AuthThrottle.getOrCreate(key));
+  const attempts = (bucket.attempts || [])
+    .map((ts) => new Date(ts).getTime())
+    .filter((ts) => now - ts <= AUTH_FAILURE_WINDOW_MS);
+
+  attempts.push(now);
+  bucket.attempts = attempts.map((ts) => new Date(ts));
+
+  if (attempts.length >= AUTH_FAILURE_MAX_ATTEMPTS) {
+    bucket.blockedUntil = new Date(now + AUTH_BLOCK_MS);
+  }
+
+  await bucket.save();
+  return {
+    attempts: attempts.length,
+    remainingAttempts: Math.max(0, AUTH_FAILURE_MAX_ATTEMPTS - attempts.length),
+    blockedUntil: bucket.blockedUntil ? new Date(bucket.blockedUntil).getTime() : null
+  };
+};
+
+const clearFailures = async (key) => {
+  await AuthThrottle.deleteOne({ key });
+};
 
 const serializeSession = (sessionDoc) => {
   const session = sessionDoc?.toObject ? sessionDoc.toObject() : sessionDoc;
@@ -75,6 +151,7 @@ const login = async (req, res) => {
     const rawUsername = req.body?.username ?? req.body?.email ?? '';
     const username = String(rawUsername).trim().toLowerCase();
     const password = String(req.body?.password ?? '');
+    const loginGuardKey = `login:${getClientIp(req)}:${username || 'unknown'}`;
 
     console.log('Parsed credentials:', { username, passwordLength: password.length });
 
@@ -84,6 +161,18 @@ const login = async (req, res) => {
       return res.status(400).json({
         success: false,
         error: 'Usuario y contraseña son requeridos'
+      });
+    }
+
+    const blockedUntil = await isFailureBucketBlocked(loginGuardKey);
+    if (blockedUntil) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((blockedUntil - Date.now()) / 1000));
+      res.set('Retry-After', String(retryAfterSeconds));
+      await wait(LOGIN_RESPONSE_DELAY_MS);
+      return res.status(429).json({
+        success: false,
+        error: `Acceso bloqueado temporalmente por seguridad. Reintente en ${retryAfterSeconds}s`,
+        retryAfterSeconds
       });
     }
 
@@ -109,10 +198,21 @@ const login = async (req, res) => {
 
     console.log('User lookup result:', user ? 'found' : 'not found');
     if (!user) {
+      const failure = await registerFailure(loginGuardKey);
       await wait(LOGIN_RESPONSE_DELAY_MS);
+      if (failure.blockedUntil) {
+        const retryAfterSeconds = Math.max(1, Math.ceil((failure.blockedUntil - Date.now()) / 1000));
+        res.set('Retry-After', String(retryAfterSeconds));
+        return res.status(429).json({
+          success: false,
+          error: `Acceso bloqueado temporalmente por seguridad. Reintente en ${retryAfterSeconds}s`,
+          retryAfterSeconds
+        });
+      }
       return res.status(401).json({
         success: false,
-        error: 'Credenciales inválidas'
+        error: 'Credenciales inválidas',
+        remainingAttempts: failure.remainingAttempts
       });
     }
 
@@ -155,8 +255,19 @@ const login = async (req, res) => {
     
     console.log('Password match result:', isMatch);
     if (!isMatch) {
+      const guardFailure = await registerFailure(loginGuardKey);
       const attemptResult = await user.registerFailedLoginAttempt();
       await wait(LOGIN_RESPONSE_DELAY_MS);
+
+      if (guardFailure.blockedUntil) {
+        const retryAfterSeconds = Math.max(1, Math.ceil((guardFailure.blockedUntil - Date.now()) / 1000));
+        res.set('Retry-After', String(retryAfterSeconds));
+        return res.status(429).json({
+          success: false,
+          error: `Acceso bloqueado temporalmente por seguridad. Reintente en ${retryAfterSeconds}s`,
+          retryAfterSeconds
+        });
+      }
 
       if (attemptResult.locked && attemptResult.lockUntil) {
         const lockMs = Math.max(0, attemptResult.lockUntil - new Date());
@@ -174,7 +285,10 @@ const login = async (req, res) => {
       return res.status(401).json({
         success: false,
         error: 'Credenciales inválidas',
-        remainingAttempts: attemptResult.remainingAttempts
+        remainingAttempts: Math.min(
+          attemptResult.remainingAttempts,
+          guardFailure.remainingAttempts
+        )
       });
     }
 
@@ -193,6 +307,7 @@ const login = async (req, res) => {
       $set: updateData,
       $unset: { lockUntil: 1 }
     });
+    await clearFailures(loginGuardKey);
 
     console.log('Generating tokens...');
     // Generar tokens
@@ -282,11 +397,26 @@ const login = async (req, res) => {
 const refreshToken = async (req, res) => {
   try {
     const { refreshToken: token } = req.body;
+    const tokenFingerprint = token ? crypto.createHash('sha256').update(String(token)).digest('hex').slice(0, 16) : 'missing';
+    const refreshGuardKey = `refresh:${getClientIp(req)}:${tokenFingerprint}`;
+
+    const blockedUntil = await isFailureBucketBlocked(refreshGuardKey);
+    if (blockedUntil) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((blockedUntil - Date.now()) / 1000));
+      res.set('Retry-After', String(retryAfterSeconds));
+      return res.status(429).json({
+        success: false,
+        error: `Renovación de token bloqueada temporalmente. Reintente en ${retryAfterSeconds}s`,
+        retryAfterSeconds
+      });
+    }
 
     if (!token) {
+      const failure = await registerFailure(refreshGuardKey);
       return res.status(401).json({
         success: false,
-        error: 'Refresh token requerido'
+        error: 'Refresh token requerido',
+        remainingAttempts: failure.remainingAttempts
       });
     }
 
@@ -294,9 +424,20 @@ const refreshToken = async (req, res) => {
     const session = await SessionService.validateRefreshToken(token);
 
     if (!session || !session.userId) {
+      const failure = await registerFailure(refreshGuardKey);
+      if (failure.blockedUntil) {
+        const retryAfterSeconds = Math.max(1, Math.ceil((failure.blockedUntil - Date.now()) / 1000));
+        res.set('Retry-After', String(retryAfterSeconds));
+        return res.status(429).json({
+          success: false,
+          error: `Renovación de token bloqueada temporalmente. Reintente en ${retryAfterSeconds}s`,
+          retryAfterSeconds
+        });
+      }
       return res.status(401).json({
         success: false,
-        error: 'Refresh token inválido o expirado'
+        error: 'Refresh token inválido o expirado',
+        remainingAttempts: failure.remainingAttempts
       });
     }
 
@@ -309,6 +450,7 @@ const refreshToken = async (req, res) => {
     
     // Invalidar la sesión anterior después de asegurar la nueva
     await SessionService.invalidateSession(session._id);
+    await clearFailures(refreshGuardKey);
 
     res.json({
       success: true,
@@ -321,9 +463,23 @@ const refreshToken = async (req, res) => {
     });
 
   } catch (error) {
+    const token = req.body?.refreshToken;
+    const tokenFingerprint = token ? crypto.createHash('sha256').update(String(token)).digest('hex').slice(0, 16) : 'missing';
+    const refreshGuardKey = `refresh:${getClientIp(req)}:${tokenFingerprint}`;
+    const failure = await registerFailure(refreshGuardKey);
+    if (failure.blockedUntil) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((failure.blockedUntil - Date.now()) / 1000));
+      res.set('Retry-After', String(retryAfterSeconds));
+      return res.status(429).json({
+        success: false,
+        error: `Renovación de token bloqueada temporalmente. Reintente en ${retryAfterSeconds}s`,
+        retryAfterSeconds
+      });
+    }
     res.status(401).json({
       success: false,
-      error: 'Refresh token inválido'
+      error: 'Refresh token inválido',
+      remainingAttempts: failure.remainingAttempts
     });
   }
 };
