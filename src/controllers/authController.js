@@ -87,6 +87,12 @@ const clearFailures = async (key) => {
   await AuthThrottle.deleteOne({ key });
 };
 
+const canManageSessions = (user) => {
+  const role = String(user?.rol || '');
+  const permisos = Array.isArray(user?.permisos) ? user.permisos : [];
+  return role === 'admin' || permisos.includes('*') || permisos.includes('gestionar_usuarios');
+};
+
 const serializeSession = (sessionDoc) => {
   const session = sessionDoc?.toObject ? sessionDoc.toObject() : sessionDoc;
   if (!session) return null;
@@ -640,11 +646,11 @@ const revokeAllSessions = async (req, res) => {
 
 const getAllActiveSessions = async (req, res) => {
   try {
-    // Solo para administradores
-    if (req.user.rol !== 'admin') {
+    // Admin o usuarios con permiso explícito de gestión.
+    if (!canManageSessions(req.user)) {
       return res.status(403).json({
         success: false,
-        error: 'Acceso denegado. Se requiere rol de administrador'
+        error: 'Acceso denegado. Se requiere rol de administrador o permiso gestionar_usuarios'
       });
     }
 
@@ -665,11 +671,11 @@ const getAllActiveSessions = async (req, res) => {
 
 const revokeSessionByAdmin = async (req, res) => {
   try {
-    // Solo para administradores
-    if (req.user.rol !== 'admin') {
+    // Admin o usuarios con permiso explícito de gestión.
+    if (!canManageSessions(req.user)) {
       return res.status(403).json({
         success: false,
-        error: 'Acceso denegado. Se requiere rol de administrador'
+        error: 'Acceso denegado. Se requiere rol de administrador o permiso gestionar_usuarios'
       });
     }
 

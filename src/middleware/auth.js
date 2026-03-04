@@ -25,6 +25,9 @@ const authMiddleware = async (req, res, next) => {
     }
 
     req.user = session.userId; // El populate ya trae el usuario completo
+    // Endurece shape del usuario para evitar fallas en chequeos de permisos.
+    req.user.permisos = Array.isArray(req.user?.permisos) ? req.user.permisos : [];
+    req.user.rol = String(req.user?.rol || '');
     req.token = token;
     req.session = session;
     req.sessionId = session._id; // Agregar sessionId para gestión de sesiones
@@ -40,22 +43,29 @@ const authMiddleware = async (req, res, next) => {
 
 const requirePermission = (permission) => {
   return (req, res, next) => {
-    if (!req.user) {
-      return res.status(401).json({ 
-        success: false,
-        error: 'Usuario no autenticado' 
-      });
-    }
+    try {
+      if (!req.user) {
+        return res.status(401).json({ 
+          success: false,
+          error: 'Usuario no autenticado' 
+        });
+      }
 
-    const role = String(req.user?.rol || '');
-    const permisos = Array.isArray(req.user?.permisos) ? req.user.permisos : [];
-    const permisosSet = new Set(permisos.map((p) => String(p)));
-    if (role === 'admin' || permisosSet.has('*') || permisosSet.has(String(permission))) {
-      next();
-    } else {
-      res.status(403).json({ 
+      const role = String(req.user?.rol || '');
+      const permisos = Array.isArray(req.user?.permisos) ? req.user.permisos : [];
+      const permisosSet = new Set(permisos.map((p) => String(p)));
+      if (role === 'admin' || permisosSet.has('*') || permisosSet.has(String(permission))) {
+        return next();
+      }
+
+      return res.status(403).json({ 
         success: false,
         error: 'No tiene permisos para realizar esta acción' 
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        error: 'Error al validar permisos'
       });
     }
   };

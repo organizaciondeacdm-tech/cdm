@@ -25,6 +25,10 @@ const informeRoutes = require('./routes/informeRoutes');
 const formEngineRoutes = require('./routes/formEngineRoutes');
 const { generarDashboard } = require('./controllers/reporteController');
 const {
+  getAllActiveSessions,
+  revokeSessionByAdmin
+} = require('./controllers/authController');
+const {
   createEscuela,
   getEscuelas,
   getEscuelaById,
@@ -621,6 +625,10 @@ app.post('/api/admin/security/cleanup', authMiddleware, requireAdmin, async (req
     res.status(500).json({ success: false, error: 'Error al ejecutar limpieza de seguridad' });
   }
 });
+
+// Alias de compatibilidad para sesiones admin fuera de /api/auth
+app.get('/api/admin/sessions', authMiddleware, getAllActiveSessions);
+app.delete('/api/admin/sessions/:sessionId', authMiddleware, revokeSessionByAdmin);
 
 // Admin: gestión de escuelas (incluye "Nueva Escuela")
 app.get('/api/admin/escuelas', authMiddleware, requireAdmin, getEscuelas);

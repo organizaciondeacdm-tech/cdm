@@ -1,15 +1,13 @@
 const mongoose = require('mongoose');
+const connectDB = require('./src/config/database');
 const User = require('./src/models/User');
 require('dotenv').config();
 
 async function seedAdmin() {
   try {
-    const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/acdm_db';
     console.log('Conectando a MongoDB...');
     
-    await mongoose.connect(mongoUri, {
-      serverSelectionTimeoutMS: 10000
-    });
+    await connectDB();
     
     console.log('✓ Conectado a MongoDB');
     
@@ -17,7 +15,6 @@ async function seedAdmin() {
     const existingUser = await User.findOne({ username: 'admin' });
     if (existingUser) {
       console.log('✓ Usuario admin ya existe');
-      await mongoose.disconnect();
       return;
     }
     
@@ -65,7 +62,6 @@ async function seedAdmin() {
     await docenteUser.save();
     console.log('✓ Usuario docente creado exitosamente');
     
-    await mongoose.disconnect();
     console.log('✓ Seed completado');
     
   } catch (err) {

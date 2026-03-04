@@ -51,6 +51,13 @@ const buildProjection = (select) => {
   return select;
 };
 
+const hasAtomicOperator = (obj = {}) => Object.keys(obj).some((k) => String(k).startsWith('$'));
+const toAtomicUpdate = (update = {}) => {
+  const normalized = normalizeValue(update || {});
+  if (hasAtomicOperator(normalized)) return normalized;
+  return { $set: normalized };
+};
+
 class QueryBuilder {
   constructor(modelClass, filter = {}, options = {}) {
     this.modelClass = modelClass;
@@ -315,7 +322,7 @@ class BaseMongoModel {
 
   static async updateOne(filter = {}, update = {}, options = {}) {
     const collection = await this.getCollection();
-    const normalizedUpdate = normalizeValue(update);
+    const normalizedUpdate = toAtomicUpdate(update);
     if (!normalizedUpdate.$set) normalizedUpdate.$set = {};
     normalizedUpdate.$set.updatedAt = new Date();
     if (!normalizedUpdate.$inc) normalizedUpdate.$inc = {};
@@ -325,7 +332,7 @@ class BaseMongoModel {
 
   static async updateMany(filter = {}, update = {}, options = {}) {
     const collection = await this.getCollection();
-    const normalizedUpdate = normalizeValue(update);
+    const normalizedUpdate = toAtomicUpdate(update);
     if (!normalizedUpdate.$set) normalizedUpdate.$set = {};
     normalizedUpdate.$set.updatedAt = new Date();
     if (!normalizedUpdate.$inc) normalizedUpdate.$inc = {};
@@ -335,7 +342,7 @@ class BaseMongoModel {
 
   static async findByIdAndUpdate(id, update = {}, options = {}) {
     const collection = await this.getCollection();
-    const normalizedUpdate = normalizeValue(update);
+    const normalizedUpdate = toAtomicUpdate(update);
     if (!normalizedUpdate.$set) normalizedUpdate.$set = {};
     normalizedUpdate.$set.updatedAt = new Date();
     if (!normalizedUpdate.$inc) normalizedUpdate.$inc = {};
