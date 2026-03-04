@@ -7,6 +7,7 @@ export function Sidebar({
   activeSection,
   onSectionChange,
   isAdmin,
+  showHiddenAdmin,
   alertCount,
   onNewEscuela
 }) {
@@ -20,6 +21,17 @@ export function Sidebar({
     { id: "estadisticas", icon: "📈", label: "Estadísticas" },
     { id: "calendario", icon: "📅", label: "Calendario" },
     { id: "exportar", icon: "📄", label: "Exportar" },
+    ...(showHiddenAdmin ? [{ id: "admin-secret", icon: "🛡️", label: "Admin Oculto" }] : []),
+    ...(isAdmin
+      ? [
+          { id: "admin-users", icon: "👤", label: "Usuarios" },
+          { id: "admin-sessions", icon: "🔐", label: "Sesiones" },
+          { id: "admin-roles", icon: "🎭", label: "Roles" },
+          { id: "admin-permissions", icon: "🧩", label: "Permisos" },
+          { id: "admin-traffic", icon: "📡", label: "Tráfico RT" },
+          { id: "admin-security", icon: "🚫", label: "Seguridad IP" }
+        ]
+      : []),
   ];
 
   return (

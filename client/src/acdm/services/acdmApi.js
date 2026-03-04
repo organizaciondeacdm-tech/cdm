@@ -2,9 +2,10 @@
  * API Service para ACDM
  * Maneja todas las llamadas HTTP al backend
  */
-import { clearAuthSession, setAuthSession } from '../../utils/authSession.js';
+import { clearAuthSession, getAuthSession, setAuthSession } from '../../utils/authSession.js';
+import { getApiUrl } from '../../utils/apiConfig.js';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = `${getApiUrl()}/api`;
 
 class AcdmApiService {
   constructor(baseUrl = API_BASE_URL) {
@@ -16,7 +17,12 @@ class AcdmApiService {
     this.token = token;
   }
 
-  getHeaders() {
+  async getHeaders() {
+    if (!this.token) {
+      const session = await getAuthSession();
+      this.token = session?.tokens?.access || null;
+    }
+
     return {
       'Content-Type': 'application/json',
       ...(this.token && { 'Authorization': `Bearer ${this.token}` })
@@ -27,7 +33,7 @@ class AcdmApiService {
     const url = `${this.baseUrl}${endpoint}`;
     const config = {
       ...options,
-      headers: this.getHeaders()
+      headers: await this.getHeaders()
     };
 
     try {
@@ -35,7 +41,7 @@ class AcdmApiService {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        throw new Error(error.message || `HTTP ${response.status}`);
+        throw new Error(error.error || error.message || `HTTP ${response.status}`);
       }
 
       return await response.json();
@@ -182,16 +188,117 @@ class AcdmApiService {
 
   async exportarJSON() {
     const response = await fetch(`${this.baseUrl}/export/json`, {
-      headers: this.getHeaders()
+      headers: await this.getHeaders()
     });
     return response.blob();
   }
 
   async exportarCSV() {
     const response = await fetch(`${this.baseUrl}/export/csv`, {
-      headers: this.getHeaders()
+      headers: await this.getHeaders()
     });
     return response.blob();
+  }
+
+  // ==================== SESIONES ====================
+  async getMySessions() {
+    return this.request('/auth/sessions');
+  }
+
+  async revokeMySession(sessionId) {
+    return this.request(`/auth/sessions/${sessionId}`, { method: 'DELETE' });
+  }
+
+  async revokeMyOtherSessions() {
+    return this.request('/auth/sessions', { method: 'DELETE' });
+  }
+
+  async getAdminSessions() {
+    return this.request('/auth/admin/sessions');
+  }
+
+  async revokeSessionAsAdmin(sessionId) {
+    return this.request(`/auth/admin/sessions/${sessionId}`, { method: 'DELETE' });
+  }
+
+  // ==================== USUARIOS (ADMIN) ====================
+  async getAdminUsers() {
+    return this.request('/admin/users');
+  }
+
+  async createAdminUser(payload) {
+    return this.request('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async updateAdminUser(id, payload) {
+    return this.request(`/admin/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async deleteAdminUser(id) {
+    return this.request(`/admin/users/${id}`, { method: 'DELETE' });
+  }
+
+  async getRoles() {
+    return this.request('/admin/roles');
+  }
+
+  async updateRolePermissions(role, permisos, applyToUsers = false) {
+    return this.request(`/admin/roles/${role}/permisos`, {
+      method: 'PUT',
+      body: JSON.stringify({ permisos, applyToUsers })
+    });
+  }
+
+  async getPermisos() {
+    return this.request('/admin/permisos');
+  }
+
+  // ==================== SEGURIDAD / TRÁFICO ====================
+  async getSecurityTrafficRealtime() {
+    return this.request('/admin/security/traffic/realtime');
+  }
+
+  async getSecurityTrafficHistory(limit = 300) {
+    return this.request(`/admin/security/traffic/history?limit=${encodeURIComponent(limit)}`);
+  }
+
+  async getBannedIps() {
+    return this.request('/admin/security/bans');
+  }
+
+  async banIp(payload) {
+    return this.request('/admin/security/bans', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async unbanIp(ip) {
+    return this.request(`/admin/security/bans/${encodeURIComponent(ip)}`, { method: 'DELETE' });
+  }
+
+  async getSecurityRules() {
+    return this.request('/admin/security/rules');
+  }
+
+  async updateSecurityRules(payload) {
+    return this.request('/admin/security/rules', {
+      method: 'PUT',
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async cleanupSecurity(payload = {}) {
+    return this.request('/admin/security/cleanup', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
   }
 
   // ==================== BÚSQUEDA ====================

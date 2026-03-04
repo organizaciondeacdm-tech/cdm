@@ -1,14 +1,12 @@
 import { useState, useEffect } from 'react';
 import App from './acdm/acdm-system.jsx';
-import { useMongoData } from './hooks/useMongoData.js';
-import { restoreUserFromSession } from './utils/authSession.js';
+import { loginWithSession, logoutSession, restoreUserFromSession } from './utils/authSession.js';
 import PapiwebSpinner from './PapiwebSpinner.jsx';
 
 /**
  * Wrapper que proporciona autenticación MongoDB a acdm-system.jsx
  */
 export default function AppWithAuth() {
-  const { login: mongoLogin, logout: mongoLogout } = useMongoData();
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState('');
@@ -39,8 +37,8 @@ export default function AppWithAuth() {
     setIsLoggingIn(true);
     setLoginError('');
     try {
-      const user = await mongoLogin(username, password);
-      setCurrentUser(user);
+      const session = await loginWithSession(username, password);
+      setCurrentUser(session.user);
     } catch (err) {
       setLoginError(err.message);
       throw err;
@@ -51,7 +49,7 @@ export default function AppWithAuth() {
 
   const handleLogout = async () => {
     setCurrentUser(null);
-    await mongoLogout();
+    await logoutSession();
   };
 
   if (isRestoringSession) {
