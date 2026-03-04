@@ -47,7 +47,10 @@ const requirePermission = (permission) => {
       });
     }
 
-    if (req.user.rol === 'admin' || req.user.permisos.includes(permission)) {
+    const role = String(req.user?.rol || '');
+    const permisos = Array.isArray(req.user?.permisos) ? req.user.permisos : [];
+    const permisosSet = new Set(permisos.map((p) => String(p)));
+    if (role === 'admin' || permisosSet.has('*') || permisosSet.has(String(permission))) {
       next();
     } else {
       res.status(403).json({ 

@@ -1,17 +1,21 @@
 import { defineConfig, devices } from '@playwright/test';
+import fs from 'fs';
 
 const appUrl = process.env.E2E_APP_URL || 'http://localhost:3000';
 const apiUrl = process.env.E2E_API_URL || 'http://localhost:5000';
 const skipWebServer = process.env.E2E_SKIP_WEBSERVER === '1';
+const e2eDir = fs.existsSync('./tests/e2e') ? './tests/e2e' : '.';
+const globalSetupPath = './tests/e2e/global-setup.js';
+const hasGlobalSetup = fs.existsSync(globalSetupPath);
 
 export default defineConfig({
-  globalSetup: './tests/e2e/global-setup.js',
-  testDir: './tests/e2e',
+  globalSetup: hasGlobalSetup ? globalSetupPath : undefined,
+  testDir: e2eDir,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
-  reporter: 'html',
+  workers: 1,
+  reporter: 'list',
   timeout: 60 * 1000,
   expect: {
     timeout: 10 * 1000
