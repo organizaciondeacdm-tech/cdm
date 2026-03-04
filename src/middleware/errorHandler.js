@@ -3,10 +3,13 @@ const errorHandler = (err, req, res, next) => {
   console.error({
     message: err.message,
     stack: err.stack,
+    name: err.name,
+    code: err.code,
     url: req.originalUrl,
     method: req.method,
     ip: req.ip,
-    user: req.user?.id
+    user: req.user?.id,
+    timestamp: new Date().toISOString()
   });
 
   let statusCode = err.statusCode || 500;
@@ -30,12 +33,28 @@ const errorHandler = (err, req, res, next) => {
 
   const response = {
     success: false,
-    error: message
+    error: message,
+    type: err.name || 'Error',
+    timestamp: new Date().toISOString()
   };
 
-  if (process.env.NODE_ENV === 'development') {
-    response.stack = err.stack;
-  }
+  // Incluir información de debug avanzada
+  response.details = {
+    name: err.name,
+    code: err.code,
+    errno: err.errno,
+    syscall: err.syscall,
+    hostname: err.hostname,
+    stack: err.stack,
+    // Información del entorno
+    nodeVersion: process.version,
+    platform: process.platform,
+    environment: process.env.NODE_ENV || 'unknown',
+    // Verificar variables críticas
+    jwtSecretDefined: !!process.env.JWT_SECRET,
+    jwtRefreshSecretDefined: !!process.env.JWT_REFRESH_SECRET,
+    mongoUriDefined: !!process.env.MONGODB_URI
+  };
 
   res.status(statusCode).json(response);
 };
