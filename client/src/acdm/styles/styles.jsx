@@ -436,44 +436,51 @@ const STYLES = `
 
   /* LOGIN */
   .login-container {
-    min-height: 100vh; display: flex; align-items: center; justify-content: center;
-    background: #080b12; /* Darker navy background to match image */
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #0a0e1a, #141d30);
+    z-index: 1; overflow: hidden;
+  }
+  .login-container::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background-image:
+      radial-gradient(ellipse at 20% 50%, rgba(0,150,255,0.15) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, rgba(0,100,200,0.1) 0%, transparent 50%);
+    pointer-events: none; z-index: 1;
+  }
+  .login-container::after {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background-image:
+      repeating-linear-gradient(0deg, transparent, transparent 40px, rgba(0,212,255,0.03) 40px, rgba(0,212,255,0.03) 41px),
+      repeating-linear-gradient(90deg, transparent, transparent 40px, rgba(0,212,255,0.03) 40px, rgba(0,212,255,0.03) 41px);
+    pointer-events: none; z-index: 2; animation: fadeIn 3s ease-in;
   }
   .login-box {
-    background: transparent;
-    border: 1px solid rgba(0,212,255,0.15); /* Very subtle border */
+    background: var(--card);
+    border: 1px solid var(--border2);
     border-radius: var(--radius); padding: 40px;
-    width: 360px; position: relative;
-    box-shadow: inset 0 0 40px rgba(0,212,255,0.02);
-    animation: fadeIn 0.4s ease;
+    width: 400px; position: relative;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 40px rgba(0,212,255,0.1);
+    animation: slideIn 0.5s ease;
+    z-index: 10;
   }
   
   .login-logo-container {
     display: flex; justify-content: center; margin-bottom: 24px;
   }
   .login-logo-container .papiweb-logo {
-     background: transparent;
-     border: 1px solid rgba(0,212,255,0.1);
-     padding: 10px 40px;
-  }
-  .login-logo-container .papiweb-text {
-     font-size: 16px; letter-spacing: 1.5px;
-     text-align: center;
-     background: #fff;
-     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-     background-clip: text;
-     filter: none; animation: none;
-  }
-  .login-logo-container .papiweb-sub {
-     color: rgba(0,212,255,0.6);
-     font-size: 8px;
-     letter-spacing: 0.5px;
-     margin-top: 4px;
+     background: linear-gradient(135deg, #1a2540, #0a0e1a);
+     border: 1px solid rgba(0,212,255,0.25);
+     border-radius: 6px;
+     padding: 8px 32px;
+     min-width: 220px;
      text-align: center;
   }
 
-  .login-title { font-family: 'Rajdhani', sans-serif; font-size: 24px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
-  .login-sub { font-size: 10px; color: var(--text3); letter-spacing: 1px; text-transform: uppercase; }
+  .login-title { font-family: 'Rajdhani', sans-serif; font-size: 28px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); text-align: center; margin-bottom: 4px; }
+  .login-sub { font-size: 11px; color: var(--text3); text-align: center; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 28px; }
   
   .login-label {
       font-size: 9px;
@@ -481,11 +488,16 @@ const STYLES = `
       margin-bottom: 4px;
   }
   .login-input {
-      background: transparent !important;
+      background: rgba(255,255,255,0.04) !important;
       border: 1px solid rgba(0,212,255,0.2) !important;
-      color: rgba(255,255,255,0.9) !important;
+      color: #e8f4f8 !important;
+      -webkit-text-fill-color: #e8f4f8 !important;
+  }
+  .login-input::placeholder {
+      color: rgba(255,255,255,0.25) !important;
   }
   .login-input:focus {
+      background: rgba(0,212,255,0.04) !important;
       border-color: rgba(0,212,255,0.5) !important;
       box-shadow: 0 0 10px rgba(0,212,255,0.1) !important;
   }

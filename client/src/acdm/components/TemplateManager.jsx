@@ -17,14 +17,45 @@ export function TemplateManager({ templates, activeTemplateId, setActiveTemplate
     }
   };
 
+  const deleteTemplate = async (templateId) => {
+    if (!confirm('¿Eliminar esta plantilla?')) return;
+    
+    try {
+      await dataSource.deleteTemplate(templateId);
+      notify('Plantilla eliminada exitosamente');
+      // Refresh is handled by dataSource.deleteTemplate
+      if (activeTemplateId === templateId) {
+        setActiveTemplateId(null);
+      }
+    } catch (error) {
+      notify('Error al eliminar plantilla: ' + error.message);
+    }
+  };
+
   return (
     <section className="card">
       <h2>Plantillas</h2>
-      <select value={activeTemplateId || ''} onChange={(event) => setActiveTemplateId(event.target.value)}>
-        {templates.map((template) => (
-          <option key={template._id} value={template._id}>{template.name}</option>
-        ))}
-      </select>
+      <div style={{ marginBottom: '16px' }}>
+        <select 
+          value={activeTemplateId || ''} 
+          onChange={(event) => setActiveTemplateId(event.target.value)}
+          style={{ marginRight: '8px' }}
+        >
+          <option value="">Seleccionar plantilla...</option>
+          {templates.map((template) => (
+            <option key={template._id} value={template._id}>{template.name}</option>
+          ))}
+        </select>
+        {activeTemplateId && (
+          <button 
+            type="button" 
+            onClick={() => deleteTemplate(activeTemplateId)}
+            style={{ background: 'var(--red)', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}
+          >
+            🗑️ Eliminar
+          </button>
+        )}
+      </div>
 
       <h3>Carga masiva JSON</h3>
       <textarea

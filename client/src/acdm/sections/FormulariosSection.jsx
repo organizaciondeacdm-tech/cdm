@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { SubmissionsTable } from './SubmissionsTable';
-import { TemplateManager } from './TemplateManager';
+import { SubmissionsTable } from "../components/SubmissionsTable";
+import { TemplateManager } from "../components/TemplateManager";
 import { acdmApi } from '../services/acdmApi';
 
 export function FormulariosSection() {
@@ -74,6 +74,11 @@ export function FormulariosSection() {
     },
     bulkCreateSubmissions: async (data) => {
       return await acdmApi.bulkCreateFormSubmissions(data);
+    },
+    deleteTemplate: async (id) => {
+      const result = await acdmApi.deleteFormTemplate(id);
+      await loadTemplates(); // Refresh templates after deletion
+      return result;
     }
   };
 

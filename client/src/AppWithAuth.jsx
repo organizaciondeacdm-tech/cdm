@@ -171,34 +171,87 @@ export default function AppWithAuth() {
           display: flex;
           gap: 8px;
         }
-        .papiweb-logo {
-          text-align: center;
+        .login-logo-container {
+          display: flex;
+          justify-content: center;
           margin-bottom: 24px;
+        }
+        .papiweb-logo {
+          position: relative;
+          background: linear-gradient(135deg, #1a2540, #0a0e1a);
+          border: 1px solid #2a4a7f;
+          border-radius: 6px;
+          padding: 8px 32px;
+          min-width: 220px;
+          text-align: center;
+          overflow: hidden;
+        }
+        .papiweb-logo::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.4) 50%, transparent 100%);
+          animation: shineEffectMirror 2.5s ease-in-out infinite;
+        }
+        .papiweb-logo::after {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, #00d4ff, transparent);
+          animation: ledScan 2s linear infinite;
         }
         .papiweb-text {
           font-family: 'Rajdhani', sans-serif;
-          font-size: 22px;
+          font-size: 26px;
           font-weight: 700;
+          letter-spacing: 6px;
+          margin-right: -6px;
           background: linear-gradient(135deg, #c0d0e8 0%, #ffffff 30%, #8098b8 50%, #ffffff 70%, #4a6fa5 100%);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
+          filter: drop-shadow(0 0 6px rgba(0,212,255,0.5));
+          animation: metalPulse 4s ease-in-out infinite;
         }
         .papiweb-sub {
           color: #4a6fa5;
           font-size: 9px;
-          letter-spacing: 1px;
+          letter-spacing: 2px;
+          font-family: 'Exo 2', sans-serif;
+          font-weight: 300;
           text-transform: uppercase;
+          margin-top: 4px;
+        }
+
+        @keyframes shineEffectMirror {
+          0% { transform: translateX(200%); opacity: 0; }
+          25% { opacity: 1; }
+          50% { transform: translateX(0%); opacity: 1; }
+          75% { opacity: 1; }
+          100% { transform: translateX(-200%); opacity: 0; }
+        }
+        @keyframes ledScan {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+        @keyframes metalPulse {
+          0%, 100% { filter: drop-shadow(0 0 6px rgba(0,212,255,0.5)); }
+          50% { filter: drop-shadow(0 0 12px rgba(0,212,255,0.8)); }
         }
       `}</style>
 
       <div className="login-box">
-        <div className="papiweb-logo">
-          <div className="papiweb-text">PAPIWEB</div>
-          <div className="papiweb-sub">Desarrollos33s Informáticos</div>
+        <div className="login-logo-container">
+          <div className="papiweb-logo">
+            <div className="papiweb-text">PAPIWEB</div>
+            <div className="papiweb-sub">DESARROLLOS INFORMÁTICOS</div>
+          </div>
         </div>
-        <h1 className="login-title">Sistema ACDM</h1>
-        <h2 className="login-sub">Gestión de Asistentes Celadores/as</h2>
+        <h1 className="login-title">SISTEMA ACDM</h1>
+        <h2 className="login-sub">Gestión de Asistentes de Clase</h2>
 
         {isLoggingIn ? (
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '40px 0', minHeight: '260px' }}>

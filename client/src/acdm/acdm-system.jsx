@@ -1,4 +1,5 @@
 import STYLES from "./styles/styles.jsx";
+import './styles/acdm.css';
 import { AcdmProvider, useAcdmContext } from "./context/AcdmContext.jsx";
 import { AcdmLayout } from "./layout/AcdmLayout.jsx";
 import { Login } from "./components/Login.jsx";
