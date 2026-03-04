@@ -7,6 +7,7 @@ const { Unauthorized, InternalServerError, BadRequest } = require('../utils/http
 const JwtKeyManager = require('../utils/jwtKeyManager');
 const SessionService = require('../services/sessionService');
 const AuthThrottle = require('../models/AuthThrottle');
+const { isPrivilegedRole } = require('../services/privilegedRoleService');
 
 const LOGIN_RESPONSE_DELAY_MS = parseInt(process.env.LOGIN_RESPONSE_DELAY_MS, 10) || 400;
 const AUTH_FAILURE_MAX_ATTEMPTS = parseInt(process.env.AUTH_FAILURE_MAX_ATTEMPTS, 10) || 10;
@@ -199,10 +200,27 @@ const clearUnknownIpFailures = async (userId, ip) => {
   await AuthThrottle.deleteOne({ key });
 };
 
-const canManageSessions = (user) => {
+const canManageSessions = async (user) => {
   const role = String(user?.rol || '');
   const permisos = Array.isArray(user?.permisos) ? user.permisos : [];
-  return role === 'admin' || permisos.includes('*') || permisos.includes('gestionar_usuarios');
+  return (await isPrivilegedRole(role)) || permisos.includes('*');
+};
+
+const serializeAuthUser = async (user) => {
+  if (!user) return null;
+  const role = String(user?.rol || '');
+  const permisos = Array.isArray(user?.permisos) ? user.permisos : [];
+  const hasPrivilegedRole = await isPrivilegedRole(role);
+  return {
+    _id: user._id,
+    username: user.username,
+    email: user.email,
+    nombre: user.nombre,
+    apellido: user.apellido,
+    rol: role,
+    permisos,
+    isPrivilegedRole: hasPrivilegedRole || permisos.includes('*')
+  };
 };
 
 const serializeSession = (sessionDoc) => {
@@ -303,7 +321,7 @@ const login = async (req, res) => {
     // Buscar usuario
     let user;
     try {
-      user = await User.findOne({ 
+      user = await User.findOne({
         $or: [
           { username: username.toLowerCase() },
           { email: username.toLowerCase() }
@@ -395,7 +413,7 @@ const login = async (req, res) => {
         error: 'Error al verificar credenciales'
       });
     }
-    
+
     console.log('Password match result:', isMatch);
     if (!isMatch) {
       logWatchedAttempt(username, clientIp, false);
@@ -474,11 +492,11 @@ const login = async (req, res) => {
       loginAttempts: 0,
       lastLogin: new Date()
     };
-    
+
     if (req.ip) {
       updateData.lastIP = req.ip;
     }
-    
+
     await user.updateOne({
       $set: updateData,
       $unset: { lockUntil: 1 }
@@ -515,18 +533,11 @@ const login = async (req, res) => {
     }
 
     console.log('Login successful, sending response');
+    const authUser = await serializeAuthUser(user);
     res.json({
       success: true,
       data: {
-        user: {
-          _id: user._id,
-          username: user.username,
-          email: user.email,
-          nombre: user.nombre,
-          apellido: user.apellido,
-          rol: user.rol,
-          permisos: user.permisos
-        },
+        user: authUser,
         tokens: {
           access: accessToken,
           refresh: refreshToken
@@ -632,7 +643,7 @@ const refreshToken = async (req, res) => {
     // Crear nueva sesión
     const deviceInfo = SessionService.parseDeviceInfo(req);
     await SessionService.createSession(session.userId, accessToken, newRefreshToken, deviceInfo);
-    
+
     // Invalidar la sesión anterior después de asegurar la nueva
     await SessionService.invalidateSession(session._id);
     await clearFailures(refreshGuardKey);
@@ -738,10 +749,11 @@ const getProfile = async (req, res) => {
     const user = await User.findById(req.user._id)
       .select('-passwordHash -refreshToken')
       .populate('createdBy', 'username email');
+    const authUser = await serializeAuthUser(user);
 
     res.json({
       success: true,
-      data: user
+      data: authUser
     });
   } catch (error) {
     res.status(500).json({
@@ -754,7 +766,7 @@ const getProfile = async (req, res) => {
 const getActiveSessions = async (req, res) => {
   try {
     const sessions = await SessionService.getActiveSessions(req.user._id);
-    
+
     res.json({
       success: true,
       data: sessions.map(serializeSession).filter(Boolean)
@@ -771,7 +783,7 @@ const getActiveSessions = async (req, res) => {
 const revokeSession = async (req, res) => {
   try {
     const { sessionId } = req.params;
-    
+
     if (!sessionId) {
       return res.status(400).json({
         success: false,
@@ -780,7 +792,7 @@ const revokeSession = async (req, res) => {
     }
 
     const result = await SessionService.revokeSession(sessionId, req.user._id);
-    
+
     if (!result) {
       return res.status(404).json({
         success: false,
@@ -804,9 +816,9 @@ const revokeSession = async (req, res) => {
 const revokeAllSessions = async (req, res) => {
   try {
     const currentSessionId = req.sessionId; // Asumiendo que viene del middleware
-    
+
     await SessionService.revokeAllSessions(req.user._id, currentSessionId);
-    
+
     res.json({
       success: true,
       message: 'Todas las sesiones revocadas exitosamente (excepto la actual)'
@@ -822,16 +834,16 @@ const revokeAllSessions = async (req, res) => {
 
 const getAllActiveSessions = async (req, res) => {
   try {
-    // Admin o usuarios con permiso explícito de gestión.
-    if (!canManageSessions(req.user)) {
+    // Solo rol privilegiado configurado en DB.
+    if (!await canManageSessions(req.user)) {
       return res.status(403).json({
         success: false,
-        error: 'Acceso denegado. Se requiere rol de administrador o permiso gestionar_usuarios'
+        error: 'Acceso denegado. Se requiere rol privilegiado'
       });
     }
 
     const sessions = await SessionService.getAllActiveSessions();
-    
+
     res.json({
       success: true,
       data: sessions.map(serializeSession).filter(Boolean)
@@ -847,16 +859,16 @@ const getAllActiveSessions = async (req, res) => {
 
 const revokeSessionByAdmin = async (req, res) => {
   try {
-    // Admin o usuarios con permiso explícito de gestión.
-    if (!canManageSessions(req.user)) {
+    // Solo rol privilegiado configurado en DB.
+    if (!await canManageSessions(req.user)) {
       return res.status(403).json({
         success: false,
-        error: 'Acceso denegado. Se requiere rol de administrador o permiso gestionar_usuarios'
+        error: 'Acceso denegado. Se requiere rol privilegiado'
       });
     }
 
     const { sessionId } = req.params;
-    
+
     if (!sessionId) {
       return res.status(400).json({
         success: false,
@@ -865,7 +877,7 @@ const revokeSessionByAdmin = async (req, res) => {
     }
 
     const result = await SessionService.revokeSession(sessionId);
-    
+
     if (!result) {
       return res.status(404).json({
         success: false,

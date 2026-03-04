@@ -1,6 +1,7 @@
 const Escuela = require('../models/Escuela');
 const Docente = require('../models/Docente');
 const Alumno = require('../models/Alumno');
+const { isPrivilegedRole } = require('../services/privilegedRoleService');
 
 const normalizeTelefonos = (telefonos = []) => {
   if (!Array.isArray(telefonos)) return [];
@@ -89,10 +90,10 @@ const buildEscuelaPayload = (input = {}, { partial = false } = {}) => {
   return payload;
 };
 
-const isAdminOrSuperUser = (user) => {
+const isAdminOrSuperUser = async (user) => {
   const rol = String(user?.rol || '');
   const permisos = Array.isArray(user?.permisos) ? user.permisos : [];;
-  return rol === 'admin' || permisos.includes('*');
+  return await isPrivilegedRole(rol) || permisos.includes('*');
 };
 
 const getEscuelas = async (req, res) => {
@@ -111,7 +112,7 @@ const getEscuelas = async (req, res) => {
     const query = {};
 
     // Los usuarios no-admin solo ven sus propios registros
-    if (!isAdminOrSuperUser(req.user)) {
+    if (!await isAdminOrSuperUser(req.user)) {
       query.createdBy = req.user._id;
     }
 

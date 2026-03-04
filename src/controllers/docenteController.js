@@ -1,5 +1,6 @@
 const Docente = require('../models/Docente');
 const Escuela = require('../models/Escuela');
+const { isPrivilegedRole } = require('../services/privilegedRoleService');
 
 const splitNombreApellido = (nombreApellido = '') => {
   const value = String(nombreApellido).trim();
@@ -36,10 +37,10 @@ const normalizeDocentePayload = (payload = {}, { partial = false } = {}) => {
   return normalized;
 };
 
-const isAdminOrSuperUser = (user) => {
+const isAdminOrSuperUser = async (user) => {
   const rol = String(user?.rol || '');
   const permisos = Array.isArray(user?.permisos) ? user.permisos : [];
-  return rol === 'admin' || permisos.includes('*');
+  return await isPrivilegedRole(rol) || permisos.includes('*');
 };
 
 const getDocentes = async (req, res) => {
@@ -57,19 +58,19 @@ const getDocentes = async (req, res) => {
     const query = { activo: true };
 
     // Los usuarios no-admin solo ven sus propios registros
-    if (!isAdminOrSuperUser(req.user)) {
+    if (!await isAdminOrSuperUser(req.user)) {
       query.createdBy = req.user._id;
     }
 
     if (escuela) query.escuela = escuela;
     if (estado) query.estado = estado;
     if (cargo) query.cargo = cargo;
-    
+
     if (licenciasProximas) {
       const dias = parseInt(licenciasProximas) || 10;
       const fechaLimite = new Date();
       fechaLimite.setDate(fechaLimite.getDate() + dias);
-      
+
       query.estado = 'Licencia';
       query.fechaFinLicencia = { $lte: fechaLimite, $gte: new Date() };
     }
@@ -309,7 +310,7 @@ const deleteDocente = async (req, res) => {
 const getLicenciasProximas = async (req, res) => {
   try {
     const dias = parseInt(req.query.dias) || 10;
-    
+
     const docentes = await Docente.findLicenciasProximas(dias);
 
     res.json({

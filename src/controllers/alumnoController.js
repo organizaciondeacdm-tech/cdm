@@ -1,5 +1,6 @@
 const Alumno = require('../models/Alumno');
 const Escuela = require('../models/Escuela');
+const { isPrivilegedRole } = require('../services/privilegedRoleService');
 
 const splitNombreApellido = (nombreCompleto = '') => {
   const value = String(nombreCompleto).trim();
@@ -35,10 +36,10 @@ const normalizeAlumnoPayload = (payload = {}, { partial = false } = {}) => {
   return normalized;
 };
 
-const isAdminOrSuperUser = (user) => {
+const isAdminOrSuperUser = async (user) => {
   const rol = String(user?.rol || '');
   const permisos = Array.isArray(user?.permisos) ? user.permisos : [];
-  return rol === 'admin' || permisos.includes('*');
+  return await isPrivilegedRole(rol) || permisos.includes('*');
 };
 
 const getAlumnos = async (req, res) => {
@@ -55,7 +56,7 @@ const getAlumnos = async (req, res) => {
     const query = { activo: true };
 
     // Los usuarios no-admin solo ven sus propios registros
-    if (!isAdminOrSuperUser(req.user)) {
+    if (!await isAdminOrSuperUser(req.user)) {
       query.createdBy = req.user._id;
     }
 

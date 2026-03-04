@@ -1,4 +1,5 @@
 const { DataSource } = require('typeorm');
+const { getMongoUri } = require('../utils/envObfuscator');
 
 let appDataSource = null;
 
@@ -7,7 +8,7 @@ const sanitizeUri = (uri = '') => String(uri).replace(/:[^:@]*@/, ':****@');
 const getDataSource = () => {
   if (appDataSource) return appDataSource;
 
-  const mongoUri = process.env.MONGODB_URI;
+  const mongoUri = getMongoUri();
   if (!mongoUri) {
     throw new Error('MONGODB_URI environment variable is required');
   }
