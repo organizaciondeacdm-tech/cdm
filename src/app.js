@@ -44,6 +44,7 @@ const Docente = require('./models/Docente');
 const Alumno = require('./models/Alumno');
 const securityMonitorService = require('./services/securityMonitorService');
 const RolePolicy = require('./models/RolePolicy');
+const { isPrivilegedRole } = require('./services/privilegedRoleService');
 
 const app = express();
 const PUBLIC_RUNTIME_ENV_KEYS = ['VITE_API_URL', 'VITE_AUTH_STORAGE_SECRET'];
@@ -73,10 +74,10 @@ const ensureDbConnection = async () => {
 app.use('/api', async (req, res, next) => {
   // Rutas que NO necesitan DB (solo salud y test)
   const skipDbRoutes = ['/test', '/health'];
-  
+
   // /auth/login y /auth/refresh-token SÍ necesitan DB para buscar el usuario
   const needsDb = !skipDbRoutes.some(route => req.path.includes(route));
-  
+
   if (!needsDb) {
     // Rutas que no necesitan DB
     return next();
@@ -88,7 +89,7 @@ app.use('/api', async (req, res, next) => {
     next();
   } catch (error) {
     console.error('❌ Error en middleware DB:', error);
-    res.status(503).json({ 
+    res.status(503).json({
       success: false,
       error: 'Servicio temporalmente no disponible'
     });
@@ -296,23 +297,29 @@ app.get('/api/calendario', authMiddleware, async (req, res) => {
       (esc.visitas || []).forEach(v => {
         const f = new Date(v.fecha);
         if (f >= start && f < end) {
-          eventos.push({ tipo: 'visita', fecha: v.fecha, escuela: esc.escuela, de: esc.de,
-            descripcion: v.observaciones || 'Visita programada', id: v._id });
+          eventos.push({
+            tipo: 'visita', fecha: v.fecha, escuela: esc.escuela, de: esc.de,
+            descripcion: v.observaciones || 'Visita programada', id: v._id
+          });
         }
       });
       (esc.proyectos || []).forEach(p => {
         const f = new Date(p.fechaInicio);
         if (f >= start && f < end) {
-          eventos.push({ tipo: 'proyecto', fecha: p.fechaInicio, escuela: esc.escuela, de: esc.de,
-            descripcion: p.nombre, estado: p.estado, id: p._id });
+          eventos.push({
+            tipo: 'proyecto', fecha: p.fechaInicio, escuela: esc.escuela, de: esc.de,
+            descripcion: p.nombre, estado: p.estado, id: p._id
+          });
         }
       });
       (esc.informes || []).forEach(i => {
         if (!i.fechaEntrega) return;
         const f = new Date(i.fechaEntrega);
         if (f >= start && f < end) {
-          eventos.push({ tipo: 'informe', fecha: i.fechaEntrega, escuela: esc.escuela, de: esc.de,
-            descripcion: i.titulo, estado: i.estado, id: i._id });
+          eventos.push({
+            tipo: 'informe', fecha: i.fechaEntrega, escuela: esc.escuela, de: esc.de,
+            descripcion: i.titulo, estado: i.estado, id: i._id
+          });
         }
       });
     });
@@ -321,9 +328,11 @@ app.get('/api/calendario', authMiddleware, async (req, res) => {
       if (d.fechaFinLicencia) {
         const f = new Date(d.fechaFinLicencia);
         if (f >= start && f < end) {
-          eventos.push({ tipo: 'licencia', fecha: d.fechaFinLicencia,
+          eventos.push({
+            tipo: 'licencia', fecha: d.fechaFinLicencia,
             escuela: d.escuela?.escuela, de: d.escuela?.de,
-            descripcion: `Fin licencia: ${d.apellido}, ${d.nombre} (${d.motivo || '-'})`, id: d._id });
+            descripcion: `Fin licencia: ${d.apellido}, ${d.nombre} (${d.motivo || '-'})`, id: d._id
+          });
         }
       }
     });
@@ -348,11 +357,39 @@ app.get('/api/export/pdf', authMiddleware, (req, res) => {
 // ──────────────────────────────────────────────────────
 // 👤  ADMIN – gestión de usuarios
 // ──────────────────────────────────────────────────────
-const requireAdmin = (req, res, next) => {
-  if (!req.user || req.user.rol !== 'admin') {
-    return res.status(403).json({ success: false, error: 'Acceso restringido a administradores' });
+const requireAdmin = async (req, res, next) => {
+  const deny = (status = 403) => res.status(status).json({
+    success: false,
+    error: 'Acceso restringido'
+  });
+
+  try {
+    const userId = req.user?._id;
+    if (!userId) {
+      return deny(401);
+    }
+
+    const user = await User.findById(userId)
+      .select('rol permisos')
+      .lean();
+
+    if (!user) {
+      return deny();
+    }
+
+    const role = String(user.rol || '').trim().toLowerCase();
+    const permisos = Array.isArray(user.permisos) ? user.permisos : [];
+    const permisosSet = new Set(permisos.map((p) => String(p || '').trim()));
+    const hasAdminPrivileges = await isPrivilegedRole(role);
+
+    if (hasAdminPrivileges || permisosSet.has('*')) {
+      return next();
+    }
+
+    return deny();
+  } catch (error) {
+    return deny(500);
   }
-  next();
 };
 
 const getPermissionCatalog = () => {
@@ -402,8 +439,10 @@ app.post('/api/admin/users', authMiddleware, requireAdmin, async (req, res) => {
     const normalizedPerms = (Array.isArray(permisos) && permisos.length > 0 ? permisos : roleDefaultPermissions)
       .filter((p) => p === '*' || permissionCatalog.has(p));
 
-    const user = await User.create({ username, passwordHash: password, email, nombre, apellido,
-      rol: targetRole, permisos: normalizedPerms });
+    const user = await User.create({
+      username, passwordHash: password, email, nombre, apellido,
+      rol: targetRole, permisos: normalizedPerms
+    });
     const { passwordHash: _, ...safe } = user.toObject();
     res.status(201).json({ success: true, data: safe, message: 'Usuario creado exitosamente' });
   } catch (e) {
@@ -446,11 +485,11 @@ app.delete('/api/admin/users/:id', authMiddleware, requireAdmin, async (req, res
 app.get('/api/admin/roles', authMiddleware, requireAdmin, async (_req, res) => {
   try {
     await RolePolicy.ensureDefaults();
-    const roleStats = await User.aggregate([
-      { $group: { _id: '$rol', total: { $sum: 1 } } }
-    ]);
-    const byRole = roleStats.reduce((acc, row) => {
-      acc[row._id] = row.total;
+    const users = await User.find({}).select('rol').lean();
+    const byRole = users.reduce((acc, row) => {
+      const role = String(row?.rol || '').trim().toLowerCase();
+      if (!role) return acc;
+      acc[role] = (acc[role] || 0) + 1;
       return acc;
     }, {});
 
@@ -483,13 +522,16 @@ app.put('/api/admin/roles/:role/permisos', authMiddleware, requireAdmin, async (
       .filter((p) => p === '*' || catalog.has(p));
 
     await RolePolicy.updateOne(
-      { role },
+      { $or: [{ roleLookup: RolePolicy.getRoleLookup(role) }, { role }] },
       { $set: { defaultPermissions: nextPerms } },
       { upsert: true }
     );
 
     if (req.body?.applyToUsers === true) {
-      await User.updateMany({ rol: role }, { $set: { permisos: nextPerms } });
+      await User.updateMany(
+        { $or: [{ rolLookup: User.getRoleLookup(role) }, { rol: role }] },
+        { $set: { permisos: nextPerms } }
+      );
     }
 
     res.json({
@@ -505,12 +547,14 @@ app.put('/api/admin/roles/:role/permisos', authMiddleware, requireAdmin, async (
 app.get('/api/admin/permisos', authMiddleware, requireAdmin, async (_req, res) => {
   try {
     const catalog = getPermissionCatalog();
-    const usage = await User.aggregate([
-      { $unwind: { path: '$permisos', preserveNullAndEmptyArrays: false } },
-      { $group: { _id: '$permisos', total: { $sum: 1 } } }
-    ]);
-    const byPerm = usage.reduce((acc, row) => {
-      acc[row._id] = row.total;
+    const users = await User.find({}).select('permisos').lean();
+    const byPerm = users.reduce((acc, row) => {
+      const perms = Array.isArray(row?.permisos) ? row.permisos : [];
+      perms.forEach((perm) => {
+        const key = String(perm || '').trim();
+        if (!key) return;
+        acc[key] = (acc[key] || 0) + 1;
+      });
       return acc;
     }, {});
 
@@ -627,8 +671,8 @@ app.post('/api/admin/security/cleanup', authMiddleware, requireAdmin, async (req
 });
 
 // Alias de compatibilidad para sesiones admin fuera de /api/auth
-app.get('/api/admin/sessions', authMiddleware, getAllActiveSessions);
-app.delete('/api/admin/sessions/:sessionId', authMiddleware, revokeSessionByAdmin);
+app.get('/api/admin/sessions', authMiddleware, requireAdmin, getAllActiveSessions);
+app.delete('/api/admin/sessions/:sessionId', authMiddleware, requireAdmin, revokeSessionByAdmin);
 
 // Admin: gestión de escuelas (incluye "Nueva Escuela")
 app.get('/api/admin/escuelas', authMiddleware, requireAdmin, getEscuelas);
@@ -894,7 +938,7 @@ app.post('/api/send-alert-email', authMiddleware, async (req, res) => {
 app.get('/health', async (req, res) => {
   let connectionError = null;
   let dataSource = null;
-  
+
   try {
     await ensureDbConnection();
     dataSource = getDataSource();
