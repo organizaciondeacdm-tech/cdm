@@ -80,7 +80,12 @@ const validateDocente = [
     .withMessage('Fecha de nacimiento inválida'),
   body('cargo')
     .optional({ checkFalsy: true })
-    .isIn(['Titular', 'Suplente', 'Interino', 'Provisorio'])
+    .isIn([
+      'Titular', 'Suplente', 'Interino', 'Provisorio',
+      'Maestro de Grado', 'Maestro de Educación Especial',
+      'Maestro de Educación Inicial', 'Profesor', 'Directivo',
+      'Vice-director', 'Secretario', 'Auxiliar'
+    ])
     .withMessage('Cargo inválido'),
   handleValidationErrors
 ];

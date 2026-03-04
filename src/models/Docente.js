@@ -15,7 +15,12 @@ const docenteSchema = new mongoose.Schema({
   cargo: {
     type: String,
     required: true,
-    enum: ['Titular', 'Suplente', 'Interino', 'Provisorio']
+    enum: [
+      'Titular', 'Suplente', 'Interino', 'Provisorio',
+      'Maestro de Grado', 'Maestro de Educación Especial',
+      'Maestro de Educación Inicial', 'Profesor', 'Directivo',
+      'Vice-director', 'Secretario', 'Auxiliar'
+    ]
   },
   nombre: {
     type: String,
@@ -201,13 +206,16 @@ docenteSchema.statics.findLicenciasProximas = function(dias = 10) {
 // Middleware
 docenteSchema.pre('save', function(next) {
   if (this.cargo === 'Suplente' && !this.titularId) {
-    next(new Error('Suplente debe tener un titular asociado'));
+    return next(new Error('Suplente debe tener un titular asociado'));
   }
-  
+
   if (this.estado === 'Licencia' && !this.fechaFinLicencia) {
-    next(new Error('Licencia debe tener fecha de fin'));
+    // Auto-set a default end date of 30 days from now if not provided
+    const defaultFin = new Date();
+    defaultFin.setDate(defaultFin.getDate() + 30);
+    this.fechaFinLicencia = defaultFin;
   }
-  
+
   next();
 });
 

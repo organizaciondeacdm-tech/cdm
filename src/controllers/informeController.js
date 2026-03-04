@@ -7,10 +7,15 @@ const findEscuela = async (escuelaId) => {
 
 exports.createInforme = async (req, res) => {
   try {
-    const { escuelaId, titulo, estado, fechaEntrega, observaciones } = req.body;
+    let { escuelaId, titulo, estado, fechaEntrega, observaciones } = req.body;
 
+    // If no escuelaId provided, use the first available escuela
     if (!escuelaId) {
-      return res.status(400).json({ success: false, error: 'escuelaId es requerido' });
+      const primera = await Escuela.findOne({}).select('_id').lean();
+      if (!primera) {
+        return res.status(400).json({ success: false, error: 'escuelaId es requerido y no hay escuelas disponibles' });
+      }
+      escuelaId = primera._id.toString();
     }
 
     const escuela = await findEscuela(escuelaId);
@@ -30,7 +35,7 @@ exports.createInforme = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      data: { informe }
+      data: informe
     });
   } catch (error) {
     console.error('Error creating informe:', error);
