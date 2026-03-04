@@ -237,7 +237,7 @@ const updateDocente = async (req, res) => {
     // Si cambió el estado, actualizar estadísticas
     if (oldEstado !== newEstado) {
       const escuela = await Escuela.findById(docente.escuela);
-      await escuela.actualizarEstadisticas();
+      if (escuela) await escuela.actualizarEstadisticas();
     }
 
     res.json({
@@ -280,7 +280,7 @@ const deleteDocente = async (req, res) => {
 
     // Actualizar estadísticas de la escuela
     const escuela = await Escuela.findById(docente.escuela);
-    await escuela.actualizarEstadisticas();
+    if (escuela) await escuela.actualizarEstadisticas();
 
     res.json({
       success: true,
@@ -325,10 +325,7 @@ const getEstadisticasDocentes = async (req, res) => {
           activos: { $sum: { $cond: [{ $eq: ['$estado', 'Activo'] }, 1, 0] } },
           licencia: { $sum: { $cond: [{ $eq: ['$estado', 'Licencia'] }, 1, 0] } },
           porCargo: {
-            $push: {
-              cargo: '$cargo',
-              estado: '$estado'
-            }
+            $push: '$cargo'
           }
         }
       },
@@ -338,30 +335,27 @@ const getEstadisticasDocentes = async (req, res) => {
           total: 1,
           activos: 1,
           licencia: 1,
-          porCargo: {
-            $reduce: {
-              input: '$porCargo',
-              initialValue: {},
-              in: {
-                $$value: {
-                  $concatArrays: [
-                    { $ifNull: ['$$value.cargo', []] },
-                    [{ cargo: '$$this.cargo', estado: '$$this.estado' }]
-                  ]
-                }
-              }
-            }
-          }
+          porCargo: 1
         }
       }
     ]);
 
+    const result = estadisticas[0] || { total: 0, activos: 0, licencia: 0, porCargo: [] };
+
+    // Build cargo counts from raw array
+    const cargoCounts = {};
+    (result.porCargo || []).forEach(cargo => {
+      cargoCounts[cargo] = (cargoCounts[cargo] || 0) + 1;
+    });
+    result.porCargo = cargoCounts;
+
     res.json({
       success: true,
-      data: estadisticas[0] || { total: 0, activos: 0, licencia: 0, porCargo: [] }
+      data: result
     });
 
   } catch (error) {
+    console.error('Error en estadísticas docentes:', error);
     res.status(500).json({
       success: false,
       error: 'Error al obtener estadísticas'

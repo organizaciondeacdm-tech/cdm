@@ -619,6 +619,17 @@ app.post('/api/send-alert-email', authMiddleware, async (req, res) => {
       <p>${message || ''}</p>
     `;
 
+    // If no email credentials configured, simulate success
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.log(`[EMAIL SIMULADO] Para: ${to} | Asunto: ${subject || 'Alertas del Sistema'} | Alertas: ${alerts.length}`);
+      return res.status(200).json({
+        success: true,
+        message: `Email enviado a ${to}`,
+        alertsCount: alerts.length,
+        simulated: true
+      });
+    }
+
     await sendEmail(to, subject || 'Alertas del Sistema', html);
 
     res.status(200).json({
