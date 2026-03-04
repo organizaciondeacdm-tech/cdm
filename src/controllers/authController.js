@@ -2,6 +2,8 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { hashPassword, comparePassword } = require('../config/auth');
 const crypto = require('crypto');
+const TryCatchDecorator = require('../utils/decorators');
+const { Unauthorized, InternalServerError, BadRequest } = require('../utils/httpExceptions');
 
 const LOGIN_RESPONSE_DELAY_MS = parseInt(process.env.LOGIN_RESPONSE_DELAY_MS, 10) || 400;
 
@@ -151,20 +153,20 @@ const login = async (req, res) => {
     // Generar tokens
     const { accessToken, refreshToken } = generateTokens(user._id, user.rol);
 
-    // Guardar refresh token
-    try {
-      const refreshTokenExpiry = new Date();
-      refreshTokenExpiry.setDate(refreshTokenExpiry.getDate() + 30);
+    // Guardar refresh token (temporalmente deshabilitado para debug)
+    // try {
+    //   const refreshTokenExpiry = new Date();
+    //   refreshTokenExpiry.setDate(refreshTokenExpiry.getDate() + 30);
 
-      user.refreshToken = {
-        token: refreshToken,
-        expiresAt: refreshTokenExpiry
-      };
-      await user.save();
-    } catch (saveError) {
-      console.error('Error saving refresh token:', saveError.message);
-      // No fallar el login por esto
-    }
+    //   user.refreshToken = {
+    //     token: refreshToken,
+    //     expiresAt: refreshTokenExpiry
+    //   };
+    //   await user.save();
+    // } catch (saveError) {
+    //   console.error('Error saving refresh token:', saveError.message);
+    //   // No fallar el login por esto
+    // }
 
     res.json({
       success: true,
@@ -187,10 +189,20 @@ const login = async (req, res) => {
 
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Error en el servidor'
-    });
+
+    // Proporcionar información de debug en desarrollo
+    const debugInfo = process.env.NODE_ENV === 'development' ? {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    } : null;
+
+    const internalError = new InternalServerError(
+      'Error en el servidor',
+      debugInfo
+    );
+
+    res.status(internalError.statusCode).json(internalError.toJSON());
   }
 };
 
