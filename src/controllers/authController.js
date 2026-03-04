@@ -14,11 +14,21 @@ const generateTokens = (userId, rol) => {
     { expiresIn: process.env.JWT_EXPIRE }
   );
 
-  const refreshToken = jwt.sign(
-    { userId, type: 'refresh' },
-    process.env.JWT_REFRESH_SECRET,
-    { expiresIn: process.env.JWT_REFRESH_EXPIRE }
-  );
+  let refreshToken = null;
+  if (process.env.JWT_REFRESH_SECRET) {
+    refreshToken = jwt.sign(
+      { userId, type: 'refresh' },
+      process.env.JWT_REFRESH_SECRET,
+      { expiresIn: process.env.JWT_REFRESH_EXPIRE }
+    );
+  } else {
+    // Fallback: generate a simple refresh token if secret not set
+    refreshToken = jwt.sign(
+      { userId, type: 'refresh' },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_REFRESH_EXPIRE }
+    );
+  }
 
   return { accessToken, refreshToken };
 };
@@ -196,7 +206,8 @@ const refreshToken = async (req, res) => {
     }
 
     // Verificar refresh token
-    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    const secret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET;
+    const decoded = jwt.verify(refreshToken, secret);
     
     const user = await User.findOne({
       _id: decoded.userId,
