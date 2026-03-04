@@ -28,9 +28,7 @@ export function SecretAdminPanel({ isAdmin, currentUser }) {
     setLoading(true);
     setError("");
     try {
-      const sessionsResponse = isAdmin
-        ? await apiService.getAdminSessions()
-        : await apiService.getMySessions();
+      const sessionsResponse = await apiService.getActiveSessionsView({ preferAdmin: isAdmin });
       setSessions(Array.isArray(sessionsResponse?.data) ? sessionsResponse.data : []);
 
       if (isAdmin) {
@@ -123,11 +121,7 @@ export function SecretAdminPanel({ isAdmin, currentUser }) {
 
   const revokeSession = async (sessionId) => {
     try {
-      if (isAdmin) {
-        await apiService.revokeSessionAsAdmin(sessionId);
-      } else {
-        await apiService.revokeMySession(sessionId);
-      }
+      await apiService.revokeSessionFromActiveView(sessionId, { asAdmin: isAdmin });
       await loadData();
     } catch (err) {
       setError(err.message || "No se pudo revocar la sesión");

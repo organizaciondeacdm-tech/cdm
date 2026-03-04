@@ -59,7 +59,7 @@ export function AcdmProvider({ children, currentUser: propCurrentUser, onLogout:
         return saved !== null ? saved === "true" : true;
     });
 
-    const isAdmin = currentUser?.rol === "admin";
+    const isAdmin = currentUser?.isPrivilegedRole === true;
 
     useEffect(() => {
         localStorage.setItem("acdm_darkMode", darkMode);

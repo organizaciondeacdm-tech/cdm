@@ -51,7 +51,7 @@ export function AdminControlCenter({ section, currentUser }) {
   };
 
   const loadSessions = async () => {
-    const sessionsRes = await apiService.getAdminSessions();
+    const sessionsRes = await apiService.getActiveSessionsView({ preferAdmin: true });
     setSessions(Array.isArray(sessionsRes?.data) ? sessionsRes.data : []);
   };
 
@@ -186,7 +186,7 @@ export function AdminControlCenter({ section, currentUser }) {
 
   const revokeSession = async (id) => {
     try {
-      await apiService.revokeSessionAsAdmin(id);
+      await apiService.revokeSessionFromActiveView(id, { asAdmin: true });
       await loadSessions();
     } catch (err) {
       setError(err.message || "No se pudo revocar la sesión");
@@ -331,11 +331,17 @@ export function AdminControlCenter({ section, currentUser }) {
           <table>
             <thead><tr><th>Usuario</th><th>IP</th><th>Navegador</th><th>Última actividad</th><th>Expira</th><th>Acción</th></tr></thead>
             <tbody>
-              {sessions.map((s) => (
+              {sessions.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: "center", color: "var(--text2)" }}>
+                    No hay sesiones activas
+                  </td>
+                </tr>
+              ) : sessions.map((s) => (
                 <tr key={s._id}>
-                  <td>{s.username || s.userId?.username}</td>
+                  <td>{s.username || s.userId?.username || "-"}</td>
                   <td>{s.deviceInfo?.ip || '-'}</td>
-                  <td>{s.deviceInfo?.browser || '-'}</td>
+                  <td>{s.deviceInfo?.browser || s.deviceInfo?.userAgent || '-'}</td>
                   <td>{s.lastActivity ? new Date(s.lastActivity).toLocaleString('es-AR') : '-'}</td>
                   <td>{s.expiresAt ? new Date(s.expiresAt).toLocaleString('es-AR') : '-'}</td>
                   <td><button className="btn btn-danger btn-sm" onClick={() => revokeSession(s._id)}>Revocar</button></td>

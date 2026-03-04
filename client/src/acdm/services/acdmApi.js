@@ -221,6 +221,37 @@ class AcdmApiService {
     return this.request(`/auth/admin/sessions/${sessionId}`, { method: 'DELETE' });
   }
 
+  // Vista unificada "Sesiones Activas" con fallback.
+  async getActiveSessionsView({ preferAdmin = true } = {}) {
+    if (preferAdmin) {
+      try {
+        return await this.request('/admin/sessions');
+      } catch (_e1) {
+        try {
+          return await this.request('/auth/admin/sessions');
+        } catch (_e2) {
+          return this.request('/auth/sessions');
+        }
+      }
+    }
+    return this.request('/auth/sessions');
+  }
+
+  async revokeSessionFromActiveView(sessionId, { asAdmin = true } = {}) {
+    if (asAdmin) {
+      try {
+        return await this.request(`/admin/sessions/${sessionId}`, { method: 'DELETE' });
+      } catch (_e1) {
+        try {
+          return await this.request(`/auth/admin/sessions/${sessionId}`, { method: 'DELETE' });
+        } catch (_e2) {
+          return this.request(`/auth/sessions/${sessionId}`, { method: 'DELETE' });
+        }
+      }
+    }
+    return this.request(`/auth/sessions/${sessionId}`, { method: 'DELETE' });
+  }
+
   // ==================== USUARIOS (ADMIN) ====================
   async getAdminUsers() {
     return this.request('/admin/users');
