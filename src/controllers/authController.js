@@ -37,18 +37,23 @@ const generateTokens = (userId, rol) => {
 
 const login = async (req, res) => {
   try {
+    console.log('Login attempt started');
     const rawUsername = req.body?.username ?? req.body?.email ?? '';
     const username = String(rawUsername).trim().toLowerCase();
     const password = String(req.body?.password ?? '');
 
+    console.log('Parsed credentials:', { username, passwordLength: password.length });
+
     // Validar entrada
     if (!username || !password) {
+      console.log('Validation failed: missing credentials');
       return res.status(400).json({
         success: false,
         error: 'Usuario y contraseña son requeridos'
       });
     }
 
+    console.log('Looking up user...');
     // Buscar usuario
     let user;
     try {
@@ -68,6 +73,7 @@ const login = async (req, res) => {
       });
     }
 
+    console.log('User lookup result:', user ? 'found' : 'not found');
     if (!user) {
       await wait(LOGIN_RESPONSE_DELAY_MS);
       return res.status(401).json({
@@ -84,6 +90,7 @@ const login = async (req, res) => {
       });
     }
 
+    console.log('Checking if user is locked...');
     // Verificar si la cuenta está bloqueada
     if (user.isLocked()) {
       const lockMs = Math.max(0, user.lockUntil - new Date());
@@ -98,6 +105,7 @@ const login = async (req, res) => {
       });
     }
 
+    console.log('Comparing password...');
     // Verificar contraseña
     let isMatch;
     try {
@@ -111,6 +119,7 @@ const login = async (req, res) => {
       });
     }
     
+    console.log('Password match result:', isMatch);
     if (!isMatch) {
       const attemptResult = await user.registerFailedLoginAttempt();
       await wait(LOGIN_RESPONSE_DELAY_MS);
@@ -135,6 +144,7 @@ const login = async (req, res) => {
       });
     }
 
+    console.log('Resetting login attempts...');
     // Resetear intentos fallidos
     const updateData = {
       loginAttempts: 0,
@@ -150,8 +160,11 @@ const login = async (req, res) => {
       $unset: { lockUntil: 1 }
     });
 
+    console.log('Generating tokens...');
     // Generar tokens
     const { accessToken, refreshToken } = generateTokens(user._id, user.rol);
+
+    console.log('Tokens generated successfully');
 
     // Guardar refresh token (temporalmente deshabilitado para debug)
     // try {
@@ -168,6 +181,7 @@ const login = async (req, res) => {
     //   // No fallar el login por esto
     // }
 
+    console.log('Login successful, sending response');
     res.json({
       success: true,
       data: {
