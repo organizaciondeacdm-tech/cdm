@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import App from './acdm/acdm-system.jsx';
 import { useMongoData } from './hooks/useMongoData.js';
 import { restoreUserFromSession } from './utils/authSession.js';
+import PapiwebSpinner from './PapiwebSpinner.jsx';
 
 /**
  * Wrapper que proporciona autenticación MongoDB a acdm-system.jsx
@@ -57,14 +58,12 @@ export default function AppWithAuth() {
     return (
       <div style={{
         background: '#0a0e1a',
-        color: '#e8f4f8',
-        fontFamily: "'Exo 2', sans-serif",
         minHeight: '100vh',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center'
       }}>
-        Restaurando sesión...
+        <PapiwebSpinner />
       </div>
     );
   }
@@ -198,58 +197,60 @@ export default function AppWithAuth() {
       <div className="login-box">
         <div className="papiweb-logo">
           <div className="papiweb-text">PAPIWEB</div>
-          <div className="papiweb-sub">Desarrollos Informáticos</div>
+          <div className="papiweb-sub">Desarrollos33s Informáticos</div>
         </div>
         <h1 className="login-title">Sistema ACDM</h1>
         <h2 className="login-sub">Gestión de Asistentes Celadores/as</h2>
 
-        <form onSubmit={(e) => {
-          e.preventDefault();
-          const formData = new FormData(e.target);
-          handleLogin(formData.get('username'), formData.get('password'));
-        }}>
-          {loginError && (
-            <div className="error">
-              <span>⚠️</span>
-              {loginError}
+        {isLoggingIn ? (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '40px 0', minHeight: '260px' }}>
+            <PapiwebSpinner />
+          </div>
+        ) : (
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            handleLogin(formData.get('username'), formData.get('password'));
+          }}>
+            {loginError && (
+              <div className="error">
+                <span>⚠️</span>
+                {loginError}
+              </div>
+            )}
+
+            <div className="form-group">
+              <label className="form-label">Usuario</label>
+              <input
+                className="form-input"
+                type="text"
+                name="username"
+                placeholder="admin"
+                autoFocus
+                disabled={isLoggingIn}
+              />
             </div>
-          )}
 
-          <div className="form-group">
-            <label className="form-label">Usuario</label>
-            <input
-              className="form-input"
-              type="text"
-              name="username"
-              placeholder="admin"
-              autoFocus
+            <div className="form-group">
+              <label className="form-label">Contraseña</label>
+              <input
+                className="form-input"
+                type="password"
+                name="password"
+                placeholder="••••••••"
+                disabled={isLoggingIn}
+              />
+            </div>
+
+            <button
+              className="btn-primary"
+              type="submit"
               disabled={isLoggingIn}
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Contraseña</label>
-            <input
-              className="form-input"
-              type="password"
-              name="password"
-              placeholder="••••••••"
-              disabled={isLoggingIn}
-            />
-          </div>
-
-          <button
-            className="btn-primary"
-            type="submit"
-            disabled={isLoggingIn}
-          >
-            {isLoggingIn ? 'Ingresando...' : 'Ingresar →'}
-          </button>
-        </form>
-
-        <div style={{ fontSize: 11, color: '#4a6fa5', textAlign: 'center', marginTop: 16 }}>
-          Demo: <span style={{ background: '#0f1626', padding: '1px 6px', borderRadius: 4 }}>admin</span> / <span style={{ background: '#0f1626', padding: '1px 6px', borderRadius: 4 }}>admin2025</span>
-        </div>
+            >
+              Ingresar →
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );

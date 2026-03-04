@@ -1,758 +1,18 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect } from "react";
 import apiService from "./services/acdmApi.js";
 import { Sidebar } from "./acdm-system-sidebar.jsx";
 import { UserMenu } from "./components/UserMenu.jsx";
-import { useAcdmMongoData } from "../hooks/useAcdmMongoData.js";
-
-// ============================================================
-// INITIAL DATA — solo para referencia de estructura, no se usa en runtime
-// ============================================================
-const INITIAL_DB = {
-  escuelas: [
-    {
-      id: "e1", de: "DE 01", escuela: "Escuela N°1 Julio Argentino Roca",
-      nivel: "Primario", direccion: "Av. Corrientes 1234, CABA",
-      lat: -34.6037, lng: -58.3816,
-      telefonos: ["011-4321-1234"], mail: "escuela1@bue.edu.ar",
-      jornada: "Completa", turno: "Mañana",
-      alumnos: [
-        { id: "a1", gradoSalaAnio: "3° Grado", nombre: "Martínez, Lucía", diagnostico: "TEA Nivel 1", observaciones: "Requiere acompañante en recreos" },
-        { id: "a2", gradoSalaAnio: "3° Grado", nombre: "García, Tomás", diagnostico: "TDAH", observaciones: "Medicación en horario escolar" },
-      ],
-      docentes: [
-        {
-          id: "d1", cargo: "Titular", nombreApellido: "López, María Elena",
-          estado: "Licencia", motivo: "Art. 102 - Enfermedad",
-          diasAutorizados: 30, fechaInicioLicencia: "2025-01-15", fechaFinLicencia: "2025-02-14",
-          jornada: "Completa",
-          suplentes: [
-            { id: "s1", cargo: "Suplente", nombreApellido: "Fernández, Ana Clara", estado: "Activo", motivo: "-", fechaIngreso: "2025-01-15", jornada: "Completa" }
-          ]
-        },
-        {
-          id: "d2", cargo: "Titular", nombreApellido: "Rodríguez, Carlos",
-          estado: "Activo", motivo: "-", diasAutorizados: 0,
-          fechaInicioLicencia: null, fechaFinLicencia: null, jornada: "Simple", suplentes: []
-        }
-      ],
-      visitas: [
-        { id: "v1", fecha: "2025-02-15", observaciones: "Primera visita de seguimiento. Escuela con muy buen desempeño." }
-      ],
-      proyectos: [
-        { id: "p1", nombre: "Adaptación de material didáctico", estado: "Completado", descripcion: "Material visual para estudiante con TEA", fechaInicio: "2025-01-20", fechaBaja: "2025-02-28" }
-      ],
-      informes: [
-        { id: "i1", titulo: "Informe mensual enero", estado: "Entregado", fechaEntrega: "2025-01-31", observaciones: "Informe detallado sobre el desempeño de los alumnos" }
-      ]
-    },
-    {
-      id: "e2", de: "DE 02", escuela: "Jardín de Infantes N°5 María Montessori",
-      nivel: "Inicial", direccion: "Av. Santa Fe 567, CABA",
-      lat: -34.5958, lng: -58.3975,
-      telefonos: ["011-4765-5678", "011-4765-5679"], mail: "jardin5@bue.edu.ar",
-      jornada: "Simple", turno: "Tarde",
-      alumnos: [
-        { id: "a3", gradoSalaAnio: "Sala Roja", nombre: "Pérez, Santiago", diagnostico: "Síndrome de Down", observaciones: "Integración escolar plena" }
-      ],
-      docentes: [
-        {
-          id: "d3", cargo: "Titular", nombreApellido: "Gómez, Patricia",
-          estado: "Activo", motivo: "-", diasAutorizados: 0,
-          fechaInicioLicencia: null, fechaFinLicencia: null, jornada: "Simple", suplentes: []
-        }
-      ],
-      visitas: [],
-      proyectos: [],
-      informes: []
-    },
-    {
-      id: "e3", de: "DE 03", escuela: "Escuela Secundaria N°12 Domingo F. Sarmiento",
-      nivel: "Secundario", direccion: "Calle Rivadavia 890, CABA",
-      lat: -34.6158, lng: -58.4053,
-      telefonos: ["011-4987-9012"], mail: "secundaria12@bue.edu.ar",
-      jornada: "Completa", turno: "Mañana",
-      alumnos: [],
-      docentes: [],
-      visitas: [],
-      proyectos: [],
-      informes: []
-    }
-  ],
-  usuarios: [
-    { id: "u1", username: "admin", passwordHash: btoa("admin2025"), rol: "admin" },
-    { id: "u2", username: "viewer", passwordHash: btoa("viewer123"), rol: "viewer" }
-  ],
-  alertasLeidas: []
-};
-
-// ============================================================
-// DATE UTILS
-// ============================================================
-function diasRestantes(fechaFin) {
-  if (!fechaFin) return null;
-  const hoy = new Date();
-  const fin = new Date(fechaFin);
-  const diff = Math.ceil((fin - hoy) / (1000 * 60 * 60 * 24));
-  return diff;
-}
-function formatDate(dateStr) {
-  if (!dateStr) return "-";
-  const [y, m, d] = dateStr.split("-");
-  return `${d}/${m}/${y}`;
-}
-function getDaysInMonth(year, month) {
-  return new Date(year, month + 1, 0).getDate();
-}
-function getFirstDayOfMonth(year, month) {
-  return new Date(year, month, 1).getDay();
-}
-
-// ============================================================
-// STYLES
-// ============================================================
-const STYLES = `
-  @import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600;700;900&family=Rajdhani:wght@400;600;700&display=swap');
-
-  :root {
-    --bg: #0a0e1a;
-    --bg2: #0f1626;
-    --bg3: #141d30;
-    --card: #111827;
-    --card2: #1a2540;
-    --border: #1e3a5f;
-    --border2: #2a4a7f;
-    --accent: #00d4ff;
-    --accent2: #0099cc;
-    --accent3: #00ff88;
-    --gold: #ffd700;
-    --red: #ff4757;
-    --orange: #ff6b35;
-    --yellow: #ffa502;
-    --text: #e8f4f8;
-    --text2: #8bacc8;
-    --text3: #4a6fa5;
-    --metal1: #c0d0e8;
-    --metal2: #8098b8;
-    --metal3: #405070;
-    --shadow: 0 8px 32px rgba(0,0,0,0.5);
-    --glow: 0 0 20px rgba(0,212,255,0.3);
-    --glow2: 0 0 40px rgba(0,212,255,0.2);
-    --radius: 12px;
-    --radius2: 8px;
-  }
-
-  .app.light-mode {
-    --bg: #f5f7fa;
-    --bg2: #e8ecf1;
-    --bg3: #dce4ed;
-    --card: #ffffff;
-    --card2: #f0f5fb;
-    --border: #d1dae8;
-    --border2: #b8c8e1;
-    --accent: #0077be;
-    --accent2: #004a96;
-    --accent3: #008c45;
-    --text: #1a1f3a;
-    --text2: #475569;
-    --text3: #64748b;
-    --metal1: #1a1f3a;
-    --metal2: #475569;
-    --metal3: #94a3b8;
-    --shadow: 0 4px 15px rgba(0,0,0,0.1);
-    --glow: 0 0 15px rgba(0,119,190,0.2);
-    --glow2: 0 0 30px rgba(0,119,190,0.15);
-  }
-
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Exo 2', sans-serif;
-    min-height: 100vh;
-    overflow-x: hidden;
-  }
-
-  /* SCROLLBAR */
-  ::-webkit-scrollbar { width: 6px; }
-  ::-webkit-scrollbar-track { background: var(--bg2); }
-  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
-
-  /* PAPIWEB BRAND */
-  .papiweb-brand {
-    display: flex; align-items: center; gap: 10px;
-    font-family: 'Rajdhani', sans-serif;
-    font-weight: 700; letter-spacing: 2px;
-    font-size: 11px; text-transform: uppercase;
-  }
-  .papiweb-logo {
-    position: relative;
-    background: linear-gradient(135deg, #1a2540, #0a0e1a);
-    border: 1px solid var(--border2);
-    border-radius: 6px;
-    padding: 4px 10px;
-    overflow: hidden;
-  }
-  .papiweb-logo::before {
-    content: '';
-    position: absolute; inset: 0;
-    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
-    animation: shineEffectMirror 2.5s ease-in-out infinite;
-  }
-  .papiweb-logo::after {
-    content: '';
-    position: absolute; top: 0; left: 0; right: 0; height: 1px;
-    background: linear-gradient(90deg, transparent, var(--accent), transparent);
-    animation: ledScan 2s linear infinite;
-  }
-  .papiweb-text {
-    background: linear-gradient(135deg, #c0d0e8 0%, #ffffff 30%, #8098b8 50%, #ffffff 70%, #4a6fa5 100%);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    background-clip: text;
-    filter: drop-shadow(0 0 6px rgba(0,212,255,0.5));
-    animation: metalPulse 4s ease-in-out infinite;
-  }
-  .papiweb-sub {
-    color: var(--text3); font-size: 9px; letter-spacing: 1px;
-    font-family: 'Exo 2', sans-serif; font-weight: 300;
-    text-transform: uppercase;
-  }
-  .led-dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--accent3);
-    box-shadow: 0 0 8px var(--accent3), 0 0 16px var(--accent3);
-    animation: ledBlink 1.5s ease-in-out infinite;
-  }
-
-  @keyframes shineEffectMirror {
-    0% { transform: translateX(200%); opacity: 0; }
-    25% { opacity: 1; }
-    50% { transform: translateX(0%); opacity: 1; }
-    75% { opacity: 1; }
-    100% { transform: translateX(-200%); opacity: 0; }
-  }
-  @keyframes metalShine {
-    0%, 100% { transform: translateX(-100%); }
-    50% { transform: translateX(100%); }
-  }
-  @keyframes ledScan {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
-  }
-  @keyframes metalPulse {
-    0%, 100% { filter: drop-shadow(0 0 6px rgba(0,212,255,0.5)); }
-    50% { filter: drop-shadow(0 0 12px rgba(0,212,255,0.8)); }
-  }
-  @keyframes ledBlink {
-    0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--accent3), 0 0 16px var(--accent3); }
-    50% { opacity: 0.4; box-shadow: 0 0 4px var(--accent3); }
-  }
-  @keyframes pulse {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.05); opacity: 0.8; }
-  }
-  @keyframes slideIn {
-    from { transform: translateY(-10px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
-  }
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-  @keyframes scanLine {
-    0% { top: 0; }
-    100% { top: 100%; }
-  }
-  @keyframes glitch {
-    0%, 100% { transform: translate(0); }
-    25% { transform: translate(-2px, 1px); }
-    75% { transform: translate(2px, -1px); }
-  }
-
-  /* LAYOUT */
-  .app { display: flex; flex-direction: column; min-height: 100vh; }
-  .header {
-    background: linear-gradient(180deg, var(--bg2) 0%, var(--bg3) 100%);
-    border-bottom: 1px solid var(--border);
-    padding: 12px 16px;
-    display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
-    position: sticky; top: 0; z-index: 100;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-  }
-  .header-title {
-    font-family: 'Rajdhani', sans-serif;
-    font-size: 22px; font-weight: 700;
-    letter-spacing: 2px; text-transform: uppercase;
-    background: linear-gradient(90deg, var(--accent), #fff, var(--accent2));
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    background-clip: text;
-    filter: drop-shadow(0 0 10px rgba(0,212,255,0.4));
-  }
-  .header-sub { font-size: 10px; color: var(--text3); letter-spacing: 1.5px; }
-
-  .main { display: flex; flex: 1; }
-  .sidebar {
-    width: 240px; min-height: calc(100vh - 61px);
-    background: linear-gradient(180deg, var(--bg2), var(--bg3));
-    border-right: 1px solid var(--border);
-    padding: 16px 0;
-    position: sticky; top: 61px; height: calc(100vh - 61px);
-    overflow-y: auto;
-    transition: width 0.3s ease;
-  }
-  .sidebar.collapsed { width: 60px; }
-  .content { flex: 1; padding: 24px; overflow-y: auto; animation: fadeIn 0.3s ease; }
-
-  /* NAV */
-  .nav-item {
-    display: flex; align-items: center; gap: 12px;
-    padding: 10px 20px;
-    cursor: pointer; transition: all 0.2s ease;
-    border-left: 3px solid transparent;
-    font-size: 13px; font-weight: 600; letter-spacing: 0.5px;
-    color: var(--text2);
-    text-transform: uppercase;
-  }
-  .nav-item:hover { background: rgba(0,212,255,0.05); color: var(--accent); border-left-color: var(--accent2); }
-  .nav-item.active { background: rgba(0,212,255,0.1); color: var(--accent); border-left-color: var(--accent); }
-  .nav-icon { font-size: 18px; min-width: 20px; text-align: center; }
-  .nav-badge {
-    margin-left: auto; background: var(--red); color: white;
-    border-radius: 10px; padding: 1px 7px; font-size: 10px;
-    animation: pulse 1.5s ease-in-out infinite;
-  }
-  .nav-section {
-    padding: 8px 20px 4px;
-    font-size: 9px; letter-spacing: 2px; color: var(--text3);
-    text-transform: uppercase; font-weight: 700;
-  }
-
-  /* CARDS */
-  .card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 20px;
-    box-shadow: var(--shadow);
-    transition: all 0.2s ease;
-    animation: slideIn 0.3s ease;
-  }
-  .card:hover { border-color: var(--border2); box-shadow: var(--shadow), var(--glow); }
-  .card[style*="cursor: pointer"]:hover {
-    transform: translateY(-4px);
-    border-color: var(--accent);
-    box-shadow: 0 8px 20px rgba(0, 212, 255, 0.15);
-  }
-  .card-header {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 16px; padding-bottom: 12px;
-    border-bottom: 1px solid var(--border);
-    flex-wrap: wrap; gap: 8px;
-  }
-  .card-title { font-family: 'Rajdhani', sans-serif; font-size: 16px; font-weight: 700; letter-spacing: 1px; color: var(--accent); }
-  .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
-
-  /* STATS */
-  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
-  .stat-card {
-    background: var(--card2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 16px 20px;
-    position: relative; overflow: hidden;
-    transition: all 0.2s ease;
-  }
-  .stat-card::before {
-    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-    background: var(--gradient, linear-gradient(90deg, var(--accent), var(--accent2)));
-  }
-  .stat-card:hover { border-color: var(--border2); transform: translateY(-2px); }
-  .stat-value { font-family: 'Rajdhani', sans-serif; font-size: 36px; font-weight: 700; color: var(--accent); line-height: 1; }
-  .stat-label { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
-  .stat-icon { position: absolute; right: 16px; top: 16px; font-size: 28px; opacity: 0.2; }
-
-  /* BADGES */
-  .badge {
-    display: inline-block; padding: 2px 10px; border-radius: 20px;
-    font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
-    text-transform: uppercase;
-  }
-  .badge-active { background: rgba(0,255,136,0.15); color: var(--accent3); border: 1px solid rgba(0,255,136,0.3); }
-  .badge-licencia { background: rgba(255,71,87,0.15); color: var(--red); border: 1px solid rgba(255,71,87,0.3); }
-  .badge-titular { background: rgba(0,212,255,0.1); color: var(--accent); border: 1px solid rgba(0,212,255,0.2); }
-  .badge-suplente { background: rgba(255,165,2,0.1); color: var(--yellow); border: 1px solid rgba(255,165,2,0.2); }
-  .badge-interino { background: rgba(255,107,53,0.1); color: var(--orange); border: 1px solid rgba(255,107,53,0.2); }
-  .badge-warning { background: rgba(255,165,2,0.15); color: var(--yellow); border: 1px solid rgba(255,165,2,0.3); }
-  .badge-danger { background: rgba(255,71,87,0.15); color: var(--red); border: 1px solid rgba(255,71,87,0.3); animation: pulse 1.5s infinite; }
-
-  /* BUTTONS */
-  .btn {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 8px 16px; border-radius: var(--radius2);
-    font-family: 'Exo 2', sans-serif; font-size: 13px; font-weight: 600;
-    cursor: pointer; border: none; transition: all 0.2s ease;
-    letter-spacing: 0.5px; text-transform: uppercase;
-  }
-  .btn-primary {
-    background: linear-gradient(135deg, var(--accent2), var(--accent));
-    color: #0a0e1a;
-    box-shadow: 0 4px 15px rgba(0,212,255,0.3);
-  }
-  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,212,255,0.4); }
-  .btn-secondary { background: var(--card2); color: var(--text); border: 1px solid var(--border2); }
-  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
-  .btn-danger { background: rgba(255,71,87,0.2); color: var(--red); border: 1px solid rgba(255,71,87,0.3); }
-  .btn-danger:hover { background: rgba(255,71,87,0.3); }
-  .btn-sm { padding: 4px 10px; font-size: 11px; }
-  .btn-icon { padding: 6px; border-radius: 6px; background: var(--card2); border: 1px solid var(--border); cursor: pointer; color: var(--text2); font-size: 16px; transition: all 0.2s; }
-  .btn-icon:hover { border-color: var(--accent); color: var(--accent); }
-
-  /* FORMS */
-  .form-group { margin-bottom: 16px; }
-  .form-label { display: block; font-size: 11px; font-weight: 600; letter-spacing: 1px; color: var(--text2); text-transform: uppercase; margin-bottom: 6px; }
-  .form-input, .form-select, .form-textarea {
-    width: 100%; background: var(--bg2); border: 1px solid var(--border);
-    border-radius: var(--radius2); padding: 9px 14px;
-    color: var(--text); font-family: 'Exo 2', sans-serif; font-size: 13px;
-    transition: all 0.2s ease; outline: none;
-  }
-  .form-input:focus, .form-select:focus, .form-textarea:focus {
-    border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,212,255,0.1);
-  }
-  .form-textarea { resize: vertical; min-height: 80px; }
-  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-
-  /* TABLE */
-  .table-wrap { overflow-x: auto; border-radius: var(--radius); }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { background: var(--bg2); padding: 10px 14px; text-align: left; font-size: 10px; letter-spacing: 1.5px; color: var(--text3); text-transform: uppercase; font-weight: 700; border-bottom: 1px solid var(--border); }
-  td { padding: 10px 14px; border-bottom: 1px solid rgba(30,58,95,0.5); transition: background 0.15s; }
-  tr:hover td { background: rgba(0,212,255,0.03); }
-  tr:last-child td { border-bottom: none; }
-
-  /* MODAL */
-  .modal-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.8);
-    display: flex; align-items: center; justify-content: center;
-    z-index: 1000; animation: fadeIn 0.2s ease;
-    backdrop-filter: blur(4px);
-  }
-  .modal {
-    background: var(--card); border: 1px solid var(--border2);
-    border-radius: var(--radius); padding: 24px;
-    max-width: 700px; width: 95%; max-height: 90vh; overflow-y: auto;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.8), var(--glow2);
-    animation: slideIn 0.3s ease;
-  }
-  .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
-  .modal-title { font-family: 'Rajdhani', sans-serif; font-size: 20px; font-weight: 700; color: var(--accent); letter-spacing: 1px; }
-
-  /* ALERTS */
-  .alert {
-    padding: 12px 16px; border-radius: var(--radius2); margin-bottom: 10px;
-    display: flex; align-items: flex-start; gap: 12px; font-size: 13px;
-    animation: slideIn 0.3s ease;
-  }
-  .alert-danger { background: rgba(255,71,87,0.1); border: 1px solid rgba(255,71,87,0.3); color: var(--red); }
-  .alert-warning { background: rgba(255,165,2,0.1); border: 1px solid rgba(255,165,2,0.3); color: var(--yellow); }
-  .alert-info { background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.2); color: var(--accent); }
-  .alert-success { background: rgba(0,255,136,0.1); border: 1px solid rgba(0,255,136,0.2); color: var(--accent3); }
-  .alert-icon { font-size: 18px; min-width: 20px; }
-
-  /* CALENDAR */
-  .calendar {
-    background: var(--card2); border: 1px solid var(--border);
-    border-radius: var(--radius); overflow: hidden;
-    max-width: 300px;
-  }
-  .cal-header {
-    background: var(--bg2); padding: 10px 14px;
-    display: flex; justify-content: space-between; align-items: center;
-    font-size: 13px; font-weight: 700; color: var(--accent);
-  }
-  .cal-grid { display: grid; grid-template-columns: repeat(7,1fr); }
-  .cal-day-header { padding: 6px 4px; text-align: center; font-size: 10px; color: var(--text3); font-weight: 700; letter-spacing: 0.5px; }
-  .cal-day {
-    padding: 5px 4px; text-align: center; font-size: 11px; cursor: pointer;
-    transition: all 0.15s; border-radius: 4px; margin: 1px;
-    color: var(--text2);
-  }
-  .cal-day:hover { background: rgba(0,212,255,0.1); color: var(--accent); }
-  .cal-day.today { background: rgba(0,212,255,0.15); color: var(--accent); font-weight: 700; }
-  .cal-day.in-range { background: rgba(255,71,87,0.1); color: var(--red); }
-  .cal-day.range-start, .cal-day.range-end { background: var(--red); color: white; font-weight: 700; border-radius: 50%; }
-  .cal-day.other-month { opacity: 0.3; }
-  .cal-day.empty { cursor: default; }
-
-  /* CHARTS */
-  .chart-bar-wrap { display: flex; flex-direction: column; gap: 8px; }
-  .chart-bar-row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
-  .chart-bar-label { min-width: 140px; color: var(--text2); font-size: 11px; }
-  .chart-bar-bg { flex: 1; height: 20px; background: var(--bg2); border-radius: 10px; overflow: hidden; position: relative; }
-  .chart-bar-fill { height: 100%; border-radius: 10px; transition: width 1s ease; display: flex; align-items: center; padding-left: 8px; font-size: 10px; font-weight: 700; color: rgba(0,0,0,0.7); }
-  .chart-val { min-width: 30px; text-align: right; font-weight: 700; color: var(--text); }
-
-  /* VIEW TOGGLES */
-  .view-toggle { display: flex; gap: 4px; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 4px; }
-  .view-btn { padding: 5px 14px; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; transition: all 0.2s; color: var(--text2); background: none; border: none; text-transform: uppercase; }
-  .view-btn.active { background: var(--card2); color: var(--accent); border: 1px solid var(--border2); }
-
-  /* SCHOOL CARD */
-  .school-card {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: var(--radius); overflow: hidden; transition: all 0.2s ease;
-    animation: slideIn 0.3s ease;
-  }
-  .school-card:hover { border-color: var(--border2); box-shadow: var(--shadow), var(--glow); }
-  .school-card-header {
-    padding: 16px 20px; background: linear-gradient(135deg, var(--card2), var(--card));
-    border-bottom: 1px solid var(--border);
-    cursor: pointer;
-  }
-  .school-card-body { padding: 16px 20px; }
-  .school-de { font-size: 10px; color: var(--accent); letter-spacing: 2px; font-weight: 700; text-transform: uppercase; }
-  .school-name { font-family: 'Rajdhani', sans-serif; font-size: 18px; font-weight: 700; margin: 4px 0; }
-  .school-meta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; }
-  .school-meta-item { font-size: 11px; color: var(--text2); display: flex; align-items: center; gap: 4px; }
-  .school-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 12px; }
-  .school-info-label { font-size: 10px; color: var(--text3); letter-spacing: 1px; text-transform: uppercase; font-weight: 700; }
-  .school-info-val { color: var(--text); margin-top: 2px; }
-
-  /* DOCENTE */
-  .docente-row {
-    background: var(--card2); border: 1px solid var(--border);
-    border-radius: var(--radius2); padding: 14px 16px; margin-bottom: 10px;
-    transition: all 0.2s;
-    position: relative;
-  }
-  .docente-row:hover { border-color: var(--border2); }
-  .docente-row.suplente-row { margin-left: 24px; border-left: 3px solid var(--yellow); }
-  .docente-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .docente-name { font-family: 'Rajdhani', sans-serif; font-size: 16px; font-weight: 700; color: var(--text); }
-  .docente-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-top: 10px; font-size: 12px; }
-  .detail-item { }
-  .detail-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; }
-  .detail-val { color: var(--text2); margin-top: 2px; }
-
-  /* DAYS REMAINING */
-  .days-remaining {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;
-  }
-  .days-ok { background: rgba(0,255,136,0.1); color: var(--accent3); border: 1px solid rgba(0,255,136,0.2); }
-  .days-warn { background: rgba(255,165,2,0.15); color: var(--yellow); border: 1px solid rgba(255,165,2,0.3); animation: pulse 2s infinite; }
-  .days-danger { background: rgba(255,71,87,0.15); color: var(--red); border: 1px solid rgba(255,71,87,0.3); animation: pulse 1s infinite; }
-
-  /* LOGIN */
-  .login-container {
-    min-height: 100vh; display: flex; align-items: center; justify-content: center;
-    background: radial-gradient(ellipse at 30% 50%, rgba(0,100,200,0.1) 0%, var(--bg) 70%);
-    position: relative; overflow: hidden;
-  }
-  .login-container::before {
-    content: ''; position: absolute; inset: 0;
-    background: repeating-linear-gradient(0deg, transparent, transparent 40px, rgba(0,212,255,0.02) 40px, rgba(0,212,255,0.02) 41px),
-                repeating-linear-gradient(90deg, transparent, transparent 40px, rgba(0,212,255,0.02) 40px, rgba(0,212,255,0.02) 41px);
-  }
-  .login-box {
-    background: var(--card); border: 1px solid var(--border2);
-    border-radius: var(--radius); padding: 40px;
-    width: 400px; position: relative;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 40px rgba(0,212,255,0.1);
-    animation: slideIn 0.5s ease;
-  }
-  .login-box::before {
-    content: ''; position: absolute; top: 0; left: 20%; right: 20%; height: 1px;
-    background: linear-gradient(90deg, transparent, var(--accent), transparent);
-    animation: ledScan 3s linear infinite;
-  }
-  .login-title { font-family: 'Rajdhani', sans-serif; font-size: 28px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); text-align: center; margin-bottom: 4px; }
-  .login-sub { font-size: 11px; color: var(--text3); text-align: center; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 28px; }
-  .hint-text { font-size: 11px; color: var(--text3); text-align: center; margin-top: 16px; }
-  .hint-key { background: var(--bg2); border: 1px solid var(--border); padding: 1px 6px; border-radius: 4px; font-family: monospace; font-size: 12px; color: var(--text2); }
-
-  /* PDF EXPORT */
-  .pdf-preview {
-    background: white; color: #111; border-radius: 8px;
-    padding: 24px; font-family: sans-serif; font-size: 12px;
-    max-height: 400px; overflow-y: auto;
-  }
-  .pdf-header { border-bottom: 2px solid #0099cc; padding-bottom: 10px; margin-bottom: 14px; }
-  .pdf-title { font-size: 18px; font-weight: 700; color: #0066aa; }
-  .pdf-sub { font-size: 10px; color: #666; margin-top: 2px; }
-
-  /* MISC */
-  .flex { display: flex; }
-  .flex-col { display: flex; flex-direction: column; }
-  .gap-4 { gap: 4px; }
-  .gap-8 { gap: 8px; }
-  .gap-12 { gap: 12px; }
-  .gap-16 { gap: 16px; }
-  .items-center { align-items: center; }
-  .justify-between { justify-content: space-between; }
-  .justify-end { justify-content: flex-end; }
-  .flex-wrap { flex-wrap: wrap; }
-  .mb-8 { margin-bottom: 8px; }
-  .mb-16 { margin-bottom: 16px; }
-  .mb-24 { margin-bottom: 24px; }
-  .mt-8 { margin-top: 8px; }
-  .mt-16 { margin-top: 16px; }
-  .text-sm { font-size: 12px; }
-  .text-xs { font-size: 11px; }
-  .text-accent { color: var(--accent); }
-  .text-muted { color: var(--text2); }
-  .text-danger { color: var(--red); }
-  .text-success { color: var(--accent3); }
-  .text-warn { color: var(--yellow); }
-  .clickable { cursor: pointer; transition: color 0.15s; }
-  .clickable:hover { color: var(--accent); }
-  .link { color: var(--accent); text-decoration: underline; cursor: pointer; }
-  .link:hover { color: var(--accent2); }
-  .divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
-  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; }
-  .no-data { text-align: center; padding: 40px; color: var(--text3); }
-  .search-input-wrap { position: relative; }
-  .search-input-wrap .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text3); font-size: 14px; pointer-events: none; }
-  .search-input-wrap .form-input { padding-left: 32px; }
-
-  @media (max-width: 1024px) {
-    .header { flex-direction: column; align-items: flex-start; }
-    .header .search-input-wrap { width: 100%; }
-    .header > div:last-child { width: 100%; justify-content: space-between; }
-    .content { padding: 16px; }
-    .card-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
-  }
-
-  @media (max-width: 768px) {
-    .header { flex-direction: column; gap: 8px; padding: 8px 12px; }
-    .header .search-input-wrap { width: 100%; }
-    .sidebar { display: none; }
-    .content { padding: 12px; }
-    .form-row { grid-template-columns: 1fr; }
-    .stats-grid { grid-template-columns: 1fr; }
-    .card-grid { grid-template-columns: 1fr; }
-    .school-info-grid { grid-template-columns: 1fr; }
-    .modal { width: 90vw; max-height: 85vh; padding: 16px; }
-    .view-toggle { width: 100%; }
-    .docente-details { grid-template-columns: 1fr; }
-    .papiweb-brand { display: none; }
-    .school-meta { flex-direction: column; gap: 8px; }
-    .header-title { font-size: 16px; letter-spacing: 1px; }
-    .modal-title { font-size: 18px; }
-  }
-  
-  @media (max-width: 480px) {
-    .header { padding: 8px 12px; gap: 6px; }
-    .header-title { font-size: 14px; }
-    .header-sub { font-size: 8px; }
-    .header > div:first-child { width: 100%; }
-    .header > div:last-child { width: 100%; flex-wrap: wrap; gap: 4px; }
-    h1 { font-size: 18px !important; }
-    .content { padding: 8px; }
-    .card { padding: 12px; }
-    .school-card-body { padding: 12px; }
-    .school-card-header { padding: 12px; }
-    .form-input, .form-select, .form-textarea { font-size: 12px; padding: 8px 12px; }
-    .btn { padding: 6px 12px; font-size: 11px; }
-    .btn-sm { padding: 4px 8px; font-size: 10px; }
-    .btn-icon { padding: 5px; font-size: 14px; }
-    .nav-item { padding: 8px 12px; font-size: 11px; }
-    .stat-value { font-size: 24px; }
-    .stat-label { font-size: 10px; }
-    .stat-card { padding: 12px 16px; }
-    .modal { width: 95vw; max-height: 90vh; padding: 12px; }
-    .modal-header { flex-direction: column; align-items: flex-start; gap: 8px; }
-    .modal-title { font-size: 16px; }
-    .table-wrap { font-size: 11px; }
-    th, td { padding: 6px 8px; font-size: 11px; }
-    .docente-name { font-size: 14px; }
-    .docente-details { font-size: 11px; }
-    .search-icon { font-size: 12px; left: 8px; }
-    .search-input-wrap .form-input { padding-left: 28px; font-size: 12px; }
-    .flex-wrap { flex-wrap: wrap; }
-    .form-label { font-size: 10px; }
-    .school-name { font-size: 16px; }
-    .school-de { font-size: 9px; }
-    .school-meta-item { font-size: 10px; }
-  }
-`;
-
-// ============================================================
-// CALENDAR COMPONENT
-// ============================================================
-function MiniCalendar({ year, month, rangeStart, rangeEnd, onNavigate }) {
-  const today = new Date();
-  const daysInMonth = getDaysInMonth(year, month);
-  const firstDay = getFirstDayOfMonth(year, month);
-  const monthNames = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-  const dayNames = ["D","L","M","X","J","V","S"];
-  
-  const cells = [];
-  for (let i = 0; i < firstDay; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-
-  function isInRange(d) {
-    if (!rangeStart || !rangeEnd || !d) return false;
-    const cur = new Date(year, month, d);
-    const s = new Date(rangeStart); const e = new Date(rangeEnd);
-    return cur >= s && cur <= e;
-  }
-  function isRangeStart(d) {
-    if (!rangeStart || !d) return false;
-    const s = new Date(rangeStart);
-    return s.getFullYear() === year && s.getMonth() === month && s.getDate() === d;
-  }
-  function isRangeEnd(d) {
-    if (!rangeEnd || !d) return false;
-    const e = new Date(rangeEnd);
-    return e.getFullYear() === year && e.getMonth() === month && e.getDate() === d;
-  }
-  function isToday(d) {
-    return today.getFullYear() === year && today.getMonth() === month && today.getDate() === d;
-  }
-
-  return (
-    <div className="calendar">
-      <div className="cal-header">
-        <button className="btn-icon" onClick={() => onNavigate(-1)}>◀</button>
-        <span>{monthNames[month]} {year}</span>
-        <button className="btn-icon" onClick={() => onNavigate(1)}>▶</button>
-      </div>
-      <div className="cal-grid" style={{padding:'8px'}}>
-        {dayNames.map((n, idx) => <div key={`day-${idx}`} className="cal-day-header">{n}</div>)}
-        {cells.map((d, i) => (
-          <div key={i} className={[
-            "cal-day",
-            !d ? "empty" : "",
-            d && isToday(d) ? "today" : "",
-            d && isRangeStart(d) ? "range-start" : "",
-            d && isRangeEnd(d) ? "range-end" : "",
-            d && isInRange(d) && !isRangeStart(d) && !isRangeEnd(d) ? "in-range" : "",
-          ].join(" ")}>
-            {d || ""}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// DAYS REMAINING BADGE
-// ============================================================
-function DaysRemaining({ fechaFin, diasAutorizados, fechaInicio }) {
-  if (!fechaFin) return null;
-  const dias = diasRestantes(fechaFin);
-  // Proper classification: danger (0-5 days), warning (6-10 days), ok (>10 days)
-  const cls = dias <= 0 ? "days-danger" : dias <= 5 ? "days-danger" : dias <= 10 ? "days-warn" : "days-ok";
-  const icon = dias <= 0 ? "🔴" : dias <= 5 ? "⚠️" : dias <= 10 ? "🟡" : "🟢";
-  const label = dias <= 0 ? "VENCIDA" : dias === 1 ? "1 día" : `${dias} días`;
-  return (
-    <span className={`days-remaining ${cls}`}>
-      {icon} {label}
-    </span>
-  );
-}
+import STYLES from "./styles/styles.jsx";
+import { diasRestantes, formatDate, getDaysInMonth, getFirstDayOfMonth } from "./utils/dateUtils.js";
+import { MiniCalendar } from "./components/MiniCalendar.jsx";
+import { DaysRemaining } from "./components/DaysRemaining.jsx";
+import { AlumnoModal } from "./components/AlumnoModal.jsx";
+import { DocenteModal } from "./components/DocenteModal.jsx";
+import { EscuelaModal } from "./components/EscuelaModal.jsx";
+import { VisitaModal } from "./components/VisitaModal.jsx";
+import { ProyectoModal } from "./components/ProyectoModal.jsx";
+import { InformeModal } from "./components/InformeModal.jsx";
+import { useAcdmData as useAcdmMongoData } from "./hooks/useAcdmData.js";
 
 // ============================================================
 // ALERT PANEL
@@ -818,7 +78,7 @@ function AlertPanel({ escuelas }) {
   };
 
   const alerts = [];
-  
+
   escuelas.forEach(esc => {
     // Schools without ACDM
     if (esc.docentes.length === 0) {
@@ -844,22 +104,22 @@ function AlertPanel({ escuelas }) {
   });
 
   if (alerts.length === 0) return (
-    <div className="alert alert-success"><span className="alert-icon">✅</span><div><strong>Sin alertas activas</strong><br/><span style={{fontSize:12}}>Todas las licencias y asignaciones están en orden.</span></div></div>
+    <div className="alert alert-success"><span className="alert-icon">✅</span><div><strong>Sin alertas activas</strong><br /><span style={{ fontSize: 12 }}>Todas las licencias y asignaciones están en orden.</span></div></div>
   );
 
   return (
     <div>
       {/* Controles */}
-      <div style={{display:'flex', gap:12, marginBottom:16, flexWrap:'wrap'}}>
-        <button 
+      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        <button
           onClick={() => setSoundEnabled(!soundEnabled)}
-          style={{padding:'6px 12px', fontSize:11, borderRadius:4, border:'1px solid var(--border)', background: soundEnabled ? 'var(--accent)' : 'transparent', color: soundEnabled ? '#000' : 'var(--text2)', cursor:'pointer', fontWeight:500}}
+          style={{ padding: '6px 12px', fontSize: 11, borderRadius: 4, border: '1px solid var(--border)', background: soundEnabled ? 'var(--accent)' : 'transparent', color: soundEnabled ? '#000' : 'var(--text2)', cursor: 'pointer', fontWeight: 500 }}
         >
           {soundEnabled ? '🔊' : '🔇'} Sonido
         </button>
-        <button 
+        <button
           onClick={() => setShowEmailForm(!showEmailForm)}
-          style={{padding:'6px 12px', fontSize:11, borderRadius:4, border:'1px solid var(--border)', background: showEmailForm ? 'var(--accent)' : 'transparent', color: showEmailForm ? '#000' : 'var(--text2)', cursor:'pointer', fontWeight:500}}
+          style={{ padding: '6px 12px', fontSize: 11, borderRadius: 4, border: '1px solid var(--border)', background: showEmailForm ? 'var(--accent)' : 'transparent', color: showEmailForm ? '#000' : 'var(--text2)', cursor: 'pointer', fontWeight: 500 }}
         >
           📧 Enviar Email
         </button>
@@ -867,30 +127,30 @@ function AlertPanel({ escuelas }) {
 
       {/* Formulario de Email */}
       {showEmailForm && (
-        <div style={{padding:12, background:'var(--bg2)', borderRadius:6, marginBottom:16}}>
-          <input 
-            type="email" 
+        <div style={{ padding: 12, background: 'var(--bg2)', borderRadius: 6, marginBottom: 16 }}>
+          <input
+            type="email"
             placeholder="correo@ejemplo.com"
             value={emailData.to}
-            onChange={e => setEmailData({...emailData, to: e.target.value})}
-            style={{width:'100%', padding:'6px 12px', borderRadius:4, border:'1px solid var(--border)', background:'var(--bg1)', marginBottom:8}}
+            onChange={e => setEmailData({ ...emailData, to: e.target.value })}
+            style={{ width: '100%', padding: '6px 12px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg1)', marginBottom: 8 }}
           />
-          <textarea 
+          <textarea
             placeholder="Mensaje (opcional)"
             value={emailData.message}
-            onChange={e => setEmailData({...emailData, message: e.target.value})}
-            style={{width:'100%', height:60, padding:'6px 12px', borderRadius:4, border:'1px solid var(--border)', background:'var(--bg1)', marginBottom:8, resize:'vertical'}}
+            onChange={e => setEmailData({ ...emailData, message: e.target.value })}
+            style={{ width: '100%', height: 60, padding: '6px 12px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg1)', marginBottom: 8, resize: 'vertical' }}
           />
-          <button 
+          <button
             onClick={sendAlertEmail}
             disabled={sendingEmail}
-            style={{padding:'6px 12px', borderRadius:4, border:'none', background:'#0088ff', color:'#fff', cursor:'pointer', fontWeight:500, opacity: sendingEmail ? 0.6 : 1}}
+            style={{ padding: '6px 12px', borderRadius: 4, border: 'none', background: '#0088ff', color: '#fff', cursor: 'pointer', fontWeight: 500, opacity: sendingEmail ? 0.6 : 1 }}
           >
             {sendingEmail ? '⏳ Enviando...' : '✓ Enviar'}
           </button>
-          <button 
+          <button
             onClick={() => setShowEmailForm(false)}
-            style={{marginLeft:8, padding:'6px 12px', borderRadius:4, border:'1px solid var(--border)', background:'transparent', cursor:'pointer'}}
+            style={{ marginLeft: 8, padding: '6px 12px', borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer' }}
           >
             Cancelar
           </button>
@@ -899,21 +159,21 @@ function AlertPanel({ escuelas }) {
 
       {/* Alertas */}
       {alerts.map((a, i) => (
-        <div key={i} className={`alert alert-${a.type}`} style={{marginBottom:12}}>
+        <div key={i} className={`alert alert-${a.type}`} style={{ marginBottom: 12 }}>
           <span className="alert-icon">{a.icon}</span>
-          <div><strong>{a.title}</strong><br/><span style={{fontSize:12,opacity:0.9}}>{a.desc}</span></div>
+          <div><strong>{a.title}</strong><br /><span style={{ fontSize: 12, opacity: 0.9 }}>{a.desc}</span></div>
           {showEmailForm && (
-            <input 
+            <input
               type="checkbox"
               checked={selectedForEmail.has(i)}
               onChange={e => {
-                if(e.target.checked) {
+                if (e.target.checked) {
                   setSelectedForEmail(new Set([...selectedForEmail, i]));
                 } else {
                   setSelectedForEmail(new Set([...selectedForEmail].filter(x => x !== i)));
                 }
               }}
-              style={{marginLeft:'auto', cursor:'pointer'}}
+              style={{ marginLeft: 'auto', cursor: 'pointer' }}
             />
           )}
         </div>
@@ -942,14 +202,14 @@ function Statistics({ escuelas, onNavigate }) {
   const docentesActivos = totalDocentes - docentesLicencia;
   const sinAcdm = escuelas.filter(e => (e.docentes?.length || 0) === 0).length;
   const totalSuplentes = escuelas.reduce((a, e) => a + (e.docentes?.reduce((b, d) => b + (d.suplentes?.length || 0), 0) || 0), 0);
-  
+
   const byNivel = {};
   escuelas.forEach(e => { byNivel[e.nivel] = (byNivel[e.nivel] || 0) + 1; });
   const byDE = {};
   escuelas.forEach(e => { byDE[e.de] = (byDE[e.de] || 0) + 1; });
-  
+
   const maxByNivel = Math.max(...Object.values(byNivel), 0);
-  const colors = ["#00d4ff","#00ff88","#ffd700","#ff6b35","#ff4757"];
+  const colors = ["#00d4ff", "#00ff88", "#ffd700", "#ff6b35", "#ff4757"];
 
   // Mapeo de tarjetas a navegación
   const statCardActions = {
@@ -972,10 +232,10 @@ function Statistics({ escuelas, onNavigate }) {
           { val: totalSuplentes, label: "Suplentes", icon: "↔", color: "linear-gradient(90deg, #ffa502, #cc8800)" },
           { val: sinAcdm, label: "Sin ACDM", icon: "⚠️", color: "linear-gradient(90deg, #ff6b35, #cc4400)" },
         ].map((s, i) => (
-          <div 
-            key={i} 
-            className="stat-card" 
-            style={{"--gradient": s.color, cursor: "pointer"}}
+          <div
+            key={i}
+            className="stat-card"
+            style={{ "--gradient": s.color, cursor: "pointer" }}
             onClick={statCardActions[s.label]}
             title={`Ir a ${s.label}`}
           >
@@ -985,59 +245,59 @@ function Statistics({ escuelas, onNavigate }) {
           </div>
         ))}
       </div>
-      
+
       <div className="card-grid">
-        <div className="card" style={{cursor: "pointer"}} onClick={() => onNavigate && onNavigate("escuelas")}>
+        <div className="card" style={{ cursor: "pointer" }} onClick={() => onNavigate && onNavigate("escuelas")}>
           <div className="card-header"><span className="card-title">Distribución por Nivel</span></div>
           <div className="chart-bar-wrap">
             {Object.entries(byNivel).map(([nivel, count], i) => (
-              <div key={nivel} className="chart-bar-row" style={{opacity: 0.9}}>
+              <div key={nivel} className="chart-bar-row" style={{ opacity: 0.9 }}>
                 <div className="chart-bar-label">{nivel}</div>
                 <div className="chart-bar-bg">
-                  <div className="chart-bar-fill" style={{ width: `${(count/maxByNivel)*100}%`, background: colors[i % colors.length] }}>{count}</div>
+                  <div className="chart-bar-fill" style={{ width: `${(count / maxByNivel) * 100}%`, background: colors[i % colors.length] }}>{count}</div>
                 </div>
                 <div className="chart-val">{count}</div>
               </div>
             ))}
           </div>
-          <p style={{fontSize: 11, color: 'var(--text3)', marginTop: 12, textAlign: 'center', fontStyle: 'italic'}}>Click para ver escuelas por nivel</p>
+          <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 12, textAlign: 'center', fontStyle: 'italic' }}>Click para ver escuelas por nivel</p>
         </div>
-        
-        <div className="card" style={{cursor: "pointer"}} onClick={() => onNavigate && onNavigate("alertas")}>
+
+        <div className="card" style={{ cursor: "pointer" }} onClick={() => onNavigate && onNavigate("alertas")}>
           <div className="card-header"><span className="card-title">Estado ACDM</span></div>
-          <div style={{display:'flex', justifyContent:'center', alignItems:'center', gap:40, padding:'20px 0'}}>
-            <div style={{textAlign:'center'}}>
-              <div style={{fontSize:48, fontFamily:'Rajdhani', fontWeight:700, color:'var(--accent3)'}}>{docentesActivos}</div>
-              <div style={{fontSize:11, color:'var(--text2)', textTransform:'uppercase', letterSpacing:1}}>Activos</div>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 40, padding: '20px 0' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 48, fontFamily: 'Rajdhani', fontWeight: 700, color: 'var(--accent3)' }}>{docentesActivos}</div>
+              <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 1 }}>Activos</div>
             </div>
-            <div style={{fontSize:32, color:'var(--border2)'}}>VS</div>
-            <div style={{textAlign:'center'}}>
-              <div style={{fontSize:48, fontFamily:'Rajdhani', fontWeight:700, color:'var(--red)'}}>{docentesLicencia}</div>
-              <div style={{fontSize:11, color:'var(--text2)', textTransform:'uppercase', letterSpacing:1}}>En Licencia</div>
+            <div style={{ fontSize: 32, color: 'var(--border2)' }}>VS</div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 48, fontFamily: 'Rajdhani', fontWeight: 700, color: 'var(--red)' }}>{docentesLicencia}</div>
+              <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 1 }}>En Licencia</div>
             </div>
           </div>
           {totalDocentes > 0 && (
-            <div style={{background:'var(--bg2)', borderRadius:10, height:16, overflow:'hidden', marginTop:8}}>
-              <div style={{height:'100%', width:`${(docentesActivos/totalDocentes)*100}%`, background:'linear-gradient(90deg, var(--accent3), var(--accent))', borderRadius:10, transition:'width 1s ease'}}></div>
+            <div style={{ background: 'var(--bg2)', borderRadius: 10, height: 16, overflow: 'hidden', marginTop: 8 }}>
+              <div style={{ height: '100%', width: `${(docentesActivos / totalDocentes) * 100}%`, background: 'linear-gradient(90deg, var(--accent3), var(--accent))', borderRadius: 10, transition: 'width 1s ease' }}></div>
             </div>
           )}
-          <p style={{fontSize: 11, color: 'var(--text3)', marginTop: 12, textAlign: 'center', fontStyle: 'italic'}}>Click para ver detalle de licencias</p>
+          <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 12, textAlign: 'center', fontStyle: 'italic' }}>Click para ver detalle de licencias</p>
         </div>
-        
-        <div className="card" style={{cursor: "pointer"}} onClick={() => onNavigate && onNavigate("escuelas")}>
+
+        <div className="card" style={{ cursor: "pointer" }} onClick={() => onNavigate && onNavigate("escuelas")}>
           <div className="card-header"><span className="card-title">Por Distrito Escolar</span></div>
           <div className="chart-bar-wrap">
             {Object.entries(byDE).map(([de, count], i) => (
-              <div key={de} className="chart-bar-row" style={{opacity: 0.9}}>
+              <div key={de} className="chart-bar-row" style={{ opacity: 0.9 }}>
                 <div className="chart-bar-label">{de}</div>
                 <div className="chart-bar-bg">
-                  <div className="chart-bar-fill" style={{ width: `${(count/Math.max(...Object.values(byDE)))*100}%`, background: colors[i % colors.length] }}>{count}</div>
+                  <div className="chart-bar-fill" style={{ width: `${(count / Math.max(...Object.values(byDE))) * 100}%`, background: colors[i % colors.length] }}>{count}</div>
                 </div>
                 <div className="chart-val">{count}</div>
               </div>
             ))}
           </div>
-          <p style={{fontSize: 11, color: 'var(--text3)', marginTop: 12, textAlign: 'center', fontStyle: 'italic'}}>Click para ver escuelas por distrito</p>
+          <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 12, textAlign: 'center', fontStyle: 'italic' }}>Click para ver escuelas por distrito</p>
         </div>
 
         <div className="card">
@@ -1050,390 +310,7 @@ function Statistics({ escuelas, onNavigate }) {
 }
 
 // ============================================================
-// DOCENTE FORM MODAL
-// ============================================================
-function DocenteModal({ docente, titularId, isNew, onSave, onClose }) {
-  // When editing, preserve existing suplentes array; when creating new, initialize empty
-  const [form, setForm] = useState(() => {
-    if (isNew) {
-      return {
-        id: `d${Date.now()}`, cargo: "Titular", nombreApellido: "",
-        estado: "Activo", motivo: "-", motivoPersonalizado: "", diasAutorizados: 0,
-        fechaInicioLicencia: null, fechaFinLicencia: null, suplentes: [],
-        jornada: "Completa"
-      };
-    }
-    // Editing mode - preserve suplentes array
-    return {
-      ...docente,
-      suplentes: docente.suplentes || []
-    };
-  });
-  
-  const MOTIVOS = ["-","Art. 101 - Enfermedad","Art. 102 - Familiar enfermo","Art. 103 - Maternidad","Art. 104 - Accidente de trabajo","Art. 108 - Gremial","Art. 115 - Estudio","Art. 140 - Concurso","Otro"];
-  
-  const [calYear, setCalYear] = useState(new Date().getFullYear());
-  const [calMonth, setCalMonth] = useState(new Date().getMonth());
-  
-  function navCal(d) {
-    let m = calMonth + d; let y = calYear;
-    if (m < 0) { m = 11; y--; } if (m > 11) { m = 0; y++; }
-    setCalMonth(m); setCalYear(y);
-  }
-  
-  return (
-    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-header">
-          <div className="modal-title">{isNew ? "➕ Nuevo ACDM" : "✏️ Editar ACDM"}</div>
-          <button className="btn-icon" onClick={onClose}>✕</button>
-        </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label className="form-label">Rol ACDM</label>
-            <select className="form-select" value={form.cargo} onChange={e => setForm({...form, cargo: e.target.value})}>
-              <option>Titular</option><option>Suplente</option><option>Interino</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label className="form-label">Jornada</label>
-            <select className="form-select" value={form.jornada} onChange={e => setForm({...form, jornada: e.target.value})}>
-              <option>Simple</option><option>Completa</option><option>Extendida</option>
-            </select>
-          </div>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Nombre y Apellido</label>
-          <input className="form-input" value={form.nombreApellido} onChange={e => setForm({...form, nombreApellido: e.target.value})} placeholder="Apellido, Nombre" />
-        </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label className="form-label">Estado</label>
-            <select className="form-select" value={form.estado} onChange={e => setForm({...form, estado: e.target.value})}>
-              <option>Activo</option><option>Licencia</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label className="form-label">Motivo (Art.)</label>
-            <select className="form-select" value={form.motivo} onChange={e => setForm({...form, motivo: e.target.value})}>
-              {MOTIVOS.map(m => <option key={m}>{m}</option>)}
-            </select>
-            {form.motivo === "Otro" && (
-              <input type="text" className="form-input" style={{marginTop: 8}} value={form.motivoPersonalizado} onChange={e => setForm({...form, motivoPersonalizado: e.target.value})} placeholder="Especificar artículo (ej: Art. 150 - Nombre del motivo)" />
-            )}
-          </div>
-        </div>
-        {form.estado === "Licencia" && (
-          <>
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Días Autorizados</label>
-                <input type="number" className="form-input" value={form.diasAutorizados} onChange={e => setForm({...form, diasAutorizados: Number(e.target.value)})} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Fecha Inicio Licencia</label>
-                <input type="date" className="form-input" value={form.fechaInicioLicencia || ""} onChange={e => setForm({...form, fechaInicioLicencia: e.target.value})} />
-              </div>
-            </div>
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Fecha Fin Licencia</label>
-                <input type="date" className="form-input" value={form.fechaFinLicencia || ""} onChange={e => setForm({...form, fechaFinLicencia: e.target.value})} />
-              </div>
-            </div>
-            {(form.fechaInicioLicencia || form.fechaFinLicencia) && (
-              <div className="mb-16">
-                <MiniCalendar year={calYear} month={calMonth} rangeStart={form.fechaInicioLicencia} rangeEnd={form.fechaFinLicencia} onNavigate={navCal} />
-              </div>
-            )}
-          </>
-        )}
-        <div className="flex gap-8 justify-end mt-16">
-          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={() => { onSave(form); onClose(); }}>Guardar</button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-// ============================================================
-// ALUMNO FORM MODAL
-// ============================================================
-function AlumnoModal({ alumno, isNew, onSave, onClose }) {
-  const [form, setForm] = useState(alumno || { id: `a${Date.now()}`, gradoSalaAnio: "", nombre: "", diagnostico: "", observaciones: "" });
-  return (
-    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-header">
-          <div className="modal-title">{isNew ? "➕ Nuevo Alumno" : "✏️ Editar Alumno"}</div>
-          <button className="btn-icon" onClick={onClose}>✕</button>
-        </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label className="form-label">Grado / Sala / Año</label>
-            <input className="form-input" value={form.gradoSalaAnio} onChange={e => setForm({...form, gradoSalaAnio: e.target.value})} placeholder="Ej: 3° Grado" />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Alumno (Apellido, Nombre)</label>
-            <input className="form-input" value={form.nombre} onChange={e => setForm({...form, nombre: e.target.value})} placeholder="Apellido, Nombre" />
-          </div>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Diagnóstico</label>
-          <input className="form-input" value={form.diagnostico} onChange={e => setForm({...form, diagnostico: e.target.value})} placeholder="Ej: TEA Nivel 1, TDAH..." />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Observaciones</label>
-          <textarea className="form-textarea" value={form.observaciones} onChange={e => setForm({...form, observaciones: e.target.value})} placeholder="Observaciones adicionales..." />
-        </div>
-        <div className="flex gap-8 justify-end mt-16">
-          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={() => { onSave(form); onClose(); }}>Guardar</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// VISITA FORM MODAL
-// ============================================================
-function VisitaModal({ visita, isNew, onSave, onClose, escuelas, escuelaId }) {
-  const [form, setForm] = useState(visita || { id: `v${Date.now()}`, fecha: new Date().toISOString().split('T')[0], observaciones: "" });
-  const [selectedEscuela, setSelectedEscuela] = useState(escuelaId || "");
-  return (
-    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-header">
-          <div className="modal-title">{isNew ? "➕ Nueva Visita" : "✏️ Editar Visita"}</div>
-          <button className="btn-icon" onClick={onClose}>✕</button>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Escuela</label>
-          <select className="form-select" value={selectedEscuela} onChange={e => setSelectedEscuela(e.target.value)}>
-            <option value="">Seleccionar escuela...</option>
-            {escuelas.map(esc => (
-              <option key={esc.id} value={esc.id}>{esc.escuela} ({esc.de})</option>
-            ))}
-          </select>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Fecha de Visita</label>
-          <input type="date" className="form-input" value={form.fecha || ""} onChange={e => setForm({...form, fecha: e.target.value})} />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Observaciones</label>
-          <textarea className="form-textarea" rows="5" value={form.observaciones || ""} onChange={e => setForm({...form, observaciones: e.target.value})} placeholder="Detalle de la visita..." />
-        </div>
-        <div className="flex gap-8 justify-end mt-16">
-          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={() => { onSave(form, selectedEscuela || escuelaId); onClose(); }}>Guardar</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// PROYECTO FORM MODAL
-// ============================================================
-function ProyectoModal({ proyecto, isNew, onSave, onClose, escuelas, escuelaId }) {
-  const [form, setForm] = useState(proyecto || { id: `p${Date.now()}`, nombre: "", descripcion: "", estado: "En Progreso", fechaInicio: new Date().toISOString().split('T')[0], fechaBaja: "" });
-  const [selectedEscuela, setSelectedEscuela] = useState(escuelaId || "");
-  return (
-    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-header">
-          <div className="modal-title">{isNew ? "➕ Nuevo Proyecto" : "✏️ Editar Proyecto"}</div>
-          <button className="btn-icon" onClick={onClose}>✕</button>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Escuela</label>
-          <select className="form-select" value={selectedEscuela} onChange={e => setSelectedEscuela(e.target.value)}>
-            <option value="">Seleccionar escuela...</option>
-            {escuelas.map(esc => (
-              <option key={esc.id} value={esc.id}>{esc.escuela} ({esc.de})</option>
-            ))}
-          </select>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Nombre del Proyecto</label>
-          <input className="form-input" value={form.nombre || ""} onChange={e => setForm({...form, nombre: e.target.value})} placeholder="Ej: Adaptación de material didáctico" />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Descripción</label>
-          <textarea className="form-textarea" rows="4" value={form.descripcion || ""} onChange={e => setForm({...form, descripcion: e.target.value})} placeholder="Detalle del proyecto..." />
-        </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label className="form-label">Estado</label>
-            <select className="form-select" value={form.estado || "En Progreso"} onChange={e => setForm({...form, estado: e.target.value})}>
-              <option>En Progreso</option>
-              <option>Completado</option>
-              <option>Pausado</option>
-              <option>Cancelado</option>
-            </select>
-          </div>
-        </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label className="form-label">Fecha Inicio</label>
-            <input type="date" className="form-input" value={form.fechaInicio || ""} onChange={e => setForm({...form, fechaInicio: e.target.value})} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Fecha Finalización</label>
-            <input type="date" className="form-input" value={form.fechaBaja || ""} onChange={e => setForm({...form, fechaBaja: e.target.value})} />
-          </div>
-        </div>
-        <div className="flex gap-8 justify-end mt-16">
-          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={() => { onSave(form, selectedEscuela || escuelaId); onClose(); }}>Guardar</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// INFORME FORM MODAL
-// ============================================================
-function InformeModal({ informe, isNew, onSave, onClose, escuelas, escuelaId }) {
-  const [form, setForm] = useState(informe || { id: `i${Date.now()}`, titulo: "", estado: "Pendiente", fechaEntrega: "", observaciones: "" });
-  const [selectedEscuela, setSelectedEscuela] = useState(escuelaId || "");
-  return (
-    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-header">
-          <div className="modal-title">{isNew ? "➕ Nuevo Informe" : "✏️ Editar Informe"}</div>
-          <button className="btn-icon" onClick={onClose}>✕</button>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Escuela</label>
-          <select className="form-select" value={selectedEscuela} onChange={e => setSelectedEscuela(e.target.value)}>
-            <option value="">Seleccionar escuela...</option>
-            {escuelas.map(esc => (
-              <option key={esc.id} value={esc.id}>{esc.escuela} ({esc.de})</option>
-            ))}
-          </select>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Título del Informe</label>
-          <input className="form-input" value={form.titulo || ""} onChange={e => setForm({...form, titulo: e.target.value})} placeholder="Ej: Informe mensual enero" />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Estado</label>
-          <select className="form-select" value={form.estado || "Pendiente"} onChange={e => setForm({...form, estado: e.target.value})}>
-            <option>Pendiente</option>
-            <option>En Progreso</option>
-            <option>Entregado</option>
-            <option>Aprobado</option>
-          </select>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Fecha de Entrega</label>
-          <input type="date" className="form-input" value={form.fechaEntrega || ""} onChange={e => setForm({...form, fechaEntrega: e.target.value})} />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Observaciones</label>
-          <textarea className="form-textarea" rows="5" value={form.observaciones || ""} onChange={e => setForm({...form, observaciones: e.target.value})} placeholder="Detalles del informe..." />
-        </div>
-        <div className="flex gap-8 justify-end mt-16">
-          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={() => { onSave(form, selectedEscuela || escuelaId); onClose(); }}>Guardar</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// SCHOOL FORM MODAL
-// ============================================================
-function EscuelaModal({ escuela, isNew, onSave, onClose }) {
-  const [form, setForm] = useState(escuela || {
-    id: `e${Date.now()}`, de: "", escuela: "", nivel: "Primario",
-    direccion: "", lat: null, lng: null, telefonos: [""], mail: "",
-    jornada: "Completa", turno: "Mañana", alumnos: [], docentes: []
-  });
-  
-  function setPhone(i, val) {
-    const t = [...form.telefonos]; t[i] = val; setForm({...form, telefonos: t});
-  }
-  
-  return (
-    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-header">
-          <div className="modal-title">{isNew ? "➕ Nueva Escuela" : "✏️ Editar Escuela"}</div>
-          <button className="btn-icon" onClick={onClose}>✕</button>
-        </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label className="form-label">Distrito Escolar (DE)</label>
-            <input className="form-input" value={form.de} onChange={e => setForm({...form, de: e.target.value})} placeholder="Ej: DE 01" />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Nivel</label>
-            <select className="form-select" value={form.nivel} onChange={e => setForm({...form, nivel: e.target.value})}>
-              <option>Inicial</option><option>Primario</option><option>Secundario</option><option>Especial</option>
-            </select>
-          </div>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Nombre de la Escuela</label>
-          <input className="form-input" value={form.escuela} onChange={e => setForm({...form, escuela: e.target.value})} placeholder="Ej: Escuela N°1 ..." />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Dirección</label>
-          <input className="form-input" value={form.direccion} onChange={e => setForm({...form, direccion: e.target.value})} placeholder="Calle, número, localidad" />
-        </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label className="form-label">Latitud (opcional)</label>
-            <input type="number" className="form-input" value={form.lat || ""} onChange={e => setForm({...form, lat: parseFloat(e.target.value)})} placeholder="-34.603" />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Longitud (opcional)</label>
-            <input type="number" className="form-input" value={form.lng || ""} onChange={e => setForm({...form, lng: parseFloat(e.target.value)})} placeholder="-58.381" />
-          </div>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Mail Institucional</label>
-          <input type="email" className="form-input" value={form.mail} onChange={e => setForm({...form, mail: e.target.value})} placeholder="escuela@bue.edu.ar" />
-        </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label className="form-label">Jornada</label>
-            <select className="form-select" value={form.jornada} onChange={e => setForm({...form, jornada: e.target.value})}>
-              <option>Simple</option><option>Completa</option><option>Extendida</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label className="form-label">Turno</label>
-            <select className="form-select" value={form.turno} onChange={e => setForm({...form, turno: e.target.value})}>
-              <option>Mañana</option><option>Tarde</option><option>Vespertino</option><option>Completa</option><option>Noche</option>
-            </select>
-          </div>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Teléfonos</label>
-          {form.telefonos.map((t, i) => (
-            <div key={i} className="flex gap-8 mb-8">
-              <input className="form-input" value={t} onChange={e => setPhone(i, e.target.value)} placeholder="011-XXXX-XXXX" />
-              {form.telefonos.length > 1 && <button className="btn btn-danger btn-sm" onClick={() => setForm({...form, telefonos: form.telefonos.filter((_,j)=>j!==i)})}>✕</button>}
-            </div>
-          ))}
-          <button className="btn btn-secondary btn-sm" onClick={() => setForm({...form, telefonos: [...form.telefonos, ""]})}>+ Agregar teléfono</button>
-        </div>
-        <div className="flex gap-8 justify-end mt-16">
-          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={() => { onSave(form); onClose(); }}>Guardar</button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ============================================================
 // SCHOOL DETAIL VIEW
@@ -1443,13 +320,13 @@ function EscuelaDetail({ esc, onEdit, onDelete, onAddDocente, onEditDocente, onD
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
   const [activeTab, setActiveTab] = useState("docentes");
-  
+
   function navCal(d) {
     let m = calMonth + d; let y = calYear;
     if (m < 0) { m = 11; y--; } if (m > 11) { m = 0; y++; }
     setCalMonth(m); setCalYear(y);
   }
-  
+
   const hasAlerts = esc.docentes.length === 0 || esc.docentes.some(d => d.estado === "Licencia" && d.fechaFinLicencia && diasRestantes(d.fechaFinLicencia) <= 10);
 
   const openMaps = (e) => {
@@ -1457,7 +334,7 @@ function EscuelaDetail({ esc, onEdit, onDelete, onAddDocente, onEditDocente, onD
     const q = esc.lat && esc.lng ? `${esc.lat},${esc.lng}` : encodeURIComponent(esc.direccion);
     window.open(`https://www.google.com/maps/search/?api=1&query=${q}`, "_blank");
   };
-  
+
   const openMail = (mailAddr, e) => {
     e.stopPropagation();
     const subject = encodeURIComponent(`Sistema ACDM - ${esc.escuela}`);
@@ -1478,33 +355,33 @@ function EscuelaDetail({ esc, onEdit, onDelete, onAddDocente, onEditDocente, onD
               </div>
             </div>
             <div className="flex items-center gap-8">
-              {hasAlerts && <span style={{animation:'pulse 1s infinite', fontSize:18}}>⚠️</span>}
-              <span style={{color:'var(--text3)', fontSize:20}}>{expanded ? "▲" : "▼"}</span>
+              {hasAlerts && <span style={{ animation: 'pulse 1s infinite', fontSize: 18 }}>⚠️</span>}
+              <span style={{ color: 'var(--text3)', fontSize: 20 }}>{expanded ? "▲" : "▼"}</span>
             </div>
           </div>
-          
+
           {/* Compact view: show titular, suplente, motivo */}
-          <div style={{marginTop:12}}>
+          <div style={{ marginTop: 12 }}>
             {esc.docentes.length === 0 ? (
               <span className="badge badge-danger">SIN ACDM ASIGNADO</span>
             ) : esc.docentes.map(doc => (
-              <div key={doc.id} style={{marginBottom:8}}>
+              <div key={doc.id} style={{ marginBottom: 8 }}>
                 <div className="flex items-center gap-8 flex-wrap">
                   <span className={`badge badge-${doc.cargo.toLowerCase()}`}>{doc.cargo}</span>
-                  <span style={{fontFamily:'Rajdhani', fontWeight:700, fontSize:15}}>{doc.nombreApellido}</span>
+                  <span style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 15 }}>{doc.nombreApellido}</span>
                   <span className={`badge badge-${doc.estado === "Activo" ? "active" : "licencia"}`}>{doc.estado}</span>
-                  <span style={{fontSize:11, color:'var(--text3)', background:'rgba(0,100,200,0.1)', padding:'2px 8px', borderRadius:'4px'}}>📅 {doc.jornada || "N/D"}</span>
-                  {doc.estado === "Licencia" && <span style={{fontSize:12, color:'var(--text2)'}}>{doc.motivo}</span>}
+                  <span style={{ fontSize: 11, color: 'var(--text3)', background: 'rgba(0,100,200,0.1)', padding: '2px 8px', borderRadius: '4px' }}>📅 {doc.jornada || "N/D"}</span>
+                  {doc.estado === "Licencia" && <span style={{ fontSize: 12, color: 'var(--text2)' }}>{doc.motivo}</span>}
                   {doc.estado === "Licencia" && <DaysRemaining fechaFin={doc.fechaFinLicencia} />}
                 </div>
                 {doc.suplentes.map(s => (
-                  <div key={s.id} className="flex items-center gap-8 flex-wrap" style={{marginLeft:20, marginTop:4}}>
-                    <span style={{color:'var(--yellow)', fontSize:12}}>↳</span>
+                  <div key={s.id} className="flex items-center gap-8 flex-wrap" style={{ marginLeft: 20, marginTop: 4 }}>
+                    <span style={{ color: 'var(--yellow)', fontSize: 12 }}>↳</span>
                     <span className="badge badge-suplente">{s.cargo}</span>
-                    <span style={{fontSize:13, color:'var(--text2)'}}>{s.nombreApellido}</span>
-                    <span style={{fontSize:11, color:'var(--text3)', background:'rgba(0,100,200,0.1)', padding:'2px 8px', borderRadius:'4px'}}>📅 {s.jornada || "N/D"}</span>
+                    <span style={{ fontSize: 13, color: 'var(--text2)' }}>{s.nombreApellido}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text3)', background: 'rgba(0,100,200,0.1)', padding: '2px 8px', borderRadius: '4px' }}>📅 {s.jornada || "N/D"}</span>
                     {doc.estado === "Licencia" && doc.fechaInicioLicencia && (
-                      <span style={{fontSize:11, color:'var(--text3)'}}>desde {formatDate(doc.fechaInicioLicencia)}</span>
+                      <span style={{ fontSize: 11, color: 'var(--text3)' }}>desde {formatDate(doc.fechaInicioLicencia)}</span>
                     )}
                   </div>
                 ))}
@@ -1512,12 +389,12 @@ function EscuelaDetail({ esc, onEdit, onDelete, onAddDocente, onEditDocente, onD
             ))}
           </div>
         </div>
-        
+
         {expanded && <EscuelaExpandida esc={esc} onEdit={onEdit} onDelete={onDelete} onAddDocente={onAddDocente} onEditDocente={onEditDocente} onDeleteDocente={onDeleteDocente} onAddAlumno={onAddAlumno} onEditAlumno={onEditAlumno} onDeleteAlumno={onDeleteAlumno} calYear={calYear} calMonth={calMonth} navCal={navCal} activeTab={activeTab} setActiveTab={setActiveTab} openMaps={openMaps} openMail={openMail} isAdmin={isAdmin} />}
       </div>
     );
   }
-  
+
   return (
     <div className="school-card">
       <div className="school-card-header" onClick={() => setExpanded(!expanded)}>
@@ -1527,8 +404,8 @@ function EscuelaDetail({ esc, onEdit, onDelete, onAddDocente, onEditDocente, onD
             <div className="school-name">{esc.escuela}</div>
           </div>
           <div className="flex items-center gap-8">
-            {hasAlerts && <span style={{animation:'pulse 1s infinite', fontSize:18}}>⚠️</span>}
-            <span style={{color:'var(--text3)', fontSize:20}}>{expanded ? "▲" : "▼"}</span>
+            {hasAlerts && <span style={{ animation: 'pulse 1s infinite', fontSize: 18 }}>⚠️</span>}
+            <span style={{ color: 'var(--text3)', fontSize: 20 }}>{expanded ? "▲" : "▼"}</span>
           </div>
         </div>
         <div className="school-meta">
@@ -1547,7 +424,7 @@ function EscuelaDetail({ esc, onEdit, onDelete, onAddDocente, onEditDocente, onD
 
 function EscuelaExpandida({ esc, onEdit, onDelete, onAddDocente, onEditDocente, onDeleteDocente, onAddAlumno, onEditAlumno, onDeleteAlumno, calYear, calMonth, navCal, activeTab, setActiveTab, openMaps, openMail, isAdmin }) {
   return (
-    <div className="school-card-body" style={{animation:'slideIn 0.2s ease'}}>
+    <div className="school-card-body" style={{ animation: 'slideIn 0.2s ease' }}>
       <div className="flex items-center justify-between mb-16">
         <div className="view-toggle">
           <button className={`view-btn ${activeTab === "docentes" ? "active" : ""}`} onClick={() => setActiveTab("docentes")}>👨‍🏫 Docentes</button>
@@ -1556,12 +433,12 @@ function EscuelaExpandida({ esc, onEdit, onDelete, onAddDocente, onEditDocente, 
         </div>
         <div className="flex gap-8">
           {isAdmin && <button className="btn btn-secondary btn-sm" onClick={onEdit}>✏️ Editar</button>}
-          {isAdmin && <button className="btn btn-danger btn-sm" onClick={() => { if(confirm("¿Está seguro de eliminar esta escuela?")) onDelete(); }}>🗑️ Eliminar</button>}
+          {isAdmin && <button className="btn btn-danger btn-sm" onClick={() => { if (confirm("¿Está seguro de eliminar esta escuela?")) onDelete(); }}>🗑️ Eliminar</button>}
           {isAdmin && activeTab === "docentes" && <button className="btn btn-primary btn-sm" onClick={() => onAddDocente(esc.id)}>+ ACDM</button>}
           {isAdmin && activeTab === "alumnos" && <button className="btn btn-primary btn-sm" onClick={() => onAddAlumno(esc.id)}>+ Alumno</button>}
         </div>
       </div>
-      
+
       {activeTab === "docentes" && (
         <div>
           {esc.docentes.length === 0 && <div className="no-data">⚠️ Sin docentes asignados</div>}
@@ -1572,10 +449,10 @@ function EscuelaExpandida({ esc, onEdit, onDelete, onAddDocente, onEditDocente, 
                   <span className={`badge badge-${doc.cargo.toLowerCase()}`}>{doc.cargo}</span>
                   <span className="docente-name">{doc.nombreApellido}</span>
                   <span className={`badge badge-${doc.estado === "Activo" ? "active" : "licencia"}`}>{doc.estado}</span>
-                  <span style={{fontSize:11, color:'var(--text3)', background:'rgba(0,100,200,0.1)', padding:'2px 8px', borderRadius:'4px'}}>📅 {doc.jornada || "N/D"}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text3)', background: 'rgba(0,100,200,0.1)', padding: '2px 8px', borderRadius: '4px' }}>📅 {doc.jornada || "N/D"}</span>
                   {doc.estado === "Licencia" && <DaysRemaining fechaFin={doc.fechaFinLicencia} />}
                   {isAdmin && (
-                    <div className="flex gap-4" style={{marginLeft:'auto'}}>
+                    <div className="flex gap-4" style={{ marginLeft: 'auto' }}>
                       <button className="btn btn-secondary btn-sm" onClick={() => onEditDocente(esc.id, doc)}>✏️</button>
                       <button className="btn btn-danger btn-sm" onClick={() => onDeleteDocente(esc.id, doc.id)}>🗑️</button>
                       {doc.cargo === "Titular" && <button className="btn btn-secondary btn-sm" onClick={() => onAddDocente(esc.id, doc.id)}>+ Suplente</button>}
@@ -1599,14 +476,14 @@ function EscuelaExpandida({ esc, onEdit, onDelete, onAddDocente, onEditDocente, 
               {doc.suplentes && doc.suplentes.map(s => (
                 <div key={s.id} className="docente-row suplente-row">
                   <div className="docente-header">
-                    <span style={{fontSize:12, color:'var(--yellow)'}}>↳ Cubre a: <strong>{doc.nombreApellido}</strong></span>
+                    <span style={{ fontSize: 12, color: 'var(--yellow)' }}>↳ Cubre a: <strong>{doc.nombreApellido}</strong></span>
                     <span className={`badge badge-${s.cargo.toLowerCase()}`}>{s.cargo}</span>
                     <span className="docente-name">{s.nombreApellido}</span>
                     <span className={`badge badge-${s.estado === "Activo" ? "active" : "licencia"}`}>{s.estado}</span>
-                    <span style={{fontSize:11, color:'var(--text3)', background:'rgba(0,100,200,0.1)', padding:'2px 8px', borderRadius:'4px'}}>📅 {s.jornada || "N/D"}</span>
-                    {s.fechaIngreso && <span style={{fontSize:11, color:'var(--text3)'}}>desde {formatDate(s.fechaIngreso)}</span>}
+                    <span style={{ fontSize: 11, color: 'var(--text3)', background: 'rgba(0,100,200,0.1)', padding: '2px 8px', borderRadius: '4px' }}>📅 {s.jornada || "N/D"}</span>
+                    {s.fechaIngreso && <span style={{ fontSize: 11, color: 'var(--text3)' }}>desde {formatDate(s.fechaIngreso)}</span>}
                     {isAdmin && (
-                      <div className="flex gap-4" style={{marginLeft:'auto'}}>
+                      <div className="flex gap-4" style={{ marginLeft: 'auto' }}>
                         <button className="btn btn-secondary btn-sm" onClick={() => onEditDocente(esc.id, s, doc.id)}>✏️</button>
                         <button className="btn btn-danger btn-sm" onClick={() => onDeleteDocente(esc.id, s.id, doc.id)}>🗑️</button>
                       </div>
@@ -1621,7 +498,7 @@ function EscuelaExpandida({ esc, onEdit, onDelete, onAddDocente, onEditDocente, 
           ))}
         </div>
       )}
-      
+
       {activeTab === "alumnos" && (
         <div className="table-wrap">
           {esc.alumnos.length === 0 ? <div className="no-data">Sin alumnos registrados</div> : (
@@ -1630,10 +507,10 @@ function EscuelaExpandida({ esc, onEdit, onDelete, onAddDocente, onEditDocente, 
               <tbody>
                 {esc.alumnos.map(a => (
                   <tr key={a.id}>
-                    <td><span className="badge badge-info" style={{background:'rgba(0,212,255,0.1)', color:'var(--accent)', border:'1px solid rgba(0,212,255,0.2)'}}>{a.gradoSalaAnio}</span></td>
-                    <td style={{fontWeight:600}}>{a.nombre}</td>
-                    <td><span style={{color:'var(--yellow)', fontSize:12}}>{a.diagnostico}</span></td>
-                    <td style={{color:'var(--text2)', fontSize:12, maxWidth:200}}>{a.observaciones}</td>
+                    <td><span className="badge badge-info" style={{ background: 'rgba(0,212,255,0.1)', color: 'var(--accent)', border: '1px solid rgba(0,212,255,0.2)' }}>{a.gradoSalaAnio}</span></td>
+                    <td style={{ fontWeight: 600 }}>{a.nombre}</td>
+                    <td><span style={{ color: 'var(--yellow)', fontSize: 12 }}>{a.diagnostico}</span></td>
+                    <td style={{ color: 'var(--text2)', fontSize: 12, maxWidth: 200 }}>{a.observaciones}</td>
                     {isAdmin && <td><div className="flex gap-4">
                       <button className="btn btn-secondary btn-sm" onClick={() => onEditAlumno(esc.id, a)}>✏️</button>
                       <button className="btn btn-danger btn-sm" onClick={() => onDeleteAlumno(esc.id, a.id)}>🗑️</button>
@@ -1645,7 +522,7 @@ function EscuelaExpandida({ esc, onEdit, onDelete, onAddDocente, onEditDocente, 
           )}
         </div>
       )}
-      
+
       {activeTab === "info" && (
         <div className="school-info-grid">
           <div>
@@ -1685,23 +562,23 @@ function ExportPDF({ escuelas, onClose }) {
   const [filter, setFilter] = useState("all");
   const [tipo, setTipo] = useState("completo");
   const [formato, setFormato] = useState("txt");
-  
+
   // Generar CSV
   function generateCSV() {
     const data = filter === "all" ? escuelas : escuelas.filter(e => e.de === filter);
     const rows = [];
-    
+
     // Encabezados generales
     rows.push(["SISTEMA ACDM - REPORTE EXPORTADO"]);
     rows.push([`Generado: ${new Date().toLocaleDateString('es-AR')} ${new Date().toLocaleTimeString('es-AR')}`]);
     rows.push([`Tipo: ${tipo}`]);
     rows.push([]);
-    
+
     if (tipo === "completo" || tipo === "docentes") {
       rows.push(["DE", "Escuela", "Nivel", "Jornada", "Turno", "Dirección", "Mail", "Teléfonos"]);
       data.forEach(esc => {
         rows.push([esc.de, esc.escuela, esc.nivel, esc.jornada, esc.turno, esc.direccion, esc.mail, esc.telefonos.join("; ")]);
-        
+
         if (tipo !== "mini") {
           rows.push([]);
           rows.push(["DOCENTES:", esc.escuela]);
@@ -1713,7 +590,7 @@ function ExportPDF({ escuelas, onClose }) {
               d.suplentes.forEach(s => rows.push([s.cargo, s.nombreApellido, s.estado, s.motivo, s.jornada || "N/D"]));
             }
           });
-          
+
           rows.push([]);
           rows.push(["ALUMNOS:", esc.escuela]);
           rows.push(["Grado/Sala", "Nombre", "Diagnóstico", "Observaciones"]);
@@ -1724,7 +601,7 @@ function ExportPDF({ escuelas, onClose }) {
         }
       });
     }
-    
+
     // Convertir a CSV
     const csvContent = rows.map(row => row.map(cell => `"${String(cell || "").replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });
@@ -1735,18 +612,18 @@ function ExportPDF({ escuelas, onClose }) {
     a.click();
     URL.revokeObjectURL(url);
   }
-  
+
   // Generar Excel usando SheetJS CDN
   function generateExcel() {
     const data = filter === "all" ? escuelas : escuelas.filter(e => e.de === filter);
-    
+
     // Cargar SheetJS desde CDN
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.min.js";
     script.onload = () => {
       const XLSX = window.XLSX;
       const workbook = XLSX.utils.book_new();
-      
+
       // Hoja 1: Resumen de Escuelas
       const escuelasData = [];
       escuelasData.push(["DE", "Escuela", "Nivel", "Jornada", "Turno", "Dirección", "Mail", "Teléfonos", "Docentes", "Alumnos"]);
@@ -1758,7 +635,7 @@ function ExportPDF({ escuelas, onClose }) {
       });
       const wsEscuelas = XLSX.utils.aoa_to_sheet(escuelasData);
       XLSX.utils.book_append_sheet(workbook, wsEscuelas, "Escuelas");
-      
+
       // Hoja 2: Docentes
       if (tipo !== "mini") {
         const docentesData = [];
@@ -1778,7 +655,7 @@ function ExportPDF({ escuelas, onClose }) {
         });
         const wsDocentes = XLSX.utils.aoa_to_sheet(docentesData);
         XLSX.utils.book_append_sheet(workbook, wsDocentes, "Docentes");
-        
+
         // Hoja 3: Alumnos
         const alumnosData = [];
         alumnosData.push(["Escuela", "DE", "Grado/Sala", "Nombre", "Diagnóstico", "Observaciones"]);
@@ -1790,13 +667,13 @@ function ExportPDF({ escuelas, onClose }) {
         const wsAlumnos = XLSX.utils.aoa_to_sheet(alumnosData);
         XLSX.utils.book_append_sheet(workbook, wsAlumnos, "Alumnos");
       }
-      
+
       // Generar archivo
       XLSX.writeFile(workbook, `ACDM_Reporte_${new Date().toISOString().split("T")[0]}.xlsx`);
     };
     document.head.appendChild(script);
   }
-  
+
   function doExport() {
     if (formato === "csv") {
       generateCSV();
@@ -1835,9 +712,9 @@ function ExportPDF({ escuelas, onClose }) {
     }
     onClose();
   }
-  
+
   const des = [...new Set(escuelas.map(e => e.de))];
-  
+
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal">
@@ -1862,52 +739,52 @@ function ExportPDF({ escuelas, onClose }) {
             </select>
           </div>
         </div>
-        
+
         <div className="form-group">
           <label className="form-label">Formato de Exportación</label>
-          <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:8}}>
-            <button 
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            <button
               className={`btn ${formato === 'txt' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{textAlign:'center'}}
+              style={{ textAlign: 'center' }}
               onClick={() => setFormato('txt')}>
               📄 TXT
             </button>
-            <button 
+            <button
               className={`btn ${formato === 'csv' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{textAlign:'center'}}
+              style={{ textAlign: 'center' }}
               onClick={() => setFormato('csv')}>
               📊 CSV (Excel)
             </button>
-            <button 
+            <button
               className={`btn ${formato === 'excel' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{textAlign:'center'}}
+              style={{ textAlign: 'center' }}
               onClick={() => setFormato('excel')}>
               📈 Excel
             </button>
           </div>
         </div>
-        
+
         {/* Preview */}
-        <div className="pdf-preview" style={{fontSize:12, maxHeight:'300px', overflowY:'auto'}}>
+        <div className="pdf-preview" style={{ fontSize: 12, maxHeight: '300px', overflowY: 'auto' }}>
           <div className="pdf-header">
             <div className="pdf-title">Sistema ACDM — Reporte {tipo}</div>
             <div className="pdf-sub">Formato: {formato.toUpperCase()} · {new Date().toLocaleDateString('es-AR')}</div>
           </div>
           {(filter === "all" ? escuelas : escuelas.filter(e => e.de === filter)).slice(0, 3).map(esc => (
-            <div key={esc.id} style={{marginBottom:12, paddingBottom:8, borderBottom:'1px solid #ddd'}}>
-              <div style={{fontWeight:700, color:'#0066aa'}}>{esc.de} — {esc.escuela}</div>
-              <div style={{fontSize:11, color:'#444'}}>{esc.nivel} | {esc.jornada} | {esc.turno} | {esc.mail}</div>
+            <div key={esc.id} style={{ marginBottom: 12, paddingBottom: 8, borderBottom: '1px solid #ddd' }}>
+              <div style={{ fontWeight: 700, color: '#0066aa' }}>{esc.de} — {esc.escuela}</div>
+              <div style={{ fontSize: 11, color: '#444' }}>{esc.nivel} | {esc.jornada} | {esc.turno} | {esc.mail}</div>
               {tipo !== "mini" && esc.docentes.slice(0, 2).map(d => (
-                <div key={d.id} style={{marginLeft:12, marginTop:4, fontSize:11}}>
-                  <span style={{fontWeight:700}}>[{d.cargo}]</span> {d.nombreApellido} · <span style={{color:'#0066aa'}}>📅 {d.jornada || 'N/D'}</span> — <span style={{color: d.estado === "Activo" ? "green" : "red"}}>{d.estado}</span>
-                  {d.estado === "Licencia" && <span style={{color:'#888'}}> · {d.motivo} hasta {formatDate(d.fechaFinLicencia)}</span>}
+                <div key={d.id} style={{ marginLeft: 12, marginTop: 4, fontSize: 11 }}>
+                  <span style={{ fontWeight: 700 }}>[{d.cargo}]</span> {d.nombreApellido} · <span style={{ color: '#0066aa' }}>📅 {d.jornada || 'N/D'}</span> — <span style={{ color: d.estado === "Activo" ? "green" : "red" }}>{d.estado}</span>
+                  {d.estado === "Licencia" && <span style={{ color: '#888' }}> · {d.motivo} hasta {formatDate(d.fechaFinLicencia)}</span>}
                 </div>
               ))}
             </div>
           ))}
-          <div style={{fontSize:11, color:'#999', marginTop:8}}>*Mostrando vista previa de los primeros registros</div>
+          <div style={{ fontSize: 11, color: '#999', marginTop: 8 }}>*Mostrando vista previa de los primeros registros</div>
         </div>
-        
+
         <div className="flex gap-8 justify-end mt-16">
           <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
           <button className="btn btn-primary" onClick={doExport}>⬇️ Exportar {formato.toUpperCase()}</button>
@@ -1951,7 +828,7 @@ function Login({ onLogin }) {
     const timer = setInterval(tick, 250);
     return () => clearInterval(timer);
   }, [cooldownUntil]);
-  
+
   async function doLogin() {
     setErr("");
     if (isSubmitting) return;
@@ -2011,14 +888,14 @@ function Login({ onLogin }) {
       setIsSubmitting(false);
     }
   }
-  
+
   return (
     <div className="login-container">
       <div className="login-box">
-        <div style={{textAlign:'center', marginBottom:24}}>
-          <div style={{marginBottom:12, display:'flex', justifyContent:'center'}}>
-            <div className="papiweb-logo" style={{padding:'8px 20px'}}>
-              <div className="papiweb-text" style={{fontSize:22, letterSpacing:3}}>PAPIWEB</div>
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'center' }}>
+            <div className="papiweb-logo" style={{ padding: '8px 20px' }}>
+              <div className="papiweb-text" style={{ fontSize: 22, letterSpacing: 3 }}>PAPIWEB</div>
               <div className="papiweb-sub">Desarrollos Informáticos</div>
             </div>
           </div>
@@ -2033,10 +910,10 @@ function Login({ onLogin }) {
           <label className="form-label">Contraseña</label>
           <input type="password" className="form-input" value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin()} placeholder="••••••••" disabled={isSubmitting || cooldownSeconds > 0} />
         </div>
-        {err && <div className="alert alert-danger" style={{marginBottom:12}}><span>⚠️</span>{err}</div>}
+        {err && <div className="alert alert-danger" style={{ marginBottom: 12 }}><span>⚠️</span>{err}</div>}
         <button
           className="btn btn-primary"
-          style={{width:'100%', justifyContent:'center', marginTop:8}}
+          style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}
           onClick={doLogin}
           disabled={isSubmitting || cooldownSeconds > 0}
         >
@@ -2052,10 +929,10 @@ function Login({ onLogin }) {
 // ============================================================
 export default function App({ currentUser: propCurrentUser, onLogout: propOnLogout } = {}) {
   const [currentUser, setCurrentUser] = useState(propCurrentUser || null);
-  
+
   // Usar MongoDB en lugar de localStorage
-  const { 
-    db, 
+  const {
+    db,
     loading,
     saveEscuela: mongoSaveEscuela,
     deleteEscuela: mongoDeleteEscuela,
@@ -2075,9 +952,9 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
     updateInforme: mongoUpdateInforme,
     deleteInforme: mongoDeleteInforme
   } = useAcdmMongoData(currentUser);
-  
+
   const activeDb = db || { escuelas: [], alumnos: [], docentes: [], usuarios: [], visitas: [], proyectos: [], informes: [] };
-  
+
   const [activeSection, setActiveSection] = useState("dashboard");
   const [viewMode, setViewMode] = useState("full"); // full | compact | table
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -2088,7 +965,7 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
     const saved = localStorage.getItem("acdm_darkMode");
     return saved !== null ? saved === "true" : true;
   });
-  
+
   // Modals
   const [escuelaModal, setEscuelaModal] = useState(null);
   const [docenteModal, setDocenteModal] = useState(null);
@@ -2098,9 +975,9 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
   const [visitaModal, setVisitaModal] = useState(null);
   const [proyectoModal, setProyectoModal] = useState(null);
   const [informeModal, setInformeModal] = useState(null);
-  
+
   const isAdmin = currentUser?.rol === "admin";
-  
+
   // Persist dark mode preference
   useEffect(() => {
     localStorage.setItem("acdm_darkMode", darkMode);
@@ -2117,30 +994,30 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
   }, [isAdmin]);
 
   // ── CRUD directo a MongoDB ──
-  const saveEscuela   = mongoSaveEscuela;
+  const saveEscuela = mongoSaveEscuela;
   const deleteEscuela = mongoDeleteEscuela;
-  const addDocente    = mongoAddDocente;
+  const addDocente = mongoAddDocente;
   const updateDocente = mongoUpdateDocente;
   const deleteDocente = mongoDeleteDocente;
-  const addAlumno     = mongoAddAlumno;
-  const updateAlumno  = mongoUpdateAlumno;
-  const deleteAlumno  = mongoDeleteAlumno;
-  const addVisita     = mongoAddVisita;
-  const updateVisita  = mongoUpdateVisita;
-  const deleteVisita  = mongoDeleteVisita;
-  const addProyecto   = mongoAddProyecto;
+  const addAlumno = mongoAddAlumno;
+  const updateAlumno = mongoUpdateAlumno;
+  const deleteAlumno = mongoDeleteAlumno;
+  const addVisita = mongoAddVisita;
+  const updateVisita = mongoUpdateVisita;
+  const deleteVisita = mongoDeleteVisita;
+  const addProyecto = mongoAddProyecto;
   const updateProyecto = mongoUpdateProyecto;
   const deleteProyecto = mongoDeleteProyecto;
-  const addInforme    = mongoAddInforme;
+  const addInforme = mongoAddInforme;
   const updateInforme = mongoUpdateInforme;
   const deleteInforme = mongoDeleteInforme;
-  
+
   const alertCount = activeDb.escuelas.reduce((a, esc) => {
     if (esc.docentes.length === 0) a++;
     esc.docentes.forEach(d => { if (d.estado === "Licencia" && d.fechaFinLicencia && diasRestantes(d.fechaFinLicencia) <= 10) a++; });
     return a;
   }, 0);
-  
+
   const filteredEscuelas = activeDb.escuelas.filter(e =>
     !search || e.escuela.toLowerCase().includes(search.toLowerCase()) ||
     e.de.toLowerCase().includes(search.toLowerCase()) ||
@@ -2148,7 +1025,7 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
     e.docentes.some(d => d.nombreApellido.toLowerCase().includes(search.toLowerCase())) ||
     e.alumnos.some(a => a.nombre.toLowerCase().includes(search.toLowerCase()))
   );
-  
+
   // Filtrar visitas globalmente
   const filteredVisitas = activeDb.escuelas.map(esc => ({
     ...esc,
@@ -2158,7 +1035,7 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
       esc.de.toLowerCase().includes(search.toLowerCase())
     )
   })).filter(esc => !search || esc.visitas.length > 0);
-  
+
   // Filtrar proyectos globalmente
   const filteredProyectos = activeDb.escuelas.map(esc => ({
     ...esc,
@@ -2169,7 +1046,7 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
       esc.de.toLowerCase().includes(search.toLowerCase())
     )
   })).filter(esc => !search || esc.proyectos.length > 0);
-  
+
   // Filtrar informes globalmente
   const filteredInformes = activeDb.escuelas.map(esc => ({
     ...esc,
@@ -2180,9 +1057,9 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
       esc.de.toLowerCase().includes(search.toLowerCase())
     )
   })).filter(esc => !search || esc.informes.length > 0);
-  
+
   if (!currentUser) return <><style>{STYLES}</style><Login onLogin={setCurrentUser} /></>;
-  
+
   return (
     <>
       <style>{STYLES}</style>
@@ -2190,16 +1067,16 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
         {/* HEADER */}
         <header className="header">
           <div className="flex items-center gap-16">
-            <button className="btn-icon" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} style={{fontSize:18}}>☰</button>
+            <button className="btn-icon" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} style={{ fontSize: 18 }}>☰</button>
             <div>
               <div className="header-title">🏫 Sistema ACDM</div>
               <div className="header-sub">Gestión de Asistentes Celadores/as para estudiantes con Discapacidad Motora</div>
             </div>
           </div>
           <div className="flex items-center gap-16">
-            <div className="search-input-wrap" style={{width:220}}>
+            <div className="search-input-wrap" style={{ width: 220 }}>
               <span className="search-icon">🔍</span>
-              <input className="form-input search-main" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar..." style={{paddingLeft:32}} />
+              <input className="form-input search-main" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar..." style={{ paddingLeft: 32 }} />
             </div>
             <div className="papiweb-brand">
               <div className="led-dot" />
@@ -2208,9 +1085,9 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
                 <div className="papiweb-sub">Desarrollos Informáticos</div>
               </div>
             </div>
-            <UserMenu 
-              currentUser={currentUser} 
-              isAdmin={isAdmin} 
+            <UserMenu
+              currentUser={currentUser}
+              isAdmin={isAdmin}
               onLogout={() => {
                 setCurrentUser(null);
                 if (propOnLogout) propOnLogout();
@@ -2220,7 +1097,7 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
             />
           </div>
         </header>
-        
+
         <div className="main">
           {/* SIDEBAR COMPONENT */}
           <Sidebar
@@ -2232,7 +1109,7 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
             alertCount={alertCount}
             onNewEscuela={() => setEscuelaModal({ isNew: true, data: null })}
           />
-          
+
           {/* CONTENT */}
           <main className="content">
             {/* DASHBOARD */}
@@ -2240,21 +1117,21 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
               <div>
                 <div className="flex items-center justify-between mb-24">
                   <div>
-                    <h1 style={{fontFamily:'Rajdhani', fontSize:28, fontWeight:700, color:'var(--accent)', letterSpacing:2}}>Dashboard</h1>
-                    <p style={{color:'var(--text2)', fontSize:13}}>Vista general del sistema — {new Date().toLocaleDateString('es-AR', {weekday:'long', year:'numeric', month:'long', day:'numeric'})}</p>
+                    <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2 }}>Dashboard</h1>
+                    <p style={{ color: 'var(--text2)', fontSize: 13 }}>Vista general del sistema — {new Date().toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
                   </div>
                 </div>
                 <Statistics escuelas={activeDb.escuelas} onNavigate={setActiveSection} />
               </div>
             )}
-            
+
             {/* ESCUELAS */}
             {activeSection === "escuelas" && (
               <div>
                 <div className="flex items-center justify-between mb-16">
                   <div>
-                    <h1 style={{fontFamily:'Rajdhani', fontSize:28, fontWeight:700, color:'var(--accent)', letterSpacing:2}}>Escuelas</h1>
-                    <p style={{color:'var(--text2)', fontSize:13}}>{filteredEscuelas.length} escuela(s) encontrada(s)</p>
+                    <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2 }}>Escuelas</h1>
+                    <p style={{ color: 'var(--text2)', fontSize: 13 }}>{filteredEscuelas.length} escuela(s) encontrada(s)</p>
                   </div>
                   <div className="flex gap-8 items-center flex-wrap">
                     <div className="view-toggle">
@@ -2264,10 +1141,10 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
                     {isAdmin && <button className="btn btn-primary" onClick={() => setEscuelaModal({ isNew: true, data: null })}>➕ Nueva Escuela</button>}
                   </div>
                 </div>
-                
-                {filteredEscuelas.length === 0 && <div className="no-data card">No se encontraron escuelas. {isAdmin && <button className="btn btn-primary btn-sm" style={{marginLeft:8}} onClick={() => setEscuelaModal({isNew:true,data:null})}>Crear primera escuela</button>}</div>}
-                
-                <div style={{display:'flex', flexDirection:'column', gap:12}}>
+
+                {filteredEscuelas.length === 0 && <div className="no-data card">No se encontraron escuelas. {isAdmin && <button className="btn btn-primary btn-sm" style={{ marginLeft: 8 }} onClick={() => setEscuelaModal({ isNew: true, data: null })}>Crear primera escuela</button>}</div>}
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {filteredEscuelas.map(esc => (
                     <EscuelaDetail key={esc.id} esc={esc} viewMode={viewMode} isAdmin={isAdmin}
                       onEdit={() => setEscuelaModal({ isNew: false, data: esc })}
@@ -2283,14 +1160,14 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
                 </div>
               </div>
             )}
-            
+
             {/* ALERTAS */}
             {activeSection === "alertas" && (
               <div>
-                <h1 style={{fontFamily:'Rajdhani', fontSize:28, fontWeight:700, color:'var(--accent)', letterSpacing:2, marginBottom:8}}>Centro de Alertas</h1>
-                <p style={{color:'var(--text2)', fontSize:13, marginBottom:24}}>{alertCount} alerta(s) activa(s)</p>
+                <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2, marginBottom: 8 }}>Centro de Alertas</h1>
+                <p style={{ color: 'var(--text2)', fontSize: 13, marginBottom: 24 }}>{alertCount} alerta(s) activa(s)</p>
                 <AlertPanel escuelas={activeDb.escuelas} />
-                
+
                 <div className="card mt-16">
                   <div className="card-header"><span className="card-title">📋 Resumen de Licencias Activas</span></div>
                   <div className="table-wrap">
@@ -2299,13 +1176,13 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
                       <tbody>
                         {activeDb.escuelas.flatMap(esc => esc.docentes.filter(d => d.estado === "Licencia").map(d => (
                           <tr key={`${esc.id}-${d.id}`}>
-                            <td style={{maxWidth:180, fontSize:12}}>{esc.escuela}</td>
-                            <td style={{fontFamily:'Rajdhani', fontWeight:700}}>{d.nombreApellido}</td>
-                            <td style={{fontSize:12}}>{d.motivo}</td>
-                            <td style={{fontSize:12}}>{formatDate(d.fechaInicioLicencia)}</td>
-                            <td style={{fontSize:12}}>{formatDate(d.fechaFinLicencia)}</td>
+                            <td style={{ maxWidth: 180, fontSize: 12 }}>{esc.escuela}</td>
+                            <td style={{ fontFamily: 'Rajdhani', fontWeight: 700 }}>{d.nombreApellido}</td>
+                            <td style={{ fontSize: 12 }}>{d.motivo}</td>
+                            <td style={{ fontSize: 12 }}>{formatDate(d.fechaInicioLicencia)}</td>
+                            <td style={{ fontSize: 12 }}>{formatDate(d.fechaFinLicencia)}</td>
                             <td><DaysRemaining fechaFin={d.fechaFinLicencia} /></td>
-                            <td style={{fontSize:12}}>{d.suplentes.length > 0 ? d.suplentes.map(s => s.nombreApellido).join(", ") : <span className="badge badge-danger">SIN SUPLENTE</span>}</td>
+                            <td style={{ fontSize: 12 }}>{d.suplentes.length > 0 ? d.suplentes.map(s => s.nombreApellido).join(", ") : <span className="badge badge-danger">SIN SUPLENTE</span>}</td>
                           </tr>
                         )))}
                       </tbody>
@@ -2315,25 +1192,25 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
                 </div>
               </div>
             )}
-            
+
             {/* ESTADISTICAS */}
             {activeSection === "estadisticas" && (
               <div>
-                <h1 style={{fontFamily:'Rajdhani', fontSize:28, fontWeight:700, color:'var(--accent)', letterSpacing:2, marginBottom:24}}>Estadísticas</h1>
+                <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2, marginBottom: 24 }}>Estadísticas</h1>
                 <Statistics escuelas={activeDb.escuelas} />
               </div>
             )}
-            
+
             {/* CALENDARIO */}
             {activeSection === "calendario" && <CalendarioView escuelas={activeDb.escuelas} isAdmin={isAdmin} />}
-            
+
             {/* VISITAS */}
             {activeSection === "visitas" && (
               <div>
                 <div className="flex items-center justify-between mb-16">
                   <div>
-                    <h1 style={{fontFamily:'Rajdhani', fontSize:28, fontWeight:700, color:'var(--accent)', letterSpacing:2}}>Visitas a Escuelas</h1>
-                    <p style={{color:'var(--text2)', fontSize:13}}>Registro de visitas y observaciones a las escuelas</p>
+                    <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2 }}>Visitas a Escuelas</h1>
+                    <p style={{ color: 'var(--text2)', fontSize: 13 }}>Registro de visitas y observaciones a las escuelas</p>
                   </div>
                   {isAdmin && <button className="btn btn-primary" onClick={() => setVisitaModal({ isNew: true, data: null, escuelaId: null })}>➕ Nueva Visita</button>}
                 </div>
@@ -2343,17 +1220,17 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
                     <div key={esc.id} className="card">
                       <div className="card-header">
                         <span className="card-title">{esc.escuela}</span>
-                        <span style={{fontSize:11, color:'var(--text3)'}}>{esc.de}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text3)' }}>{esc.de}</span>
                       </div>
                       {(!esc.visitas || esc.visitas.length === 0) ? (
                         <div className="no-data">Sin visitas registradas</div>
                       ) : (
                         esc.visitas.map(v => (
-                          <div key={v.id} style={{padding:'12px', borderBottom:'1px solid var(--border)', fontSize:13}}>
-                            <div style={{display:'flex', justifyContent:'space-between', alignItems:'start'}}>
+                          <div key={v.id} style={{ padding: '12px', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
                               <div>
-                                <div style={{fontFamily:'Rajdhani', fontWeight:700, color:'var(--accent)'}}>📅 {formatDate(v.fecha)}</div>
-                                <div style={{color:'var(--text2)', marginTop:6, fontSize:12}}>{v.observaciones}</div>
+                                <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, color: 'var(--accent)' }}>📅 {formatDate(v.fecha)}</div>
+                                <div style={{ color: 'var(--text2)', marginTop: 6, fontSize: 12 }}>{v.observaciones}</div>
                               </div>
                               {isAdmin && (
                                 <div className="flex gap-4">
@@ -2366,21 +1243,21 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
                         ))
                       )}
                       {isAdmin && (
-                        <button className="btn btn-secondary btn-sm" style={{marginTop:12, width:'100%'}} onClick={() => setVisitaModal({ isNew: true, data: null, escuelaId: esc.id })}>+ Agregar visita</button>
+                        <button className="btn btn-secondary btn-sm" style={{ marginTop: 12, width: '100%' }} onClick={() => setVisitaModal({ isNew: true, data: null, escuelaId: esc.id })}>+ Agregar visita</button>
                       )}
                     </div>
                   ))}
                 </div>
               </div>
             )}
-            
+
             {/* PROYECTOS */}
             {activeSection === "proyectos" && (
               <div>
                 <div className="flex items-center justify-between mb-16">
                   <div>
-                    <h1 style={{fontFamily:'Rajdhani', fontSize:28, fontWeight:700, color:'var(--accent)', letterSpacing:2}}>Proyectos Entregados</h1>
-                    <p style={{color:'var(--text2)', fontSize:13}}>Proyectos desarrollados e implementados por los ACDM</p>
+                    <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2 }}>Proyectos Entregados</h1>
+                    <p style={{ color: 'var(--text2)', fontSize: 13 }}>Proyectos desarrollados e implementados por los ACDM</p>
                   </div>
                   {isAdmin && <button className="btn btn-primary" onClick={() => setProyectoModal({ isNew: true, data: null, escuelaId: null })}>➕ Nuevo Proyecto</button>}
                 </div>
@@ -2390,24 +1267,24 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
                     <div key={esc.id} className="card">
                       <div className="card-header">
                         <span className="card-title">{esc.escuela}</span>
-                        <span style={{fontSize:11, color:'var(--text3)'}}>{esc.de}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text3)' }}>{esc.de}</span>
                       </div>
                       {(!esc.proyectos || esc.proyectos.length === 0) ? (
                         <div className="no-data">Sin proyectos registrados</div>
                       ) : (
                         esc.proyectos.map(p => (
-                          <div key={p.id} style={{padding:'12px', borderBottom:'1px solid var(--border)', fontSize:13}}>
-                            <div style={{display:'flex', justifyContent:'space-between', alignItems:'start'}}>
-                              <div style={{flex:1}}>
-                                <div style={{fontFamily:'Rajdhani', fontWeight:700, color:'var(--accent)'}}>{p.nombre}</div>
-                                <div style={{color:'var(--text2)', marginTop:4, fontSize:11}}>{p.descripcion}</div>
-                                <div style={{marginTop:6, display:'flex', gap:12, fontSize:11}}>
+                          <div key={p.id} style={{ padding: '12px', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, color: 'var(--accent)' }}>{p.nombre}</div>
+                                <div style={{ color: 'var(--text2)', marginTop: 4, fontSize: 11 }}>{p.descripcion}</div>
+                                <div style={{ marginTop: 6, display: 'flex', gap: 12, fontSize: 11 }}>
                                   <span className={`badge badge-${p.estado === 'Completado' ? 'active' : 'warning'}`}>{p.estado}</span>
-                                  <span style={{color:'var(--text3)'}}>📅 {formatDate(p.fechaInicio)} → {formatDate(p.fechaBaja)}</span>
+                                  <span style={{ color: 'var(--text3)' }}>📅 {formatDate(p.fechaInicio)} → {formatDate(p.fechaBaja)}</span>
                                 </div>
                               </div>
                               {isAdmin && (
-                                <div className="flex gap-4" style={{marginLeft:8}}>
+                                <div className="flex gap-4" style={{ marginLeft: 8 }}>
                                   <button className="btn btn-secondary btn-sm" onClick={() => setProyectoModal({ isNew: false, data: p, escuelaId: esc.id })}>✏️</button>
                                   <button className="btn btn-danger btn-sm" onClick={() => deleteProyecto(esc.id, p.id)}>🗑️</button>
                                 </div>
@@ -2417,21 +1294,21 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
                         ))
                       )}
                       {isAdmin && (
-                        <button className="btn btn-secondary btn-sm" style={{marginTop:12, width:'100%'}} onClick={() => setProyectoModal({ isNew: true, data: null, escuelaId: esc.id })}>+ Agregar proyecto</button>
+                        <button className="btn btn-secondary btn-sm" style={{ marginTop: 12, width: '100%' }} onClick={() => setProyectoModal({ isNew: true, data: null, escuelaId: esc.id })}>+ Agregar proyecto</button>
                       )}
                     </div>
                   ))}
                 </div>
               </div>
             )}
-            
+
             {/* INFORMES */}
             {activeSection === "informes" && (
               <div>
                 <div className="flex items-center justify-between mb-16">
                   <div>
-                    <h1 style={{fontFamily:'Rajdhani', fontSize:28, fontWeight:700, color:'var(--accent)', letterSpacing:2}}>Informes Entregados</h1>
-                    <p style={{color:'var(--text2)', fontSize:13}}>Informes periódicos entregados por los ACDM</p>
+                    <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2 }}>Informes Entregados</h1>
+                    <p style={{ color: 'var(--text2)', fontSize: 13 }}>Informes periódicos entregados por los ACDM</p>
                   </div>
                   {isAdmin && <button className="btn btn-primary" onClick={() => setInformeModal({ isNew: true, data: null, escuelaId: null })}>➕ Nuevo Informe</button>}
                 </div>
@@ -2441,24 +1318,24 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
                     <div key={esc.id} className="card">
                       <div className="card-header">
                         <span className="card-title">{esc.escuela}</span>
-                        <span style={{fontSize:11, color:'var(--text3)'}}>{esc.de}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text3)' }}>{esc.de}</span>
                       </div>
                       {(!esc.informes || esc.informes.length === 0) ? (
                         <div className="no-data">Sin informes registrados</div>
                       ) : (
                         esc.informes.map(i => (
-                          <div key={i.id} style={{padding:'12px', borderBottom:'1px solid var(--border)', fontSize:13}}>
-                            <div style={{display:'flex', justifyContent:'space-between', alignItems:'start'}}>
-                              <div style={{flex:1}}>
-                                <div style={{fontFamily:'Rajdhani', fontWeight:700, color:'var(--accent)'}}>{i.titulo}</div>
-                                <div style={{color:'var(--text2)', marginTop:4, fontSize:11}}>{i.observaciones}</div>
-                                <div style={{marginTop:6, display:'flex', gap:12, fontSize:11}}>
+                          <div key={i.id} style={{ padding: '12px', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, color: 'var(--accent)' }}>{i.titulo}</div>
+                                <div style={{ color: 'var(--text2)', marginTop: 4, fontSize: 11 }}>{i.observaciones}</div>
+                                <div style={{ marginTop: 6, display: 'flex', gap: 12, fontSize: 11 }}>
                                   <span className={`badge badge-${i.estado === 'Entregado' ? 'active' : 'warning'}`}>{i.estado}</span>
-                                  <span style={{color:'var(--text3)'}}>📅 {formatDate(i.fechaEntrega)}</span>
+                                  <span style={{ color: 'var(--text3)' }}>📅 {formatDate(i.fechaEntrega)}</span>
                                 </div>
                               </div>
                               {isAdmin && (
-                                <div className="flex gap-4" style={{marginLeft:8}}>
+                                <div className="flex gap-4" style={{ marginLeft: 8 }}>
                                   <button className="btn btn-secondary btn-sm" onClick={() => setInformeModal({ isNew: false, data: i, escuelaId: esc.id })}>✏️</button>
                                   <button className="btn btn-danger btn-sm" onClick={() => deleteInforme(esc.id, i.id)}>🗑️</button>
                                 </div>
@@ -2468,28 +1345,28 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
                         ))
                       )}
                       {isAdmin && (
-                        <button className="btn btn-secondary btn-sm" style={{marginTop:12, width:'100%'}} onClick={() => setInformeModal({ isNew: true, data: null, escuelaId: esc.id })}>+ Agregar informe</button>
+                        <button className="btn btn-secondary btn-sm" style={{ marginTop: 12, width: '100%' }} onClick={() => setInformeModal({ isNew: true, data: null, escuelaId: esc.id })}>+ Agregar informe</button>
                       )}
                     </div>
                   ))}
                 </div>
               </div>
             )}
-            
+
             {/* EXPORTAR */}
             {activeSection === "exportar" && (
               <div>
-                <h1 style={{fontFamily:'Rajdhani', fontSize:28, fontWeight:700, color:'var(--accent)', letterSpacing:2, marginBottom:24}}>Exportar</h1>
+                <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2, marginBottom: 24 }}>Exportar</h1>
                 <div className="card-grid">
                   <div className="card">
                     <div className="card-header"><span className="card-title">Reporte de Datos</span></div>
-                    <p style={{color:'var(--text2)', marginBottom:16, fontSize:13}}>Genera reportes en formato texto, CSV o Excel con los datos del sistema.</p>
+                    <p style={{ color: 'var(--text2)', marginBottom: 16, fontSize: 13 }}>Genera reportes en formato texto, CSV o Excel con los datos del sistema.</p>
                     <button className="btn btn-primary" onClick={() => setShowExport(true)}>📄 Generar Reporte</button>
                   </div>
-                  
+
                   <div className="card">
                     <div className="card-header"><span className="card-title">Extraer Mails</span></div>
-                    <p style={{color:'var(--text2)', marginBottom:16, fontSize:13}}>Extrae todos los emails de las escuelas. Puedes copiarlos o descargarlos como archivo.</p>
+                    <p style={{ color: 'var(--text2)', marginBottom: 16, fontSize: 13 }}>Extrae todos los emails de las escuelas. Puedes copiarlos o descargarlos como archivo.</p>
                     <button className="btn btn-primary" onClick={() => setShowMailsExtractor(true)}>✉️ Extraer Emails</button>
                   </div>
                 </div>
@@ -2498,7 +1375,7 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
           </main>
         </div>
       </div>
-      
+
       {/* MODALS */}
       {escuelaModal && (
         <EscuelaModal isNew={escuelaModal.isNew} escuela={escuelaModal.data}
@@ -2541,20 +1418,20 @@ export default function App({ currentUser: propCurrentUser, onLogout: propOnLogo
 function MailsExtractor({ escuelas, onClose }) {
   const [formato, setFormato] = useState("lista");
   const [copiadoMsg, setCopiadoMsg] = useState("");
-  
+
   // Extraer todos los mails
   const mails = escuelas
     .filter(esc => esc.mail && esc.mail.trim())
     .map(esc => ({ mail: esc.mail, escuela: esc.escuela, de: esc.de }));
-  
+
   const mailsUnicos = [...new Set(mails.map(m => m.mail))];
-  
+
   // Copiar al portapapeles
   function copiarAlPortapapeles() {
-    const texto = formato === "lista" 
+    const texto = formato === "lista"
       ? mailsUnicos.join("\n")
       : mailsUnicos.join(", ");
-    
+
     navigator.clipboard.writeText(texto).then(() => {
       setCopiadoMsg("✓ Copiado al portapapeles");
       setTimeout(() => setCopiadoMsg(""), 2000);
@@ -2562,7 +1439,7 @@ function MailsExtractor({ escuelas, onClose }) {
       alert("Error al copiar. Por favor intenta de nuevo.");
     });
   }
-  
+
   // Descargar archivo
   function descargarArchivo() {
     const contenido = mails.map(m => `${m.mail},${m.escuela},${m.de}`).join("\n");
@@ -2575,70 +1452,70 @@ function MailsExtractor({ escuelas, onClose }) {
     a.click();
     URL.revokeObjectURL(url);
   }
-  
+
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{maxWidth: '600px'}}>
+      <div className="modal" style={{ maxWidth: '600px' }}>
         <div className="modal-header">
           <div className="modal-title">✉️ Extractor de Emails</div>
           <button className="btn-icon" onClick={onClose}>✕</button>
         </div>
-        
-        <div style={{marginBottom: 16, padding: '12px', background: 'rgba(0,212,255,0.1)', borderRadius: 8, fontSize: 13}}>
+
+        <div style={{ marginBottom: 16, padding: '12px', background: 'rgba(0,212,255,0.1)', borderRadius: 8, fontSize: 13 }}>
           <strong>Total de emails únicos:</strong> {mailsUnicos.length}
         </div>
-        
+
         <div className="form-group">
           <label className="form-label">Formato</label>
-          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap: 8}}>
-            <button 
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <button
               className={`btn ${formato === 'lista' ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setFormato('lista')}>
               📋 Listado (línea x línea)
             </button>
-            <button 
+            <button
               className={`btn ${formato === 'comas' ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setFormato('comas')}>
               🔗 Separado por comas
             </button>
           </div>
         </div>
-        
+
         <div className="form-group">
           <label className="form-label">Vista Previa</label>
-          <textarea 
-            className="form-textarea" 
+          <textarea
+            className="form-textarea"
             value={formato === 'lista' ? mailsUnicos.join("\n") : mailsUnicos.join(", ")}
             readOnly
             rows="6"
-            style={{fontFamily: 'monospace', fontSize: 12}}
+            style={{ fontFamily: 'monospace', fontSize: 12 }}
           />
         </div>
-        
-        <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16}}>
-          <button 
-            className="btn btn-primary" 
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
+          <button
+            className="btn btn-primary"
             onClick={copiarAlPortapapeles}
-            style={{justifyContent: 'center'}}>
+            style={{ justifyContent: 'center' }}>
             {copiadoMsg ? copiadoMsg : "📋 Copiar"}
           </button>
-          <button 
-            className="btn btn-primary" 
+          <button
+            className="btn btn-primary"
             onClick={descargarArchivo}
-            style={{justifyContent: 'center'}}>
+            style={{ justifyContent: 'center' }}>
             💾 Descargar CSV
           </button>
         </div>
-        
-        <div style={{fontSize: 12, color: 'var(--text2)', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: 8}}>
-          <strong>Detalles:</strong><br/>
+
+        <div style={{ fontSize: 12, color: 'var(--text2)', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: 8 }}>
+          <strong>Detalles:</strong><br />
           {mails.map((m, i) => (
-            <div key={i} style={{marginTop: 4}}>
-              <span style={{color: 'var(--accent)'}}>{m.mail}</span> <span style={{fontSize: 11, color: 'var(--text3)'}}>— {m.escuela} ({m.de})</span>
+            <div key={i} style={{ marginTop: 4 }}>
+              <span style={{ color: 'var(--accent)' }}>{m.mail}</span> <span style={{ fontSize: 11, color: 'var(--text3)' }}>— {m.escuela} ({m.de})</span>
             </div>
           ))}
         </div>
-        
+
         <div className="flex gap-8 justify-end mt-16">
           <button className="btn btn-secondary" onClick={onClose}>Cerrar</button>
         </div>
@@ -2659,24 +1536,24 @@ function CalendarioView({ escuelas, isAdmin }) {
   const [error, setError] = useState("");
   const [periodoInicio, setPeriodoInicio] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
   const [periodoFin, setPeriodoFin] = useState(new Date(new Date().getFullYear(), 11, 31).toISOString().split('T')[0]);
-  
-  const monthNames = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-  const dayNames = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
-  
+
+  const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+  const dayNames = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+
   function navCal(d) {
     let m = month + d; let y = year;
     if (m < 0) { m = 11; y--; } if (m > 11) { m = 0; y++; }
     setMonth(m); setYear(y);
   }
-  
+
   const daysInMonth = getDaysInMonth(year, month);
   const firstDay = getFirstDayOfMonth(year, month);
-  
+
   // Obtener datos filtrados según la escuela seleccionada
-  const dataToUse = selectedEscuela 
+  const dataToUse = selectedEscuela
     ? escuelas.filter(e => e.id === selectedEscuela)
     : escuelas;
-  
+
   // Filtrar licencias por período
   function isLicenciaInPeriodo(licencia) {
     if (!licencia.fechaInicioLicencia || !licencia.fechaFinLicencia) return false;
@@ -2687,7 +1564,7 @@ function CalendarioView({ escuelas, isAdmin }) {
     // La licencia se superpone con el período si: inicio <= fin del período Y fin >= inicio del período
     return inicio <= periodoEnd && fin >= periodoStart;
   }
-  
+
   // Get events per day
   function getEventsForDay(d) {
     const date = new Date(year, month, d);
@@ -2698,10 +1575,10 @@ function CalendarioView({ escuelas, isAdmin }) {
           const s = new Date(doc.fechaInicioLicencia);
           const e = new Date(doc.fechaFinLicencia);
           if (date >= s && date <= e) {
-            events.push({ 
-              type: "licencia", 
+            events.push({
+              type: "licencia",
               id: doc.id,
-              name: doc.nombreApellido, 
+              name: doc.nombreApellido,
               esc: esc.escuela,
               escId: esc.id,
               docId: doc.id,
@@ -2715,23 +1592,23 @@ function CalendarioView({ escuelas, isAdmin }) {
     });
     return events;
   }
-  
+
   const dayEvents = selectedDay ? getEventsForDay(selectedDay) : [];
   const today = new Date();
-  
+
   const cells = [];
   for (let i = 0; i < firstDay; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-  
+
   // Obtener licencias del mes actual filtrando por período
-  const monthLicencias = dataToUse.flatMap(esc => 
+  const monthLicencias = dataToUse.flatMap(esc =>
     (esc.docentes || [])
       .filter(d => {
         if (!d.fechaInicioLicencia) return false;
         const s = new Date(d.fechaInicioLicencia);
         const e = d.fechaFinLicencia ? new Date(d.fechaFinLicencia) : s;
-        const monthMatch = s.getMonth() <= month && e.getMonth() >= month && 
-                          s.getFullYear() <= year && e.getFullYear() >= year;
+        const monthMatch = s.getMonth() <= month && e.getMonth() >= month &&
+          s.getFullYear() <= year && e.getFullYear() >= year;
         return monthMatch && isLicenciaInPeriodo(d);
       })
       .map(d => ({
@@ -2743,16 +1620,16 @@ function CalendarioView({ escuelas, isAdmin }) {
 
   return (
     <div>
-      <h1 style={{fontFamily:'Rajdhani', fontSize:28, fontWeight:700, color:'var(--accent)', letterSpacing:2, marginBottom:24}}>Calendario de Licencias</h1>
-      
-      <div className="flex gap-16 mb-24" style={{alignItems:'flex-end', flexWrap:'wrap'}}>
+      <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2, marginBottom: 24 }}>Calendario de Licencias</h1>
+
+      <div className="flex gap-16 mb-24" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div>
           <label className="form-label">Filtrar por Escuela</label>
-          <select 
-            className="form-select" 
-            value={selectedEscuela} 
+          <select
+            className="form-select"
+            value={selectedEscuela}
             onChange={e => setSelectedEscuela(e.target.value)}
-            style={{minWidth: 300}}
+            style={{ minWidth: 300 }}
           >
             <option value="">Todas las escuelas</option>
             {escuelas.map(esc => (
@@ -2762,55 +1639,55 @@ function CalendarioView({ escuelas, isAdmin }) {
             ))}
           </select>
         </div>
-        
+
         <div>
           <label className="form-label">Período Inicio</label>
-          <input 
-            type="date" 
+          <input
+            type="date"
             className="form-input"
             value={periodoInicio}
             onChange={e => setPeriodoInicio(e.target.value)}
-            style={{minWidth: 200}}
+            style={{ minWidth: 200 }}
           />
         </div>
-        
+
         <div>
           <label className="form-label">Período Fin</label>
-          <input 
-            type="date" 
+          <input
+            type="date"
             className="form-input"
             value={periodoFin}
             onChange={e => setPeriodoFin(e.target.value)}
-            style={{minWidth: 200}}
+            style={{ minWidth: 200 }}
           />
         </div>
-        
-        <button 
+
+        <button
           className="btn btn-secondary"
           onClick={() => {
             const ahora = new Date();
             setPeriodoInicio(new Date(ahora.getFullYear(), 0, 1).toISOString().split('T')[0]);
             setPeriodoFin(new Date(ahora.getFullYear(), 11, 31).toISOString().split('T')[0]);
           }}
-          style={{padding:'10px 16px'}}
+          style={{ padding: '10px 16px' }}
         >
           🔄 Este Año
         </button>
       </div>
 
-      {error && <div className="alert alert-danger" style={{marginBottom:24}}>{error}</div>}
+      {error && <div className="alert alert-danger" style={{ marginBottom: 24 }}>{error}</div>}
 
-      <div style={{display:'grid', gridTemplateColumns:'1fr 320px', gap:24}}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 24 }}>
         <div className="card">
           <div className="flex items-center justify-between mb-16">
             <button className="btn btn-secondary" onClick={() => navCal(-1)}>◀ Anterior</button>
-            <div style={{fontFamily:'Rajdhani', fontSize:22, fontWeight:700, color:'var(--accent)', letterSpacing:2}}>{monthNames[month]} {year}</div>
+            <div style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2 }}>{monthNames[month]} {year}</div>
             <button className="btn btn-secondary" onClick={() => navCal(1)}>Siguiente ▶</button>
           </div>
-          
-          <div style={{display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap:4}}>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
             {dayNames.map(n => (
-              <div key={n} style={{textAlign:'center', padding:'8px 4px', fontSize:11, color:'var(--text3)', fontWeight:700, letterSpacing:1, textTransform:'uppercase'}}>{n}</div>
+              <div key={n} style={{ textAlign: 'center', padding: '8px 4px', fontSize: 11, color: 'var(--text3)', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>{n}</div>
             ))}
             {cells.map((d, i) => {
               const events = d ? getEventsForDay(d) : [];
@@ -2818,24 +1695,24 @@ function CalendarioView({ escuelas, isAdmin }) {
               const isSelected = d === selectedDay;
               return (
                 <div key={i} onClick={() => d && setSelectedDay(d)} style={{
-                  minHeight:60, padding:'6px 8px', borderRadius:8, cursor: d ? 'pointer' : 'default',
+                  minHeight: 60, padding: '6px 8px', borderRadius: 8, cursor: d ? 'pointer' : 'default',
                   background: isSelected ? 'rgba(0,212,255,0.15)' : isToday ? 'rgba(0,212,255,0.08)' : events.length > 0 ? 'rgba(255,71,87,0.08)' : 'var(--card2)',
                   border: isSelected ? '1px solid var(--accent)' : isToday ? '1px solid rgba(0,212,255,0.4)' : '1px solid transparent',
                   transition: 'all 0.15s',
                 }}>
                   {d && <>
-                    <div style={{fontSize:13, fontWeight: isToday ? 700 : 400, color: isToday ? 'var(--accent)' : 'var(--text)'}}>{d}</div>
+                    <div style={{ fontSize: 13, fontWeight: isToday ? 700 : 400, color: isToday ? 'var(--accent)' : 'var(--text)' }}>{d}</div>
                     {events.slice(0, 2).map((ev, j) => (
-                      <div key={j} style={{fontSize:9, background:'rgba(255,71,87,0.3)', color:'var(--red)', borderRadius:3, padding:'1px 4px', marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>🔴</div>
+                      <div key={j} style={{ fontSize: 9, background: 'rgba(255,71,87,0.3)', color: 'var(--red)', borderRadius: 3, padding: '1px 4px', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🔴</div>
                     ))}
-                    {events.length > 2 && <div style={{fontSize:9, color:'var(--text3)'}}>+{events.length-2}</div>}
+                    {events.length > 2 && <div style={{ fontSize: 9, color: 'var(--text3)' }}>+{events.length - 2}</div>}
                   </>}
                 </div>
               );
             })}
           </div>
         </div>
-        
+
         <div>
           {selectedDay ? (
             <div className="card">
@@ -2844,18 +1721,18 @@ function CalendarioView({ escuelas, isAdmin }) {
                 <button className="btn-icon" onClick={() => setSelectedDay(null)}>✕</button>
               </div>
               {loading ? (
-                <div style={{color:'var(--text2)', padding:'20px', textAlign:'center'}}>Cargando...</div>
+                <div style={{ color: 'var(--text2)', padding: '20px', textAlign: 'center' }}>Cargando...</div>
               ) : dayEvents.length === 0 ? (
-                <div style={{color:'var(--text3)', fontSize:13, padding:'20px 0'}}>Sin eventos para este día</div>
+                <div style={{ color: 'var(--text3)', fontSize: 13, padding: '20px 0' }}>Sin eventos para este día</div>
               ) : (
                 dayEvents.map((ev, i) => (
-                  <div key={i} className="alert alert-danger" style={{marginBottom:8}}>
+                  <div key={i} className="alert alert-danger" style={{ marginBottom: 8 }}>
                     <span>🔴</span>
-                    <div style={{flex:1}}>
-                      <strong>{ev.name}</strong><br/>
-                      <span style={{fontSize:12}}>{ev.esc}</span><br/>
-                      <span style={{fontSize:11, opacity:0.8}}>{ev.motivo}</span>
-                      <span style={{fontSize:11, color:'var(--text3)', display:'block', marginTop:4}}>
+                    <div style={{ flex: 1 }}>
+                      <strong>{ev.name}</strong><br />
+                      <span style={{ fontSize: 12 }}>{ev.esc}</span><br />
+                      <span style={{ fontSize: 11, opacity: 0.8 }}>{ev.motivo}</span>
+                      <span style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginTop: 4 }}>
                         📅 {ev.diasRestantes} día(s) restante(s)
                       </span>
                     </div>
@@ -2867,21 +1744,21 @@ function CalendarioView({ escuelas, isAdmin }) {
             <div className="card">
               <div className="card-header"><span className="card-title">📋 Licencias del Mes</span></div>
               {loading ? (
-                <div style={{color:'var(--text2)', padding:'20px', textAlign:'center'}}>Cargando...</div>
+                <div style={{ color: 'var(--text2)', padding: '20px', textAlign: 'center' }}>Cargando...</div>
               ) : monthLicencias.length === 0 ? (
                 <div className="no-data">Sin licencias registradas</div>
               ) : (
                 monthLicencias.map((d, i) => (
-                  <div key={i} className="docente-row" style={{marginBottom:8, cursor:'pointer', padding:8, borderRadius:4, transition:'all 0.2s', ':hover': {background:'var(--border)'}}} 
-                    onMouseEnter={e => e.currentTarget.style.background='var(--border)'}
-                    onMouseLeave={e => e.currentTarget.style.background='transparent'}>
-                    <div style={{fontFamily:'Rajdhani', fontWeight:700}}>{d.nombreApellido}</div>
-                    <div style={{fontSize:11, color:'var(--text2)', marginTop:2}}>{d.esc}</div>
-                    <div style={{fontSize:11, color:'var(--yellow)', marginTop:2}}>{d.motivo}</div>
-                    <div style={{fontSize:11, color:'var(--text3)', marginTop:2}}>
+                  <div key={i} className="docente-row" style={{ marginBottom: 8, cursor: 'pointer', padding: 8, borderRadius: 4, transition: 'all 0.2s', ':hover': { background: 'var(--border)' } }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--border)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    <div style={{ fontFamily: 'Rajdhani', fontWeight: 700 }}>{d.nombreApellido}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>{d.esc}</div>
+                    <div style={{ fontSize: 11, color: 'var(--yellow)', marginTop: 2 }}>{d.motivo}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
                       {formatDate(d.fechaInicioLicencia)} → {formatDate(d.fechaFinLicencia)}
                     </div>
-                    <div style={{fontSize:10, color:'var(--accent3)', marginTop:4, fontWeight:700}}>
+                    <div style={{ fontSize: 10, color: 'var(--accent3)', marginTop: 4, fontWeight: 700 }}>
                       ⏱ {diasRestantes(d.fechaFinLicencia)} día(s)
                     </div>
                   </div>

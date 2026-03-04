@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useMongoData } from './hooks/useMongoData.js';
+import PapiwebSpinner from './PapiwebSpinner.jsx';
 import './ACDMSystemMongo.css';
 
 /**
@@ -30,10 +31,12 @@ export default function ACDMSystem() {
   const [activeSection, setActiveSection] = useState('dashboard');
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [loginError, setLoginError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   // Manejar login
   const handleLogin = async (e) => {
     e.preventDefault();
+    setIsLoggingIn(true);
     try {
       const user = await login(loginForm.username, loginForm.password);
       setCurrentUser(user);
@@ -41,6 +44,8 @@ export default function ACDMSystem() {
       setLoginError('');
     } catch (err) {
       setLoginError(err.message);
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -67,7 +72,7 @@ export default function ACDMSystem() {
   // Pantalla de login
   if (!currentUser) {
     return (
-      <div className="login-container" style={{...styles.loginContainer, background: 'transparent'}}>
+      <div className="login-container" style={{ ...styles.loginContainer, background: 'transparent' }}>
         <div style={styles.loginBox}>
           <div style={styles.logoContainer}>
             <div style={styles.papiwebLogo}>
@@ -77,33 +82,39 @@ export default function ACDMSystem() {
           </div>
           <h1 style={styles.loginTitle}>Sistema ACDM</h1>
           <h2 style={styles.loginSubtitle}>Gestión de Asistentes de Clase</h2>
-          <form onSubmit={handleLogin} style={styles.loginForm}>
-            <div style={styles.formGroup}>
-              <label style={styles.formLabel}>Usuario</label>
-              <input
-                type="text"
-                placeholder="admin"
-                value={loginForm.username}
-                onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })}
-                style={styles.input}
-                autoFocus
-              />
+          {isLoggingIn ? (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '40px 0', minHeight: '260px' }}>
+              <PapiwebSpinner />
             </div>
-            <div style={styles.formGroup}>
-              <label style={styles.formLabel}>Contraseña</label>
-              <input
-                type="password"
-                placeholder="••••••••"
-                value={loginForm.password}
-                onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
-                style={styles.input}
-              />
-            </div>
-            {loginError && <div style={styles.error}><span>⚠️</span> {loginError}</div>}
-            <button type="submit" style={styles.button}>Ingresar →</button>
-          </form>
+          ) : (
+            <form onSubmit={handleLogin} style={styles.loginForm}>
+              <div style={styles.formGroup}>
+                <label style={styles.formLabel}>Usuario</label>
+                <input
+                  type="text"
+                  placeholder="admin"
+                  value={loginForm.username}
+                  onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })}
+                  style={styles.input}
+                  autoFocus
+                />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.formLabel}>Contraseña</label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={loginForm.password}
+                  onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
+                  style={styles.input}
+                />
+              </div>
+              {loginError && <div style={styles.error}><span>⚠️</span> {loginError}</div>}
+              <button type="submit" style={styles.button}>Ingresar →</button>
+            </form>
+          )}
           <div style={styles.hintText}>
-            Demo: <span style={styles.hintKey}>admin</span> / <span style={styles.hintKey}>admin2025</span><br/>
+            Demo: <span style={styles.hintKey}>admin</span> / <span style={styles.hintKey}>admin2025</span><br />
             Acceso rápido: <span style={styles.hintKey}>Ctrl+Alt+A</span>
           </div>
         </div>
@@ -123,34 +134,34 @@ export default function ACDMSystem() {
       </header>
 
       <nav style={styles.nav}>
-        <button 
+        <button
           onClick={() => setActiveSection('dashboard')}
-          style={{...styles.navBtn, ...(activeSection === 'dashboard' ? styles.navBtnActive : {})}}
+          style={{ ...styles.navBtn, ...(activeSection === 'dashboard' ? styles.navBtnActive : {}) }}
         >
           Dashboard
         </button>
-        <button 
+        <button
           onClick={() => setActiveSection('escuelas')}
-          style={{...styles.navBtn, ...(activeSection === 'escuelas' ? styles.navBtnActive : {})}}
+          style={{ ...styles.navBtn, ...(activeSection === 'escuelas' ? styles.navBtnActive : {}) }}
         >
           Escuelas
         </button>
-        <button 
+        <button
           onClick={() => setActiveSection('alumnos')}
-          style={{...styles.navBtn, ...(activeSection === 'alumnos' ? styles.navBtnActive : {})}}
+          style={{ ...styles.navBtn, ...(activeSection === 'alumnos' ? styles.navBtnActive : {}) }}
         >
           Alumnos
         </button>
-        <button 
+        <button
           onClick={() => setActiveSection('docentes')}
-          style={{...styles.navBtn, ...(activeSection === 'docentes' ? styles.navBtnActive : {})}}
+          style={{ ...styles.navBtn, ...(activeSection === 'docentes' ? styles.navBtnActive : {}) }}
         >
           Docentes
         </button>
       </nav>
 
       <main style={styles.main}>
-        {loading && <div style={styles.loading}>Cargando datos...</div>}
+        {loading && <div style={{ ...styles.loading, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '40px' }}><PapiwebSpinner /></div>}
         {error && <div style={styles.error}>Error: {error}</div>}
 
         {activeSection === 'dashboard' && (
