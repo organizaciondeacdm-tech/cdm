@@ -13,7 +13,8 @@ const {
   getAllActiveSessions,
   revokeSessionByAdmin,
   getWatchedIpLog,
-  getKnownIps
+  getKnownIps,
+  trafficHandshake
 } = require('../controllers/authController');
 const { authMiddleware, requireAdmin } = require('../middleware/auth');
 const { validateUser } = require('../middleware/validation');
@@ -69,6 +70,7 @@ const refreshLimiter = rateLimit({
 router.post('/login', authAntiBotGuard, loginLimiter, login);
 router.post('/refresh-token', authAntiBotGuard, refreshLimiter, refreshToken);
 router.post('/logout', authMiddleware, logout);
+router.post('/traffic-handshake', authMiddleware, trafficHandshake);
 router.post('/change-password', authMiddleware, changePassword);
 router.get('/profile', authMiddleware, getProfile);
 

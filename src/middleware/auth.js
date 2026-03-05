@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const User = require('../models/User');
 const SessionService = require('../services/sessionService');
 const JwtKeyManager = require('../utils/jwtKeyManager');
@@ -18,6 +19,97 @@ const SUPERVISOR_ALLOWED_PERMISSIONS = new Set([
   'exportar_datos',
   'ver_reportes'
 ].map((permission) => normalizePermission(permission)));
+
+const TRAFFIC_LOCK_CODE = 'TRAFFIC_LOCK_REQUIRED';
+const LOCK_ALLOWED_PATHS = new Set([
+  '/api/auth/traffic-handshake',
+  '/api/auth/logout'
+]);
+const UNKNOWN_IP_LOCK_TTL_MS = (parseInt(process.env.UNKNOWN_IP_LOCK_TTL_MINUTES, 10) || 30) * 60 * 1000;
+
+const normalizeIp = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('::ffff:')) return raw.slice(7);
+  return raw;
+};
+
+const getClientIp = (req) => normalizeIp(
+  req.headers['x-forwarded-for']?.split(',')[0]
+  || req.headers['x-real-ip']
+  || req.connection?.remoteAddress
+  || req.socket?.remoteAddress
+  || req.ip
+  || 'unknown'
+);
+
+const isKnownIp = (user, ip) => {
+  const expected = normalizeIp(ip);
+  if (!expected) return false;
+  const known = Array.isArray(user?.knownIps) ? user.knownIps : [];
+  return known.some((row) => normalizeIp(row?.ip || row) === expected);
+};
+
+const hashHandshakeProof = ({ challenge = '', token = '', userAgent = '', userId = '' }) => (
+  crypto
+    .createHash('sha256')
+    .update(`${String(challenge)}|${String(token)}|${String(userAgent)}|${String(userId)}`)
+    .digest('hex')
+);
+
+const encodeProofToken = (proofHex = '') => {
+  const base = Buffer.from(String(proofHex), 'utf8').toString('base64url');
+  return `hsv1.${base}`;
+};
+
+const buildSecurityLockFromUnknownIp = ({ req, session, user }) => {
+  const challengeNonce = crypto.randomBytes(24).toString('base64url');
+  const challenge = `acdmhs1.${challengeNonce}`;
+  const proofHash = hashHandshakeProof({
+    challenge,
+    token: req.token || '',
+    userAgent: req.headers['user-agent'] || '',
+    userId: String(user?._id || '')
+  });
+  const requestIp = getClientIp(req);
+  const sessionIp = normalizeIp(session?.deviceInfo?.ip || '');
+  const expiresAt = new Date(Date.now() + UNKNOWN_IP_LOCK_TTL_MS);
+
+  return {
+    active: true,
+    reason: 'unknown_ip',
+    code: TRAFFIC_LOCK_CODE,
+    challenge,
+    expectedProofToken: encodeProofToken(proofHash),
+    requestIp,
+    sessionIp,
+    createdAt: new Date(),
+    expiresAt,
+    attempts: 0
+  };
+};
+
+const isTrafficLockActive = (lock) => {
+  if (!lock || lock.active !== true) return false;
+  const expiry = new Date(lock.expiresAt || 0).getTime();
+  if (!expiry) return false;
+  return expiry > Date.now();
+};
+
+const sendTrafficLockResponse = (res, lock) => (
+  res.status(423).json({
+    success: false,
+    code: TRAFFIC_LOCK_CODE,
+    error: 'Tráfico inusual detectado. Debe completar handshake de seguridad.',
+    lock: {
+      reason: 'unknown_ip',
+      challenge: lock?.challenge,
+      requestIp: lock?.requestIp,
+      sessionIp: lock?.sessionIp,
+      expiresAt: lock?.expiresAt
+    }
+  })
+);
 
 const authMiddleware = async (req, res, next) => {
   try {
@@ -47,6 +139,50 @@ const authMiddleware = async (req, res, next) => {
     req.token = token;
     req.session = session;
     req.sessionId = session._id; // Agregar sessionId para gestión de sesiones
+
+    const path = String(req.originalUrl || '').split('?')[0];
+    const allowWhileLocked = LOCK_ALLOWED_PATHS.has(path);
+    const currentLock = req.user?.securityLock;
+
+    if (currentLock?.active && !isTrafficLockActive(currentLock)) {
+      await User.updateOne(
+        { _id: req.user._id },
+        { $unset: { securityLock: '' } }
+      );
+      req.user.securityLock = null;
+    }
+
+    if (isTrafficLockActive(req.user?.securityLock)) {
+      if (!allowWhileLocked) {
+        return sendTrafficLockResponse(res, req.user.securityLock);
+      }
+      return next();
+    }
+
+    const requestIp = getClientIp(req);
+    const sessionIp = normalizeIp(req.session?.deviceInfo?.ip || '');
+    const sameSessionIp = !!requestIp && !!sessionIp && requestIp === sessionIp;
+    const knownIp = isKnownIp(req.user, requestIp);
+    const shouldLock = requestIp && sessionIp && !sameSessionIp && !knownIp;
+
+    if (shouldLock) {
+      const nextLock = buildSecurityLockFromUnknownIp({
+        req,
+        session: req.session,
+        user: req.user
+      });
+
+      await User.updateOne(
+        { _id: req.user._id },
+        { $set: { securityLock: nextLock } }
+      );
+      req.user.securityLock = nextLock;
+
+      if (!allowWhileLocked) {
+        return sendTrafficLockResponse(res, nextLock);
+      }
+    }
+
     next();
   } catch (error) {
     console.error('Error en authMiddleware:', error);

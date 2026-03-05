@@ -60,7 +60,7 @@ class Session extends BaseMongoModel {
       accessToken: tokenHash,
       isActive: true,
       expiresAt: { $gt: new Date() }
-    }).populate({ path: 'userId', select: 'username email rol permisos isActive nombre apellido' });
+    }).populate({ path: 'userId', select: 'username email rol permisos isActive nombre apellido knownIps securityLock' });
 
     if (!session) return null;
 
@@ -77,7 +77,7 @@ class Session extends BaseMongoModel {
       refreshToken: tokenHash,
       isActive: true,
       refreshExpiresAt: { $gt: new Date() }
-    }).populate({ path: 'userId', select: 'username email rol permisos isActive nombre apellido' });
+    }).populate({ path: 'userId', select: 'username email rol permisos isActive nombre apellido knownIps securityLock' });
   }
 
   static revokeAllUserSessions(userId) {

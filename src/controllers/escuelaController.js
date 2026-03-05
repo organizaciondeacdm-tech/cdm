@@ -457,6 +457,26 @@ const getNestedCollection = async (req, res, collection) => {
   }
 };
 
+const findNestedIndexById = (items, rawId) => {
+  const targetId = String(rawId || '').trim();
+  if (!targetId) return -1;
+  return (Array.isArray(items) ? items : []).findIndex((row) => {
+    const rowId = row?._id || row?.id;
+    return String(rowId || '').trim() === targetId;
+  });
+};
+
+const sanitizeNestedPayload = (collection, payload = {}) => {
+  const source = payload && typeof payload === 'object' ? payload : {};
+  if (collection !== 'informes') return source;
+  return {
+    titulo: String(source.titulo || '').trim() || 'Sin título',
+    estado: String(source.estado || 'Pendiente').trim() || 'Pendiente',
+    fechaEntrega: source.fechaEntrega || null,
+    observaciones: String(source.observaciones || '').trim()
+  };
+};
+
 const createNestedCollectionItem = async (req, res, collection) => {
   try {
     const escuela = await Escuela.findById(req.params.id);
@@ -464,7 +484,10 @@ const createNestedCollectionItem = async (req, res, collection) => {
       return res.status(404).json({ success: false, error: 'Escuela no encontrada' });
     }
 
-    escuela[collection].push(req.body || {});
+    if (!Array.isArray(escuela[collection])) {
+      escuela[collection] = [];
+    }
+    escuela[collection].push(sanitizeNestedPayload(collection, req.body || {}));
     escuela.updatedBy = req.user._id;
     await escuela.save();
 
@@ -487,18 +510,29 @@ const updateNestedCollectionItem = async (req, res, collection, idParam) => {
       return res.status(404).json({ success: false, error: 'Escuela no encontrada' });
     }
 
-    const item = escuela[collection].id(req.params[idParam]);
-    if (!item) {
+    const items = Array.isArray(escuela[collection]) ? [...escuela[collection]] : [];
+    const index = findNestedIndexById(items, req.params[idParam]);
+    if (index < 0) {
       return res.status(404).json({ success: false, error: 'Registro no encontrado' });
     }
 
-    Object.assign(item, req.body || {});
+    const current = items[index] || {};
+    const incoming = sanitizeNestedPayload(collection, req.body || {});
+    const updated = {
+      ...current,
+      ...incoming,
+      _id: current._id || incoming._id
+    };
+    delete updated.id;
+
+    items[index] = updated;
+    escuela[collection] = items;
     escuela.updatedBy = req.user._id;
     await escuela.save();
 
     res.json({
       success: true,
-      data: item,
+      data: escuela[collection][index],
       message: `${collection.slice(0, -1)} actualizado exitosamente`
     });
   } catch (error) {
@@ -513,12 +547,14 @@ const deleteNestedCollectionItem = async (req, res, collection, idParam) => {
       return res.status(404).json({ success: false, error: 'Escuela no encontrada' });
     }
 
-    const item = escuela[collection].id(req.params[idParam]);
-    if (!item) {
+    const items = Array.isArray(escuela[collection]) ? [...escuela[collection]] : [];
+    const index = findNestedIndexById(items, req.params[idParam]);
+    if (index < 0) {
       return res.status(404).json({ success: false, error: 'Registro no encontrado' });
     }
 
-    item.deleteOne();
+    items.splice(index, 1);
+    escuela[collection] = items;
     escuela.updatedBy = req.user._id;
     await escuela.save();
 

@@ -663,6 +663,8 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection, on
     }
 
     try {
+      setError("");
+      setNotice("");
       await apiService.banIp({
         ip: banForm.ip.trim(),
         minutes: Number(banForm.minutes) || 60,
@@ -670,7 +672,8 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection, on
         permanent: banForm.permanent
       });
       setBanForm({ ip: "", minutes: 60, reason: "", permanent: false });
-      await loadSecurity();
+      await Promise.all([loadSecurity(), loadAudit({ page: 1 })]);
+      setNotice("IP bloqueada correctamente.");
     } catch (err) {
       setError(err.message || "No se pudo bloquear IP");
     }
@@ -678,8 +681,11 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection, on
 
   const unbanIp = async (ip) => {
     try {
+      setError("");
+      setNotice("");
       await apiService.unbanIp(ip);
-      await loadSecurity();
+      await Promise.all([loadSecurity(), loadAudit({ page: 1 })]);
+      setNotice(`IP ${ip} desbloqueada.`);
     } catch (err) {
       setError(err.message || "No se pudo desbloquear IP");
     }
@@ -687,8 +693,11 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection, on
 
   const saveRules = async () => {
     try {
+      setError("");
+      setNotice("");
       await apiService.updateSecurityRules(rules || {});
-      await loadSecurity();
+      await Promise.all([loadSecurity(), loadAudit({ page: 1 })]);
+      setNotice("Reglas de protección actualizadas.");
     } catch (err) {
       setError(err.message || "No se pudo guardar reglas");
     }
@@ -701,10 +710,11 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection, on
         historyRetentionDays: rules?.historyRetentionDays
       });
       setCleanupResult(response?.data || null);
-      await loadSecurity();
+      await Promise.all([loadSecurity(), loadAudit({ page: 1 })]);
       if (section === "admin-traffic") {
-        await loadTraffic();
+        await loadTraffic({ limit: trafficHistoryLimit });
       }
+      setNotice("Limpieza de seguridad ejecutada.");
     } catch (err) {
       setError(err.message || "No se pudo ejecutar limpieza");
     }
@@ -729,9 +739,10 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection, on
     if (!window.confirm("¿Limpiar métricas de Tráfico en tiempo real?")) return;
     try {
       setError("");
+      setNotice("");
       const response = await apiService.clearSecurityTrafficRealtime();
       setNotice(`Tráfico RT limpiado. IPs reseteadas: ${response?.data?.resetIpRows || 0}`);
-      await loadTraffic({ limit: trafficHistoryLimit });
+      await Promise.all([loadTraffic({ limit: trafficHistoryLimit }), loadSecurity(), loadAudit({ page: 1 })]);
     } catch (err) {
       setError(err.message || "No se pudo limpiar tráfico en tiempo real");
     }
@@ -741,9 +752,10 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection, on
     if (!window.confirm("¿Limpiar Histórico reciente de tráfico?")) return;
     try {
       setError("");
+      setNotice("");
       const response = await apiService.clearSecurityTrafficHistory();
       setNotice(`Histórico limpiado. Eventos eliminados: ${response?.data?.deletedTrafficEvents || 0}`);
-      await loadTraffic({ limit: trafficHistoryLimit });
+      await Promise.all([loadTraffic({ limit: trafficHistoryLimit }), loadSecurity(), loadAudit({ page: 1 })]);
     } catch (err) {
       setError(err.message || "No se pudo limpiar histórico de tráfico");
     }
@@ -927,9 +939,10 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection, on
     try {
       setTrafficActionIp(ip);
       setError("");
+      setNotice("");
       await apiService.banIp({ ip, minutes: 60, reason: "Ban manual desde Tráfico", permanent: false });
       setNotice(`IP ${ip} bloqueada por 60 minutos.`);
-      await Promise.all([loadTraffic({ limit: trafficHistoryLimit }), loadSecurity()]);
+      await Promise.all([loadTraffic({ limit: trafficHistoryLimit }), loadSecurity(), loadAudit({ page: 1 })]);
     } catch (err) {
       setError(err.message || "No se pudo bloquear la IP");
     } finally {
@@ -942,9 +955,10 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection, on
     try {
       setTrafficActionIp(ip);
       setError("");
+      setNotice("");
       await apiService.unbanIp(ip);
       setNotice(`IP ${ip} desbloqueada.`);
-      await Promise.all([loadTraffic({ limit: trafficHistoryLimit }), loadSecurity()]);
+      await Promise.all([loadTraffic({ limit: trafficHistoryLimit }), loadSecurity(), loadAudit({ page: 1 })]);
     } catch (err) {
       setError(err.message || "No se pudo desbloquear la IP");
     } finally {
@@ -977,11 +991,12 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection, on
     if (!window.confirm(`¿Banear ${selectedTrafficIps.length} IP(s) seleccionada(s)?`)) return;
     try {
       setError("");
+      setNotice("");
       await Promise.all(
         selectedTrafficIps.map((ip) => apiService.banIp({ ip, minutes: 60, reason: "Ban masivo desde Tráfico", permanent: false }))
       );
       setSelectedTrafficIps([]);
-      await Promise.all([loadTraffic({ limit: trafficHistoryLimit }), loadSecurity()]);
+      await Promise.all([loadTraffic({ limit: trafficHistoryLimit }), loadSecurity(), loadAudit({ page: 1 })]);
       setNotice("IPs seleccionadas bloqueadas.");
     } catch (err) {
       setError(err.message || "No se pudieron bloquear las IPs seleccionadas");
@@ -993,9 +1008,10 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection, on
     if (!window.confirm(`¿Desbloquear ${selectedTrafficIps.length} IP(s) seleccionada(s)?`)) return;
     try {
       setError("");
+      setNotice("");
       await Promise.all(selectedTrafficIps.map((ip) => apiService.unbanIp(ip)));
       setSelectedTrafficIps([]);
-      await Promise.all([loadTraffic({ limit: trafficHistoryLimit }), loadSecurity()]);
+      await Promise.all([loadTraffic({ limit: trafficHistoryLimit }), loadSecurity(), loadAudit({ page: 1 })]);
       setNotice("IPs seleccionadas desbloqueadas.");
     } catch (err) {
       setError(err.message || "No se pudieron desbloquear las IPs seleccionadas");
@@ -1027,9 +1043,10 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection, on
     if (!window.confirm(`¿Desbloquear ${selectedBanIps.length} IP(s) seleccionada(s)?`)) return;
     try {
       setError("");
+      setNotice("");
       await Promise.all(selectedBanIps.map((ip) => apiService.unbanIp(ip)));
       setSelectedBanIps([]);
-      await Promise.all([loadSecurity(), loadTraffic({ limit: trafficHistoryLimit })]);
+      await Promise.all([loadSecurity(), loadTraffic({ limit: trafficHistoryLimit }), loadAudit({ page: 1 })]);
       setNotice("Bloqueos seleccionados removidos.");
     } catch (err) {
       setError(err.message || "No se pudieron desbloquear las IPs seleccionadas");
