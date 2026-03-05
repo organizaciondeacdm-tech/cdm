@@ -66,8 +66,18 @@ const mapEscuela = (escuela) => ({
   informes: (escuela.informes || []).map((informe) => ({
     ...informe,
     id: informe._id || informe.id,
+    titulo: String(informe.titulo || '').trim() || 'Sin título',
+    estado: String(informe.estado || 'Pendiente').trim() || 'Pendiente',
+    observaciones: String(informe.observaciones || '').trim(),
     fechaEntrega: toDateInput(informe.fechaEntrega)
   }))
+});
+
+const buildInformePayload = (form = {}) => ({
+  titulo: String(form.titulo || '').trim(),
+  estado: String(form.estado || 'Pendiente').trim() || 'Pendiente',
+  fechaEntrega: form.fechaEntrega || null,
+  observaciones: String(form.observaciones || '').trim()
 });
 
 const buildEscuelaPayload = (form = {}) => ({
@@ -393,9 +403,12 @@ export function useAcdmMongoData(currentUser) {
 
   const addInforme = useCallback(async (escuelaId, informeForm) => {
     try {
+      if (!escuelaId) {
+        throw new Error('Debe seleccionar una escuela');
+      }
       await request(`/api/escuelas/${escuelaId}/informes`, {
         method: 'POST',
-        body: JSON.stringify(informeForm)
+        body: JSON.stringify(buildInformePayload(informeForm))
       });
       await loadAllData();
     } catch (err) {
@@ -407,10 +420,16 @@ export function useAcdmMongoData(currentUser) {
 
   const updateInforme = useCallback(async (escuelaId, informeForm) => {
     try {
+      if (!escuelaId) {
+        throw new Error('Debe seleccionar una escuela');
+      }
       const informeId = informeForm.id || informeForm._id;
+      if (!informeId) {
+        throw new Error('Informe inválido');
+      }
       await request(`/api/escuelas/${escuelaId}/informes/${informeId}`, {
         method: 'PUT',
-        body: JSON.stringify(informeForm)
+        body: JSON.stringify(buildInformePayload(informeForm))
       });
       await loadAllData();
     } catch (err) {

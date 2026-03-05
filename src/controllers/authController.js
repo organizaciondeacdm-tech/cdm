@@ -20,6 +20,7 @@ const AUTH_BLOCK_MS = AUTH_BLOCK_MINUTES * 60 * 1000;
 const UNKNOWN_IP_MAX_ATTEMPTS = 6;
 // IPs conocidas por usuario — se actualiza en cada login exitoso (persistido en User.knownIps)
 const KNOWN_IP_MAX_STORED = 20;
+const TRAFFIC_LOCK_CODE = 'TRAFFIC_LOCK_REQUIRED';
 
 // IPs a monitorear por usuario
 const WATCHED_USERNAMES = ['andres'];
@@ -42,7 +43,7 @@ const getWatchedIpLog = (req, res) => {
 
 const getKnownIps = async (req, res) => {
   try {
-    if (!canManageSessions(req.user)) {
+    if (!await canManageSessions(req.user)) {
       return res.status(403).json({ success: false, error: 'Acceso denegado' });
     }
     const { userId } = req.params;
@@ -75,6 +76,31 @@ const getClientIp = (req) => String(
   req.ip ||
   'unknown'
 ).trim();
+
+const normalizeIp = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('::ffff:')) return raw.slice(7);
+  return raw;
+};
+
+const decodeProofToken = (token = '') => {
+  const raw = String(token || '').trim();
+  if (!raw.startsWith('hsv1.')) return '';
+  const base = raw.slice(5);
+  try {
+    return Buffer.from(base, 'base64url').toString('utf8');
+  } catch (_error) {
+    return '';
+  }
+};
+
+const computeTrafficHandshakeProof = ({ challenge = '', token = '', userAgent = '', userId = '' }) => (
+  crypto
+    .createHash('sha256')
+    .update(`${String(challenge)}|${String(token)}|${String(userAgent)}|${String(userId)}`)
+    .digest('hex')
+);
 
 const cleanupFailureBucket = async (key) => {
   const now = Date.now();
@@ -964,6 +990,103 @@ const revokeSessionByAdmin = async (req, res) => {
   }
 };
 
+const trafficHandshake = async (req, res) => {
+  try {
+    const challenge = String(req.body?.challenge || '').trim();
+    const proofToken = String(req.body?.proof || '').trim();
+    const userAgent = req.headers['user-agent'] || '';
+    const accessToken = req.token || '';
+    const clientIp = normalizeIp(getClientIp(req));
+
+    if (!challenge || !proofToken || !accessToken) {
+      return res.status(400).json({
+        success: false,
+        error: 'challenge y proof son requeridos'
+      });
+    }
+
+    const user = await User.findById(req.user._id).select('securityLock knownIps');
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Usuario no válido'
+      });
+    }
+
+    const lock = user.securityLock;
+    const lockIsActive = Boolean(
+      lock?.active === true
+      && lock?.code === TRAFFIC_LOCK_CODE
+      && new Date(lock?.expiresAt || 0).getTime() > Date.now()
+    );
+
+    if (!lockIsActive) {
+      await registerKnownIp(user, clientIp);
+      return res.json({
+        success: true,
+        data: { unlocked: true, mode: 'noop' },
+        message: 'Sin bloqueo activo'
+      });
+    }
+
+    if (String(lock.challenge || '') !== challenge) {
+      return res.status(400).json({
+        success: false,
+        error: 'Handshake inválido'
+      });
+    }
+
+    const receivedProof = decodeProofToken(proofToken);
+    const expectedProof = computeTrafficHandshakeProof({
+      challenge,
+      token: accessToken,
+      userAgent,
+      userId: String(req.user._id || '')
+    });
+
+    const receivedBuffer = Buffer.from(receivedProof, 'utf8');
+    const expectedBuffer = Buffer.from(expectedProof, 'utf8');
+    const valid = (
+      receivedBuffer.length === expectedBuffer.length
+      && crypto.timingSafeEqual(receivedBuffer, expectedBuffer)
+      && proofToken === String(lock.expectedProofToken || '')
+    );
+
+    if (!valid) {
+      const attempts = Number(lock.attempts || 0) + 1;
+      await user.updateOne({
+        $set: {
+          'securityLock.attempts': attempts,
+          'securityLock.lastAttemptAt': new Date()
+        }
+      });
+      return res.status(401).json({
+        success: false,
+        error: 'Handshake inválido'
+      });
+    }
+
+    await user.updateOne({
+      $unset: { securityLock: '' }
+    });
+    await registerKnownIp(user, clientIp);
+
+    return res.json({
+      success: true,
+      data: {
+        unlocked: true,
+        ip: clientIp
+      },
+      message: 'Handshake validado. Bloqueo removido.'
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: 'Error al validar handshake de seguridad'
+    });
+  }
+};
+
 module.exports = {
   login,
   refreshToken,
@@ -976,5 +1099,6 @@ module.exports = {
   getAllActiveSessions,
   revokeSessionByAdmin,
   getWatchedIpLog,
-  getKnownIps
+  getKnownIps,
+  trafficHandshake
 };

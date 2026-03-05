@@ -3,9 +3,30 @@ import { getSecureItem, removeSecureItem, setSecureItem } from './secureStorage.
 import { encryptJsonBodyIfNeeded } from './payloadCrypto.js';
 
 const AUTH_SESSION_KEY = 'acdm_auth_session';
+const TRAFFIC_LOCK_CODE = 'TRAFFIC_LOCK_REQUIRED';
 
 let authCache = null;
 let refreshPromise = null;
+
+const emitTrafficLockEvent = (payload = {}) => {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+  window.dispatchEvent(new CustomEvent('acdm:traffic-lock', { detail: payload }));
+};
+
+const toBase64Url = (value = '') => (
+  btoa(String(value))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '')
+);
+
+const sha256Hex = async (input) => {
+  const source = new TextEncoder().encode(String(input || ''));
+  const digest = await window.crypto.subtle.digest('SHA-256', source);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+};
 
 const cleanupLegacyAuthStorage = () => {
   localStorage.removeItem('authToken');
@@ -147,6 +168,14 @@ export async function authFetch(path, options = {}) {
 
   let response = await doRequest(accessToken);
 
+  if (response.status === 423) {
+    const payload = await response.clone().json().catch(() => ({}));
+    if (payload?.code === TRAFFIC_LOCK_CODE) {
+      emitTrafficLockEvent(payload);
+    }
+    return response;
+  }
+
   if (response.status !== 401) {
     return response;
   }
@@ -168,6 +197,9 @@ export async function restoreUserFromSession() {
   }
 
   const response = await authFetch('/api/auth/profile', { method: 'GET' });
+  if (response.status === 423) {
+    return session.user;
+  }
   if (!response.ok) {
     await clearAuthSession();
     return null;
@@ -205,4 +237,36 @@ export async function logoutSession({ allDevices = false } = {}) {
   } finally {
     await clearAuthSession();
   }
+}
+
+export async function performTrafficHandshake(lockPayload = null) {
+  const session = await getAuthSession();
+  const token = session?.tokens?.access;
+  if (!token) throw new Error('Sesión inválida para handshake');
+
+  const challenge = String(
+    lockPayload?.lock?.challenge
+    || lockPayload?.challenge
+    || ''
+  ).trim();
+
+  if (!challenge) throw new Error('Challenge inválido');
+
+  const proofHex = await sha256Hex(
+    `${challenge}|${token}|${navigator.userAgent}|${session?.user?._id || ''}`
+  );
+  const proof = `hsv1.${toBase64Url(proofHex)}`;
+
+  const response = await authFetch('/api/auth/traffic-handshake', {
+    method: 'POST',
+    body: JSON.stringify({ challenge, proof })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const err = new Error(payload?.error || 'Handshake inválido');
+    err.status = response.status;
+    err.payload = payload;
+    throw err;
+  }
+  return payload;
 }
