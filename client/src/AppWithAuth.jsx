@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import App from './acdm/acdm-system.jsx';
-import { loginWithSession, logoutSession, restoreUserFromSession } from './utils/authSession.js';
+import { loginWithSession, logoutSession, performTrafficHandshake, restoreUserFromSession } from './utils/authSession.js';
 import PapiwebSpinner from './PapiwebSpinner.jsx';
 
 /**
@@ -11,6 +11,9 @@ export default function AppWithAuth() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [isRestoringSession, setIsRestoringSession] = useState(true);
+  const [trafficLock, setTrafficLock] = useState(null);
+  const [unlocking, setUnlocking] = useState(false);
+  const [unlockError, setUnlockError] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -33,6 +36,15 @@ export default function AppWithAuth() {
     };
   }, []);
 
+  useEffect(() => {
+    const onTrafficLock = (event) => {
+      setTrafficLock(event?.detail || null);
+      setUnlockError('');
+    };
+    window.addEventListener('acdm:traffic-lock', onTrafficLock);
+    return () => window.removeEventListener('acdm:traffic-lock', onTrafficLock);
+  }, []);
+
   const handleLogin = async (username, password) => {
     setIsLoggingIn(true);
     setLoginError('');
@@ -49,7 +61,22 @@ export default function AppWithAuth() {
 
   const handleLogout = async () => {
     setCurrentUser(null);
+    setTrafficLock(null);
     await logoutSession();
+  };
+
+  const handleUnlockTraffic = async () => {
+    if (!trafficLock) return;
+    setUnlocking(true);
+    setUnlockError('');
+    try {
+      await performTrafficHandshake(trafficLock);
+      setTrafficLock(null);
+    } catch (error) {
+      setUnlockError(error.message || 'No se pudo validar handshake de seguridad');
+    } finally {
+      setUnlocking(false);
+    }
   };
 
   if (isRestoringSession) {
@@ -67,6 +94,51 @@ export default function AppWithAuth() {
   }
 
   if (currentUser) {
+    if (trafficLock) {
+      return (
+        <div style={{
+          background: '#050914',
+          color: '#e8f4f8',
+          fontFamily: "'Exo 2', sans-serif",
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 24
+        }}>
+          <div style={{
+            width: 'min(620px, 100%)',
+            background: '#111827',
+            border: '1px solid #2a4a7f',
+            borderRadius: 12,
+            padding: 24
+          }}>
+            <h2 style={{ marginTop: 0, marginBottom: 10, color: '#00d4ff', fontFamily: 'Rajdhani, sans-serif', letterSpacing: 1 }}>
+              Lockscreen de Seguridad
+            </h2>
+            <p style={{ margin: '0 0 8px', color: '#d6e2f0' }}>
+              Se detectó tráfico inusual desde una IP no habitual. Servicios bloqueados hasta completar handshake cifrado.
+            </p>
+            <p style={{ margin: '0 0 16px', fontSize: 12, color: '#8bacc8' }}>
+              IP sesión: {trafficLock?.lock?.sessionIp || '-'} | IP actual: {trafficLock?.lock?.requestIp || '-'}
+            </p>
+            {unlockError && (
+              <div style={{ marginBottom: 12, color: '#ff7d7d', fontSize: 13 }}>
+                {unlockError}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn-primary" style={{ width: 'auto' }} onClick={handleUnlockTraffic} disabled={unlocking}>
+                {unlocking ? 'Validando...' : 'Validar Handshake'}
+              </button>
+              <button className="btn-primary" style={{ width: 'auto', background: '#233655', color: '#d4e8ff' }} onClick={handleLogout} disabled={unlocking}>
+                Cerrar sesión
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
     return <App currentUser={currentUser} onLogout={handleLogout} />;
   }
 

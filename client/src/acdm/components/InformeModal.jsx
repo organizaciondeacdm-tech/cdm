@@ -4,8 +4,22 @@ import { useState } from "react";
 // INFORME FORM MODAL
 // ============================================================
 export function InformeModal({ informe, isNew, onSave, onClose, escuelas, escuelaId }) {
-    const [form, setForm] = useState(informe || { id: `i${Date.now()}`, titulo: "", estado: "Pendiente", fechaEntrega: "", observaciones: "" });
+    const [form, setForm] = useState(informe || { titulo: "", estado: "Pendiente", fechaEntrega: "", observaciones: "" });
     const [selectedEscuela, setSelectedEscuela] = useState(escuelaId || "");
+    const handleSave = () => {
+        const targetEscuela = selectedEscuela || escuelaId;
+        const titulo = String(form.titulo || "").trim();
+        if (!targetEscuela) {
+            alert("Debe seleccionar una escuela.");
+            return;
+        }
+        if (!titulo) {
+            alert("El título del informe es obligatorio.");
+            return;
+        }
+        onSave({ ...form, titulo }, targetEscuela);
+        onClose();
+    };
     return (
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
             <div className="modal">
@@ -45,7 +59,7 @@ export function InformeModal({ informe, isNew, onSave, onClose, escuelas, escuel
                 </div>
                 <div className="flex gap-8 justify-end mt-16">
                     <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-                    <button className="btn btn-primary" onClick={() => { onSave(form, selectedEscuela || escuelaId); onClose(); }}>Guardar</button>
+                    <button className="btn btn-primary" onClick={handleSave}>Guardar</button>
                 </div>
             </div>
         </div>

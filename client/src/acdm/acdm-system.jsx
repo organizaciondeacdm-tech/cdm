@@ -91,10 +91,10 @@ function AcdmContent() {
   const filteredInformes = escuelas.map(esc => ({
     ...esc,
     informes: (!esc.informes || !search) ? (esc.informes || []) : esc.informes.filter(i =>
-      i.titulo.toLowerCase().includes(search.toLowerCase()) ||
-      i.observaciones.toLowerCase().includes(search.toLowerCase()) ||
-      esc.escuela.toLowerCase().includes(search.toLowerCase()) ||
-      esc.de.toLowerCase().includes(search.toLowerCase())
+      String(i?.titulo || '').toLowerCase().includes(search.toLowerCase()) ||
+      String(i?.observaciones || '').toLowerCase().includes(search.toLowerCase()) ||
+      String(esc?.escuela || '').toLowerCase().includes(search.toLowerCase()) ||
+      String(esc?.de || '').toLowerCase().includes(search.toLowerCase())
     )
   })).filter(esc => !search || esc.informes.length > 0);
 
@@ -312,21 +312,21 @@ function AcdmContent() {
                   {(!esc.informes || esc.informes.length === 0) ? (
                     <div className="no-data">Sin informes registrados</div>
                   ) : (
-                    esc.informes.map(i => (
-                      <div key={i.id} style={{ padding: '12px', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                    esc.informes.map((i, idx) => (
+                      <div key={i.id || i._id || `${esc.id}-inf-${idx}`} style={{ padding: '12px', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, color: 'var(--accent)' }}>{i.titulo}</div>
-                            <div style={{ color: 'var(--text2)', marginTop: 4, fontSize: 11 }}>{i.observaciones}</div>
+                            <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, color: 'var(--accent)' }}>{String(i?.titulo || 'Sin título')}</div>
+                            <div style={{ color: 'var(--text2)', marginTop: 4, fontSize: 11 }}>{String(i?.observaciones || '') || 'Sin observaciones'}</div>
                             <div style={{ marginTop: 6, display: 'flex', gap: 12, fontSize: 11 }}>
-                              <span className={`badge badge-${i.estado === 'Entregado' ? 'active' : 'warning'}`}>{i.estado}</span>
-                              <span style={{ color: 'var(--text3)' }}>📅 {formatDate(i.fechaEntrega)}</span>
+                              <span className={`badge badge-${String(i?.estado || '') === 'Entregado' ? 'active' : 'warning'}`}>{String(i?.estado || 'Pendiente')}</span>
+                              <span style={{ color: 'var(--text3)' }}>📅 {formatDate(i?.fechaEntrega)}</span>
                             </div>
                           </div>
                           {canManageOperationalSections && (
                             <div className="flex gap-4" style={{ marginLeft: 8 }}>
                               <button className="btn btn-secondary btn-sm" onClick={() => setInformeModal({ isNew: false, data: i, escuelaId: esc.id })}>✏️</button>
-                              <button className="btn btn-danger btn-sm" onClick={() => notifyDeleteResult(deleteInforme, [esc.id, i.id], 'Informe eliminado correctamente.')}>🗑️</button>
+                              <button className="btn btn-danger btn-sm" onClick={() => notifyDeleteResult(deleteInforme, [esc.id, i.id || i._id], 'Informe eliminado correctamente.')}>🗑️</button>
                             </div>
                           )}
                         </div>

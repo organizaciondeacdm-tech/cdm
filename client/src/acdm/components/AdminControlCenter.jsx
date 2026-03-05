@@ -82,6 +82,12 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection, on
   const [rules, setRules] = useState(null);
   const [cleanupResult, setCleanupResult] = useState(null);
   const [notice, setNotice] = useState("");
+  const [auditRows, setAuditRows] = useState([]);
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditLimit, setAuditLimit] = useState(25);
+  const [auditUsernameFilter, setAuditUsernameFilter] = useState("");
+  const [auditActionFilter, setAuditActionFilter] = useState("");
 
   const [banForm, setBanForm] = useState({ ip: "", minutes: 60, reason: "", permanent: false });
 
@@ -183,6 +189,22 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection, on
     setRules(rulesRes?.data || null);
   };
 
+  const loadAudit = async (options = {}) => {
+    const page = Number(options.page ?? auditPage) || 1;
+    const limit = Number(options.limit ?? auditLimit) || 25;
+    const response = await apiService.getAuditHistory({
+      page,
+      limit,
+      username: options.username ?? auditUsernameFilter,
+      action: options.action ?? auditActionFilter
+    });
+    const payload = response?.data || {};
+    setAuditRows(Array.isArray(payload.rows) ? payload.rows : []);
+    setAuditTotal(Number(payload.total || 0));
+    setAuditPage(Number(payload.page || page));
+    setAuditLimit(Number(payload.limit || limit));
+  };
+
   const loadData = async () => {
     setLoading(true);
     setError("");
@@ -200,7 +222,7 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection, on
       }
 
       if (["admin-security"].includes(section)) {
-        await loadSecurity();
+        await Promise.all([loadSecurity(), loadAudit({ page: 1 })]);
       }
     } catch (err) {
       setError(err.message || "No se pudo cargar la sección de administración");
@@ -289,6 +311,11 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection, on
     const validIps = new Set(filtered.map((row) => String(row?.ip || "")));
     setSelectedBanIps((prev) => prev.filter((ip) => validIps.has(String(ip || ""))));
   }, [bans, securitySearch]);
+
+  useEffect(() => {
+    if (section !== "admin-security") return;
+    loadAudit({ page: 1 }).catch(() => {});
+  }, [section, auditUsernameFilter, auditActionFilter, auditLimit]);
 
   const startEditUser = (user) => {
     setEditingUserId(user._id);
@@ -587,11 +614,15 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection, on
     if (!window.confirm(`¿Cerrar ${selectedSessionIds.length} sesión(es) seleccionada(s)?`)) return;
     setError("");
     try {
-      await Promise.all(
+      const results = await Promise.allSettled(
         selectedSessionIds.map((id) => apiService.revokeSessionFromActiveView(id, { asAdmin: true }))
       );
       setSelectedSessionIds([]);
       await loadSessions();
+      const failedCount = results.filter((result) => result.status === "rejected").length;
+      if (failedCount > 0) {
+        setError(`Se cerraron ${selectedSessionIds.length - failedCount} sesión(es), pero ${failedCount} fallaron.`);
+      }
     } catch (err) {
       setError(err.message || "No se pudieron cerrar las sesiones seleccionadas");
     }
@@ -602,11 +633,15 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection, on
     if (!window.confirm(`¿Cerrar todas las sesiones activas (${sessions.length})?`)) return;
     setError("");
     try {
-      await Promise.all(
+      const results = await Promise.allSettled(
         sessions.map((s) => apiService.revokeSessionFromActiveView(s._id, { asAdmin: true }))
       );
       setSelectedSessionIds([]);
       await loadSessions();
+      const failedCount = results.filter((result) => result.status === "rejected").length;
+      if (failedCount > 0) {
+        setError(`Se cerraron ${sessions.length - failedCount} sesión(es), pero ${failedCount} fallaron.`);
+      }
     } catch (err) {
       setError(err.message || "No se pudieron cerrar todas las sesiones");
     }
@@ -672,6 +707,45 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection, on
       }
     } catch (err) {
       setError(err.message || "No se pudo ejecutar limpieza");
+    }
+  };
+
+  const auditTotalPages = useMemo(() => {
+    const total = Math.max(0, Number(auditTotal || 0));
+    const size = Math.max(1, Number(auditLimit || 25));
+    return Math.max(1, Math.ceil(total / size));
+  }, [auditTotal, auditLimit]);
+
+  const goAuditPage = async (nextPage) => {
+    const page = Math.min(Math.max(1, Number(nextPage || 1)), auditTotalPages);
+    try {
+      await loadAudit({ page });
+    } catch (err) {
+      setError(err.message || "No se pudo cargar historial de auditoría");
+    }
+  };
+
+  const clearRealtimeTrafficNow = async () => {
+    if (!window.confirm("¿Limpiar métricas de Tráfico en tiempo real?")) return;
+    try {
+      setError("");
+      const response = await apiService.clearSecurityTrafficRealtime();
+      setNotice(`Tráfico RT limpiado. IPs reseteadas: ${response?.data?.resetIpRows || 0}`);
+      await loadTraffic({ limit: trafficHistoryLimit });
+    } catch (err) {
+      setError(err.message || "No se pudo limpiar tráfico en tiempo real");
+    }
+  };
+
+  const clearTrafficHistoryNow = async () => {
+    if (!window.confirm("¿Limpiar Histórico reciente de tráfico?")) return;
+    try {
+      setError("");
+      const response = await apiService.clearSecurityTrafficHistory();
+      setNotice(`Histórico limpiado. Eventos eliminados: ${response?.data?.deletedTrafficEvents || 0}`);
+      await loadTraffic({ limit: trafficHistoryLimit });
+    } catch (err) {
+      setError(err.message || "No se pudo limpiar histórico de tráfico");
     }
   };
 
@@ -1404,6 +1478,12 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection, on
                 desbloquear sel. ({selectedTrafficIps.length})
               </button>
               <button className="btn btn-secondary btn-sm" onClick={exportTrafficCsv}>CSV</button>
+              <button className="btn btn-secondary btn-sm" onClick={clearRealtimeTrafficNow}>
+                Limpiar RT
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={clearTrafficHistoryNow}>
+                Limpiar histórico
+              </button>
               <button className="btn btn-secondary btn-sm" onClick={() => {
                 setTrafficSearch("");
                 setTrafficMethod("all");
@@ -1644,6 +1724,60 @@ export function AdminControlCenter({ section, currentUser, onNavigateSection, on
                 )}
               </>
             )}
+          </div>
+
+          <div className="card">
+            <div className="card-header"><span className="card-title">Histórico por usuario</span></div>
+            <div className="flex items-center justify-between mb-8" style={{ gap: 8, flexWrap: "wrap" }}>
+              <div className="flex items-center gap-8" style={{ flexWrap: "wrap" }}>
+                <input
+                  className="form-input"
+                  style={{ width: 150 }}
+                  placeholder="usuario"
+                  value={auditUsernameFilter}
+                  onChange={(e) => setAuditUsernameFilter(e.target.value)}
+                />
+                <input
+                  className="form-input"
+                  style={{ width: 170 }}
+                  placeholder="acción"
+                  value={auditActionFilter}
+                  onChange={(e) => setAuditActionFilter(e.target.value)}
+                />
+                <select className="form-select" style={{ width: 120 }} value={auditLimit} onChange={(e) => setAuditLimit(Number(e.target.value))}>
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
+              <button className="btn btn-secondary btn-sm" onClick={() => loadAudit({ page: 1 })}>recargar</button>
+            </div>
+
+            <div className="flex items-center gap-8 mb-8">
+              <button className="btn btn-secondary btn-sm" onClick={() => goAuditPage(auditPage - 1)} disabled={auditPage <= 1}>◀</button>
+              <span style={{ fontSize: 12, color: "var(--text2)" }}>Página {auditPage} / {auditTotalPages} · total {auditTotal}</span>
+              <button className="btn btn-secondary btn-sm" onClick={() => goAuditPage(auditPage + 1)} disabled={auditPage >= auditTotalPages}>▶</button>
+            </div>
+
+            <div className="table-wrap" style={{ maxHeight: 300 }}>
+              <table>
+                <thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Entidad</th><th>Método</th></tr></thead>
+                <tbody>
+                  {auditRows.length === 0 ? (
+                    <tr><td colSpan={5} style={{ textAlign: "center", color: "var(--text2)" }}>Sin eventos</td></tr>
+                  ) : auditRows.map((row) => (
+                    <tr key={String(row._id || `${row.timestamp}-${row.username}-${row.action}`)}>
+                      <td style={{ fontSize: 11 }}>{row.timestamp ? new Date(row.timestamp).toLocaleString("es-AR") : "-"}</td>
+                      <td>{row.username || "-"}</td>
+                      <td>{row.action || "-"}</td>
+                      <td>{row.entity || "-"}</td>
+                      <td>{row.method || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

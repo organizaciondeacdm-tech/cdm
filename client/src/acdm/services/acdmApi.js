@@ -3,10 +3,17 @@
  * Maneja todas las llamadas HTTP al backend
  */
 import { clearAuthSession, getAuthSession, setAuthSession } from '../../utils/authSession.js';
+import { authFetch } from '../../utils/authSession.js';
 import { getApiUrl } from '../../utils/apiConfig.js';
 import { encryptJsonBodyIfNeeded } from '../../utils/payloadCrypto.js';
 
 const API_BASE_URL = `${getApiUrl()}/api`;
+const TRAFFIC_LOCK_CODE = 'TRAFFIC_LOCK_REQUIRED';
+
+const emitTrafficLockEvent = (payload = {}) => {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+  window.dispatchEvent(new CustomEvent('acdm:traffic-lock', { detail: payload }));
+};
 
 class AcdmApiService {
   constructor(baseUrl = API_BASE_URL) {
@@ -19,10 +26,8 @@ class AcdmApiService {
   }
 
   async getHeaders() {
-    if (!this.token) {
-      const session = await getAuthSession();
-      this.token = session?.tokens?.access || null;
-    }
+    const session = await getAuthSession();
+    this.token = session?.tokens?.access || this.token || null;
 
     return {
       'Content-Type': 'application/json',
@@ -31,28 +36,43 @@ class AcdmApiService {
   }
 
   async request(endpoint, options = {}) {
-    const url = `${this.baseUrl}${endpoint}`;
-    const headers = await this.getHeaders();
-    const maybeEncryptedBody = await encryptJsonBodyIfNeeded(options.body, headers);
-    const config = {
-      ...options,
-      headers,
-      body: maybeEncryptedBody
-    };
+    const path = `/api${endpoint}`;
 
     try {
-      const response = await fetch(url, config);
+      const response = await authFetch(path, options);
+      const payload = await response.json().catch(() => ({}));
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      if (response.status === 423 && payload?.code === TRAFFIC_LOCK_CODE) {
+        emitTrafficLockEvent(payload);
       }
 
-      return await response.json();
+      if (!response.ok) {
+        if (response.status === 401) {
+          this.token = null;
+        }
+        const err = new Error(payload.error || payload.message || `HTTP ${response.status}`);
+        err.status = response.status;
+        err.payload = payload;
+        throw err;
+      }
+
+      return payload;
     } catch (error) {
       console.error(`API Error (${endpoint}):`, error);
       throw error;
     }
+  }
+
+  normalizeActiveSessionsResponse(payload = {}) {
+    const rows = Array.isArray(payload?.data) ? payload.data : [];
+    const now = Date.now();
+    const data = rows.filter((session) => {
+      if (!session || session.isActive === false) return false;
+      if (!session.expiresAt) return true;
+      const expiresAtMs = Date.parse(session.expiresAt);
+      return Number.isNaN(expiresAtMs) ? true : expiresAtMs > now;
+    });
+    return { ...payload, data };
   }
 
   // ==================== ESCUELAS ====================
@@ -191,16 +211,20 @@ class AcdmApiService {
   }
 
   async exportarJSON() {
-    const response = await fetch(`${this.baseUrl}/export/json`, {
-      headers: await this.getHeaders()
-    });
+    const response = await authFetch('/api/export/json', { method: 'GET' });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
     return response.blob();
   }
 
   async exportarCSV() {
-    const response = await fetch(`${this.baseUrl}/export/csv`, {
-      headers: await this.getHeaders()
-    });
+    const response = await authFetch('/api/export/csv', { method: 'GET' });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
     return response.blob();
   }
 
@@ -229,16 +253,20 @@ class AcdmApiService {
   async getActiveSessionsView({ preferAdmin = true } = {}) {
     if (preferAdmin) {
       try {
-        return await this.request('/admin/sessions');
+        const payload = await this.request('/admin/sessions');
+        return this.normalizeActiveSessionsResponse(payload);
       } catch (_e1) {
         try {
-          return await this.request('/auth/admin/sessions');
+          const payload = await this.request('/auth/admin/sessions');
+          return this.normalizeActiveSessionsResponse(payload);
         } catch (_e2) {
-          return this.request('/auth/sessions');
+          const payload = await this.request('/auth/sessions');
+          return this.normalizeActiveSessionsResponse(payload);
         }
       }
     }
-    return this.request('/auth/sessions');
+    const payload = await this.request('/auth/sessions');
+    return this.normalizeActiveSessionsResponse(payload);
   }
 
   async revokeSessionFromActiveView(sessionId, { asAdmin = true } = {}) {
@@ -321,6 +349,20 @@ class AcdmApiService {
     return this.request(`/admin/security/traffic/history?limit=${encodeURIComponent(limit)}`);
   }
 
+  async clearSecurityTrafficRealtime() {
+    return this.request('/admin/security/traffic/realtime/clear', {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+  }
+
+  async clearSecurityTrafficHistory() {
+    return this.request('/admin/security/traffic/history/clear', {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+  }
+
   async getBannedIps() {
     return this.request('/admin/security/bans');
   }
@@ -349,6 +391,22 @@ class AcdmApiService {
 
   async cleanupSecurity(payload = {}) {
     return this.request('/admin/security/cleanup', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async getAuditHistory(params = {}) {
+    const query = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') return;
+      query.set(key, String(value));
+    });
+    return this.request(`/admin/auditoria${query.toString() ? `?${query.toString()}` : ''}`);
+  }
+
+  async trafficHandshake(payload = {}) {
+    return this.request('/auth/traffic-handshake', {
       method: 'POST',
       body: JSON.stringify(payload)
     });
