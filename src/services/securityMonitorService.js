@@ -116,11 +116,30 @@ const middleware = () => async (req, res, next) => {
   if (!req.path.startsWith('/api')) return next();
 
   const ip = getIp(req);
-
-  // Never block loopback / whitelisted IPs (local dev, health checks, CI)
-  if (isWhitelisted(ip)) return next();
-
   const startAt = Date.now();
+
+  // Never block loopback / whitelisted IPs (local dev, health checks, CI).
+  // We still record traffic so Admin > Seguridad IP has visibility in local/dev.
+  if (isWhitelisted(ip)) {
+    res.on('finish', async () => {
+      try {
+        const rules = normalizeRules(await getRulesDoc());
+        await recordEvent({
+          ip,
+          method: req.method,
+          path: req.path,
+          statusCode: res.statusCode || 0,
+          durationMs: Date.now() - startAt,
+          blocked: false,
+          historyRetentionDays: rules.historyRetentionDays
+        });
+        await enforceHistoryLimit(rules.historyLimit);
+      } catch (err) {
+        console.error('securityMonitorService.whitelisted.finish error:', err.message);
+      }
+    });
+    return next();
+  }
 
   try {
     const rules = normalizeRules(await getRulesDoc());
@@ -329,6 +348,43 @@ const cleanupNow = async ({ historyRetentionDays } = {}) => {
   };
 };
 
+const clearTrafficRealtime = async () => {
+  const resetCounts = {
+    total: 0,
+    s2xx: 0,
+    s4xx: 0,
+    s5xx: 0,
+    s429: 0
+  };
+
+  const [resetIps, deletedRecent] = await Promise.all([
+    SecurityIpState.updateMany(
+      {},
+      {
+        $set: {
+          statusCounts: resetCounts,
+          lastSeenAt: null
+        }
+      }
+    ),
+    SecurityTrafficEvent.deleteMany({
+      ts: { $gte: new Date(Date.now() - 5 * 60 * 1000) }
+    })
+  ]);
+
+  return {
+    resetIpRows: resetIps?.modifiedCount || 0,
+    deletedRecentTrafficEvents: deletedRecent?.deletedCount || 0
+  };
+};
+
+const clearTrafficHistory = async () => {
+  const deleted = await SecurityTrafficEvent.deleteMany({});
+  return {
+    deletedTrafficEvents: deleted?.deletedCount || 0
+  };
+};
+
 const setRules = async (input = {}) => {
   const doc = await SecurityRule.getGlobalRules();
 
@@ -354,5 +410,7 @@ module.exports = {
   getRules,
   setRules,
   cleanupNow,
+  clearTrafficRealtime,
+  clearTrafficHistory,
   getIp
 };

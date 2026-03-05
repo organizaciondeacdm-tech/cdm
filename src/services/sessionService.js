@@ -57,7 +57,7 @@ class SessionService {
     try {
       const result = await Session.revokeSession(sessionId);
       console.log(`Sesión ${sessionId} invalidada`);
-      return result;
+      return Number(result?.matchedCount || 0) > 0;
     } catch (error) {
       console.error('Error invalidando sesión:', error);
       throw error;
@@ -92,7 +92,7 @@ class SessionService {
     try {
       const result = await Session.revokeSession(sessionId, userId);
       console.log(`Sesión ${sessionId} revocada${userId ? ` por usuario ${userId}` : ''}`);
-      return result;
+      return Number(result?.matchedCount || 0) > 0;
     } catch (error) {
       console.error('Error revocando sesión:', error);
       throw error;
@@ -117,9 +117,12 @@ class SessionService {
    * Obtener todas las sesiones persistidas (para admin)
    */
   static async getAllActiveSessions() {
-    return Session.find({})
+    return Session.find({
+      isActive: true,
+      expiresAt: { $gt: new Date() }
+    })
       .populate('userId', 'username email')
-      .sort({ isActive: -1, lastActivity: -1, createdAt: -1 });
+      .sort({ lastActivity: -1, createdAt: -1 });
   }
 
   /**
