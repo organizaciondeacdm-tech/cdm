@@ -14,11 +14,10 @@ build/
 install.sh.sh
 test-apis.sh
 
-# Environment
-.env
-.env.local
-.env.*.local
+# Environment and Documentation
+*.md
 .env.local.backup
+scripts/
 
 # Logs
 logs/

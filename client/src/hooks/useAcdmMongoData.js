@@ -66,8 +66,18 @@ const mapEscuela = (escuela) => ({
   informes: (escuela.informes || []).map((informe) => ({
     ...informe,
     id: informe._id || informe.id,
+    titulo: String(informe.titulo || '').trim() || 'Sin título',
+    estado: String(informe.estado || 'Pendiente').trim() || 'Pendiente',
+    observaciones: String(informe.observaciones || '').trim(),
     fechaEntrega: toDateInput(informe.fechaEntrega)
   }))
+});
+
+const buildInformePayload = (form = {}) => ({
+  titulo: String(form.titulo || '').trim(),
+  estado: String(form.estado || 'Pendiente').trim() || 'Pendiente',
+  fechaEntrega: form.fechaEntrega || null,
+  observaciones: String(form.observaciones || '').trim()
 });
 
 const buildEscuelaPayload = (form = {}) => ({
@@ -206,11 +216,12 @@ export function useAcdmMongoData(currentUser) {
   }, [loadAllData, request]);
 
   const deleteEscuela = useCallback(async (id) => {
-    if (!confirm('¿Eliminar escuela?')) return;
+    if (!confirm('¿Eliminar escuela?')) return false;
 
     try {
       await request(`/api/escuelas/${id}`, { method: 'DELETE' });
       await loadAllData();
+      return true;
     } catch (err) {
       console.error('Error eliminando escuela:', err);
       setError(err.message);
@@ -248,11 +259,12 @@ export function useAcdmMongoData(currentUser) {
   }, [loadAllData, request]);
 
   const deleteDocente = useCallback(async (_escuelaId, docId) => {
-    if (!confirm('¿Eliminar docente?')) return;
+    if (!confirm('¿Eliminar docente?')) return false;
 
     try {
       await request(`/api/docentes/${docId}`, { method: 'DELETE' });
       await loadAllData();
+      return true;
     } catch (err) {
       console.error('Error eliminando docente:', err);
       setError(err.message);
@@ -290,11 +302,12 @@ export function useAcdmMongoData(currentUser) {
   }, [loadAllData, request]);
 
   const deleteAlumno = useCallback(async (_escuelaId, alumId) => {
-    if (!confirm('¿Eliminar alumno?')) return;
+    if (!confirm('¿Eliminar alumno?')) return false;
 
     try {
       await request(`/api/alumnos/${alumId}`, { method: 'DELETE' });
       await loadAllData();
+      return true;
     } catch (err) {
       console.error('Error eliminando alumno:', err);
       setError(err.message);
@@ -332,11 +345,12 @@ export function useAcdmMongoData(currentUser) {
   }, [loadAllData, request]);
 
   const deleteVisita = useCallback(async (escuelaId, visitaId) => {
-    if (!confirm('¿Eliminar visita?')) return;
+    if (!confirm('¿Eliminar visita?')) return false;
 
     try {
       await request(`/api/escuelas/${escuelaId}/visitas/${visitaId}`, { method: 'DELETE' });
       await loadAllData();
+      return true;
     } catch (err) {
       console.error('Error eliminando visita:', err);
       setError(err.message);
@@ -374,11 +388,12 @@ export function useAcdmMongoData(currentUser) {
   }, [loadAllData, request]);
 
   const deleteProyecto = useCallback(async (escuelaId, proyectoId) => {
-    if (!confirm('¿Eliminar proyecto?')) return;
+    if (!confirm('¿Eliminar proyecto?')) return false;
 
     try {
       await request(`/api/escuelas/${escuelaId}/proyectos/${proyectoId}`, { method: 'DELETE' });
       await loadAllData();
+      return true;
     } catch (err) {
       console.error('Error eliminando proyecto:', err);
       setError(err.message);
@@ -388,9 +403,12 @@ export function useAcdmMongoData(currentUser) {
 
   const addInforme = useCallback(async (escuelaId, informeForm) => {
     try {
+      if (!escuelaId) {
+        throw new Error('Debe seleccionar una escuela');
+      }
       await request(`/api/escuelas/${escuelaId}/informes`, {
         method: 'POST',
-        body: JSON.stringify(informeForm)
+        body: JSON.stringify(buildInformePayload(informeForm))
       });
       await loadAllData();
     } catch (err) {
@@ -402,10 +420,16 @@ export function useAcdmMongoData(currentUser) {
 
   const updateInforme = useCallback(async (escuelaId, informeForm) => {
     try {
+      if (!escuelaId) {
+        throw new Error('Debe seleccionar una escuela');
+      }
       const informeId = informeForm.id || informeForm._id;
+      if (!informeId) {
+        throw new Error('Informe inválido');
+      }
       await request(`/api/escuelas/${escuelaId}/informes/${informeId}`, {
         method: 'PUT',
-        body: JSON.stringify(informeForm)
+        body: JSON.stringify(buildInformePayload(informeForm))
       });
       await loadAllData();
     } catch (err) {
@@ -416,11 +440,12 @@ export function useAcdmMongoData(currentUser) {
   }, [loadAllData, request]);
 
   const deleteInforme = useCallback(async (escuelaId, informeId) => {
-    if (!confirm('¿Eliminar informe?')) return;
+    if (!confirm('¿Eliminar informe?')) return false;
 
     try {
       await request(`/api/escuelas/${escuelaId}/informes/${informeId}`, { method: 'DELETE' });
       await loadAllData();
+      return true;
     } catch (err) {
       console.error('Error eliminando informe:', err);
       setError(err.message);

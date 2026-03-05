@@ -1,8 +1,32 @@
 const Escuela = require('../models/Escuela');
+const { toObjectId } = require('../models/base/mongoModel');
+
+const ensureSubdocIds = (escuela) => {
+  escuela.informes = (escuela.informes || []).map((inf) => ({
+    ...inf,
+    _id: inf._id || toObjectId()
+  }));
+};
+
+const findInformeIndex = (escuela, informeId) => (
+  (escuela.informes || []).findIndex((inf) => String(inf._id) === String(informeId))
+);
 
 const findEscuela = async (escuelaId) => {
   if (!escuelaId) return null;
   return Escuela.findById(escuelaId);
+};
+
+const findEscuelaByInformeId = async (informeId) => {
+  if (!informeId) return null;
+  return Escuela.findOne({ 'informes._id': informeId });
+};
+
+const resolveEscuelaForInforme = async (informeId, escuelaId) => {
+  if (escuelaId) {
+    return findEscuela(escuelaId);
+  }
+  return findEscuelaByInformeId(informeId);
 };
 
 exports.createInforme = async (req, res) => {
@@ -23,7 +47,9 @@ exports.createInforme = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Escuela no encontrada' });
     }
 
+    ensureSubdocIds(escuela);
     escuela.informes.push({
+      _id: toObjectId(),
       titulo: titulo || 'Sin título',
       estado: estado || 'Pendiente',
       fechaEntrega: fechaEntrega || null,
@@ -84,23 +110,19 @@ exports.getInformeById = async (req, res) => {
     const { id } = req.params;
     const { escuelaId } = req.query;
 
-    if (!escuelaId) {
-      return res.status(400).json({ success: false, error: 'escuelaId es requerido' });
-    }
-
-    const escuela = await findEscuela(escuelaId);
+    const escuela = await resolveEscuelaForInforme(id, escuelaId);
     if (!escuela) {
-      return res.status(404).json({ success: false, error: 'Escuela no encontrada' });
+      return res.status(404).json({ success: false, error: 'Informe no encontrado' });
     }
 
-    const informe = escuela.informes.id(id);
-    if (!informe) {
+    const idx = findInformeIndex(escuela, id);
+    if (idx < 0) {
       return res.status(404).json({ success: false, error: 'Informe no encontrado' });
     }
 
     res.json({
       success: true,
-      data: { informe }
+      data: { informe: escuela.informes[idx] }
     });
   } catch (error) {
     console.error('Error getting informe:', error);
@@ -112,31 +134,28 @@ exports.updateInforme = async (req, res) => {
   try {
     const { id } = req.params;
     const { escuelaId, titulo, estado, fechaEntrega, observaciones } = req.body;
+    const escuelaIdFromQuery = req.query?.escuelaId;
 
-    if (!escuelaId) {
-      return res.status(400).json({ success: false, error: 'escuelaId es requerido' });
-    }
-
-    const escuela = await findEscuela(escuelaId);
+    const escuela = await resolveEscuelaForInforme(id, escuelaId || escuelaIdFromQuery);
     if (!escuela) {
-      return res.status(404).json({ success: false, error: 'Escuela no encontrada' });
-    }
-
-    const informe = escuela.informes.id(id);
-    if (!informe) {
       return res.status(404).json({ success: false, error: 'Informe no encontrado' });
     }
 
-    if (titulo !== undefined) informe.titulo = titulo;
-    if (estado !== undefined) informe.estado = estado;
-    if (fechaEntrega !== undefined) informe.fechaEntrega = fechaEntrega;
-    if (observaciones !== undefined) informe.observaciones = observaciones;
+    const idx = findInformeIndex(escuela, id);
+    if (idx < 0) {
+      return res.status(404).json({ success: false, error: 'Informe no encontrado' });
+    }
+
+    if (titulo !== undefined) escuela.informes[idx].titulo = titulo;
+    if (estado !== undefined) escuela.informes[idx].estado = estado;
+    if (fechaEntrega !== undefined) escuela.informes[idx].fechaEntrega = fechaEntrega;
+    if (observaciones !== undefined) escuela.informes[idx].observaciones = observaciones;
 
     await escuela.save();
 
     res.json({
       success: true,
-      data: { informe }
+      data: { informe: escuela.informes[idx] }
     });
   } catch (error) {
     console.error('Error updating informe:', error);
@@ -148,22 +167,19 @@ exports.deleteInforme = async (req, res) => {
   try {
     const { id } = req.params;
     const { escuelaId } = req.query;
+    const escuelaIdFromBody = req.body?.escuelaId;
 
-    if (!escuelaId) {
-      return res.status(400).json({ success: false, error: 'escuelaId es requerido' });
-    }
-
-    const escuela = await findEscuela(escuelaId);
+    const escuela = await resolveEscuelaForInforme(id, escuelaId || escuelaIdFromBody);
     if (!escuela) {
-      return res.status(404).json({ success: false, error: 'Escuela no encontrada' });
-    }
-
-    const informe = escuela.informes.id(id);
-    if (!informe) {
       return res.status(404).json({ success: false, error: 'Informe no encontrado' });
     }
 
-    informe.deleteOne();
+    const idx = findInformeIndex(escuela, id);
+    if (idx < 0) {
+      return res.status(404).json({ success: false, error: 'Informe no encontrado' });
+    }
+
+    escuela.informes.splice(idx, 1);
     await escuela.save();
 
     res.json({

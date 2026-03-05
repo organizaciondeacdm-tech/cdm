@@ -1,0 +1,160 @@
+const { expect } = require('@playwright/test');
+const crypto = require('crypto');
+
+const API_URL = process.env.E2E_API_URL || 'http://localhost:5000';
+const AUTH_USER = process.env.E2E_USERNAME || process.env.E2E_USER || 'papiweb';
+const passwordCandidates = [
+  process.env.E2E_PASSWORD,
+  process.env.E2E_PASS,
+  "4501{GC3{j4Quq15K$at{}uFEK8}v-+mA9B,$EC77at4Cu)iw}'}",
+  '4501{GC3{j4Quq15K$at{}uFEK8}v-+mA9B,$EC77at4Cu)iw}',
+  'admin2025',
+  'Admin2025!',
+  'admin',
+  'admin2025!'
+].filter(Boolean);
+let resolvedPassword = null;
+const PAYLOAD_ITERATIONS = 150000;
+const PAYLOAD_KEY_LENGTH = 32;
+const PAYLOAD_AUTH_TAG_LEN = 16;
+const PAYLOAD_ENVELOPE = 'acdm-payload-v1';
+
+const getPayloadSecret = () => (
+  process.env.VITE_AUTH_STORAGE_SECRET ||
+  process.env.ENCRYPTION_KEY ||
+  process.env.JWT_SECRET ||
+  'acdm-default-payload-secret-change-me'
+);
+
+const encryptPayloadForApi = (payload) => {
+  const iv = crypto.randomBytes(12);
+  const salt = crypto.randomBytes(16);
+  const key = crypto.pbkdf2Sync(String(getPayloadSecret()), salt, PAYLOAD_ITERATIONS, PAYLOAD_KEY_LENGTH, 'sha256');
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const plain = Buffer.from(JSON.stringify(payload || {}), 'utf8');
+  const encrypted = Buffer.concat([cipher.update(plain), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  const combined = Buffer.concat([encrypted, tag.subarray(0, PAYLOAD_AUTH_TAG_LEN)]);
+  return {
+    __enc: PAYLOAD_ENVELOPE,
+    iv: iv.toString('base64'),
+    salt: salt.toString('base64'),
+    data: combined.toString('base64')
+  };
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function parseJsonSafe(response) {
+  const text = await response.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+async function requestJson(context, method, path, body, headers = {}) {
+  const encryptedBody = body === undefined ? undefined : encryptPayloadForApi(body);
+  const response = await context.fetch(path, {
+    method,
+    headers: {
+      'content-type': 'application/json',
+      ...headers
+    },
+    data: encryptedBody
+  });
+  const json = await parseJsonSafe(response);
+  return { response, json };
+}
+
+async function requestRaw(context, method, path, headers = {}) {
+  const response = await context.fetch(path, {
+    method,
+    headers
+  });
+  const text = await response.text();
+  return { response, text };
+}
+
+async function login(context) {
+  let lastStatus = null;
+  let lastError = null;
+
+  const candidates = resolvedPassword ? [resolvedPassword] : passwordCandidates;
+  for (const password of candidates) {
+    let attempts = 0;
+    while (attempts < 3) {
+      attempts += 1;
+      const { response, json } = await requestJson(context, 'POST', '/api/auth/login', {
+        username: AUTH_USER,
+        password
+      });
+
+      lastStatus = response.status();
+      lastError = json?.error;
+
+      if (response.status() === 200 && json?.data?.tokens?.access) {
+        resolvedPassword = password;
+        return {
+          user: json.data.user,
+          accessToken: json.data.tokens.access,
+          refreshToken: json.data.tokens.refresh
+        };
+      }
+
+      if (response.status() === 429) {
+        const retryAfter = Number(response.headers()['retry-after']) || 2;
+        await sleep(Math.min(10000, retryAfter * 1000));
+        continue;
+      }
+
+      break;
+    }
+  }
+
+  throw new Error(`No se pudo autenticar en E2E. Usuario: ${AUTH_USER}. status=${lastStatus} error=${lastError || 'sin detalle'}`);
+}
+
+async function createAuthHeaders(context) {
+  const session = await login(context);
+  return {
+    session,
+    headers: {
+      Authorization: `Bearer ${session.accessToken}`
+    }
+  };
+}
+
+async function getFirstEscuelaId(context, headers) {
+  const { response, text } = await requestRaw(context, 'GET', '/api/escuelas?limit=1', headers);
+  expect(response.status()).toBe(200);
+
+  const parsed = (() => {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
+  })();
+
+  const escuelaId = parsed?.data?.escuelas?.[0]?._id;
+  expect(escuelaId).toBeTruthy();
+  return escuelaId;
+}
+
+function uniqueSuffix() {
+  return `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+module.exports = {
+  API_URL,
+  requestJson,
+  requestRaw,
+  parseJsonSafe,
+  login,
+  createAuthHeaders,
+  getFirstEscuelaId,
+  uniqueSuffix
+};

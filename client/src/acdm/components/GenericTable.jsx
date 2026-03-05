@@ -1,12 +1,15 @@
 import { useState, useMemo, useEffect } from 'react';
 import { GenericForm } from './GenericForm';
+import { AlertMessage } from './AlertMessage';
+import PapiwebSpinner from '../../PapiwebSpinner.jsx';
 
-export function GenericTable({ 
-  title, 
-  columns: initialColumns, 
-  data = [], 
-  onAdd, 
-  onEdit, 
+
+export function GenericTable({
+  title,
+  columns: initialColumns,
+  data = [],
+  onAdd,
+  onEdit,
   onDelete,
   onFetch,
   apiEndpoint,
@@ -18,7 +21,7 @@ export function GenericTable({
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({});
   const [showForm, setShowForm] = useState(false);
-  
+
   // Estados para funcionalidades avanzadas
   const [visibleColumns, setVisibleColumns] = useState(initialColumns.map(c => c.key));
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
@@ -27,11 +30,12 @@ export function GenericTable({
   const [currentPage, setCurrentPage] = useState(1);
   const [showColumnSelector, setShowColumnSelector] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  
+
   // Estados de carga y sincronización
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState(null);
+  const [feedback, setFeedback] = useState(null);
   const [localData, setLocalData] = useState(data);
 
   // Actualizar localData cuando cambia data
@@ -98,7 +102,7 @@ export function GenericTable({
       // Búsqueda global
       if (searchTerm) {
         const searchLower = searchTerm.toLowerCase();
-        const matches = Object.values(item).some(value => 
+        const matches = Object.values(item).some(value =>
           String(value).toLowerCase().includes(searchLower)
         );
         if (!matches) return false;
@@ -178,21 +182,29 @@ export function GenericTable({
   const handleSave = async () => {
     setSyncing(true);
     setError(null);
+    setFeedback(null);
     try {
       if (editingId) {
         await onEdit(editingId, formData);
+        setFeedback({ id: Date.now(), type: 'success', message: 'Registro actualizado correctamente.' });
       } else {
         await onAdd(formData);
+        setFeedback({ id: Date.now(), type: 'success', message: 'Alta realizada correctamente.' });
       }
-      
+
       if (enableRemoteSync && onFetch) {
         await loadRemoteData();
       }
-      
+
       setShowForm(false);
       setFormData({});
     } catch (err) {
       setError(err.message || 'Error al guardar');
+      setFeedback({
+        id: Date.now(),
+        type: 'error',
+        message: err.message || 'Error al guardar'
+      });
       console.error('Error saving:', err);
     } finally {
       setSyncing(false);
@@ -208,14 +220,22 @@ export function GenericTable({
   const handleDeleteConfirmed = async (id) => {
     setSyncing(true);
     setError(null);
+    setFeedback(null);
     try {
-      await onDelete(id);
-      
+      const deleted = await onDelete(id);
+      if (deleted === false) return;
+      setFeedback({ id: Date.now(), type: 'success', message: 'Registro eliminado correctamente.' });
+
       if (enableRemoteSync && onFetch) {
         await loadRemoteData();
       }
     } catch (err) {
       setError(err.message || 'Error al eliminar');
+      setFeedback({
+        id: Date.now(),
+        type: 'error',
+        message: err.message || 'Error al eliminar'
+      });
       console.error('Error deleting:', err);
     } finally {
       setSyncing(false);
@@ -241,8 +261,17 @@ export function GenericTable({
 
   return (
     <div>
+      {feedback && (
+        <AlertMessage
+          key={feedback.id}
+          type={feedback.type}
+          message={feedback.message}
+          onClose={() => setFeedback(null)}
+        />
+      )}
+
       {/* Mensajes de error */}
-      {error && (
+      {error && !feedback && (
         <div style={{
           marginBottom: '16px',
           padding: '12px 16px',
@@ -403,8 +432,8 @@ export function GenericTable({
             )}
 
             {/* Botón agregar */}
-            <button 
-              className="btn btn-primary" 
+            <button
+              className="btn btn-primary"
               onClick={handleAdd}
               disabled={syncing}
               style={{ padding: '8px 14px', fontSize: '12px' }}
@@ -535,7 +564,7 @@ export function GenericTable({
           gap: '12px'
         }}>
           <span>
-            📊 {sortedData.length} resultado{sortedData.length !== 1 ? 's' : ''} 
+            📊 {sortedData.length} resultado{sortedData.length !== 1 ? 's' : ''}
             {searchTerm || Object.keys(filters).length > 0 ? ' (filtrados)' : ''}
             {enableRemoteSync && syncing && ' • Sincronizando...'}
           </span>
@@ -551,12 +580,12 @@ export function GenericTable({
       {loading ? (
         <div className="card" style={{
           padding: '48px',
-          textAlign: 'center',
-          color: 'var(--text3)',
-          fontSize: '14px',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
           marginBottom: '16px'
         }}>
-          ⏳ Cargando datos...
+          <PapiwebSpinner />
         </div>
       ) : paginatedData.length > 0 ? (
         <div className="card" style={{ overflowX: 'auto', marginBottom: '16px' }}>

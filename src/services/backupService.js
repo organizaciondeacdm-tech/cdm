@@ -2,31 +2,31 @@ const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 const util = require('util');
-const winston = require('winston');
+const { createLogger } = require('./../utils/logger');
 const cron = require('node-cron');
+const { getMongoUri } = require('../utils/envObfuscator');
 
 const execPromise = util.promisify(exec);
 
-const logger = winston.createLogger({
+const logger = createLogger({
   level: 'info',
-  format: winston.format.json(),
   transports: [
-    new winston.transports.File({ filename: 'logs/backup.log' })
+    { type: 'file', filename: 'logs/backup.log' }
   ]
 });
 
 const realizarBackup = async () => {
   try {
     const backupDir = path.join(process.env.BACKUP_PATH, `backup_${new Date().toISOString().replace(/[:.]/g, '-')}`);
-    
+
     if (!fs.existsSync(backupDir)) {
       fs.mkdirSync(backupDir, { recursive: true });
     }
 
     // Backup de MongoDB
-    const mongoUri = process.env.MONGODB_URI;
+    const mongoUri = getMongoUri();
     const mongoBackupPath = path.join(backupDir, 'mongodb');
-    
+
     await execPromise(`mongodump --uri="${mongoUri}" --out="${mongoBackupPath}"`);
 
     // Comprimir backup
@@ -62,13 +62,13 @@ const realizarBackup = async () => {
 const restaurarBackup = async (backupFile) => {
   try {
     const backupPath = path.join(process.env.BACKUP_PATH, backupFile);
-    
+
     if (!fs.existsSync(backupPath)) {
       throw new Error('Archivo de backup no encontrado');
     }
 
     const tempDir = path.join(process.env.BACKUP_PATH, 'temp_restore');
-    
+
     if (fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
@@ -78,7 +78,7 @@ const restaurarBackup = async (backupFile) => {
     await execPromise(`tar -xzf ${backupPath} -C ${tempDir}`);
 
     // Restaurar MongoDB
-    const mongoUri = process.env.MONGODB_URI;
+    const mongoUri = getMongoUri();
     await execPromise(`mongorestore --uri="${mongoUri}" --drop ${tempDir}/mongodb`);
 
     // Limpiar

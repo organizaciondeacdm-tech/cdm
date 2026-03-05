@@ -1,5 +1,6 @@
-const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const { BaseMongoModel, BaseMongoDocument, toObjectId } = require('./base/mongoModel');
+const { buildLookupKey, normalizeRole, normalizePermission, protectAcl, revealAcl } = require('../utils/accessControlCrypto');
 
 const parsePositiveIntEnv = (value, fallback) => {
   const parsed = parseInt(value, 10);
@@ -10,163 +11,144 @@ const MAX_LOGIN_ATTEMPTS = parsePositiveIntEnv(process.env.MAX_LOGIN_ATTEMPTS, 3
 const LOCK_BASE_MINUTES = parsePositiveIntEnv(process.env.LOGIN_LOCK_BASE_MINUTES, 15);
 const LOCK_MAX_MINUTES = parsePositiveIntEnv(process.env.LOGIN_LOCK_MAX_MINUTES, 240);
 
-const userSchema = new mongoose.Schema({
-  username: {
-    type: String,
-    required: [true, 'Username es requerido'],
-    unique: true,
-    trim: true,
-    lowercase: true,
-    minlength: [3, 'Username debe tener al menos 3 caracteres'],
-    maxlength: [50, 'Username no puede exceder 50 caracteres'],
-    match: [/^[a-zA-Z0-9_]+$/, 'Username solo puede contener letras, números y _']
-  },
-  passwordHash: {
-    type: String,
-    required: [true, 'Password es requerido']
-  },
-  email: {
-    type: String,
-    required: [true, 'Email es requerido'],
-    unique: true,
-    lowercase: true,
-    match: [/^\S+@\S+\.\S+$/, 'Email inválido']
-  },
-  nombre: {
-    type: String,
-    required: [true, 'Nombre es requerido'],
-    trim: true
-  },
-  apellido: {
-    type: String,
-    required: [true, 'Apellido es requerido'],
-    trim: true
-  },
-  rol: {
-    type: String,
-    enum: ['admin', 'supervisor', 'viewer'],
-    default: 'viewer'
-  },
-  permisos: [{
-    type: String,
-    enum: ['crear_escuela', 'editar_escuela', 'eliminar_escuela',
-           'crear_docente', 'editar_docente', 'eliminar_docente',
-           'crear_alumno', 'editar_alumno', 'eliminar_alumno',
-           'exportar_datos', 'ver_reportes', 'gestionar_usuarios']
-  }],
-  refreshToken: {
-    token: String,
-    expiresAt: Date
-  },
-  lastLogin: {
-    type: Date
-  },
-  lastIP: {
-    type: String
-  },
-  loginAttempts: {
-    type: Number,
-    default: 0
-  },
-  lockUntil: {
-    type: Date
-  },
-  isActive: {
-    type: Boolean,
-    default: true
-  },
-  passwordChangedAt: {
-    type: Date
-  },
-  twoFactorEnabled: {
-    type: Boolean,
-    default: false
-  },
-  twoFactorSecret: {
-    type: String,
-    select: false
-  },
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  },
-  updatedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
+class User extends BaseMongoModel {
+  static collectionName = 'users';
+  static sensitiveFields = ['passwordHash', 'email', 'refreshToken', 'twoFactorSecret', 'lastIP'];
+  static references = {
+    createdBy: { model: () => User, localField: 'createdBy', isArray: false },
+    updatedBy: { model: () => User, localField: 'updatedBy', isArray: false }
+  };
+
+  static getRoleLookup(role) {
+    return buildLookupKey('role', normalizeRole(role));
   }
-}, {
-  timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
-});
 
-// Índices
-userSchema.index({ username: 1 }, { unique: true });
-userSchema.index({ email: 1 }, { unique: true });
-userSchema.index({ rol: 1 });
-userSchema.index({ isActive: 1 });
-
-// Virtual para nombre completo
-userSchema.virtual('nombreCompleto').get(function() {
-  return `${this.nombre} ${this.apellido}`;
-});
-
-// Middleware para hashear password antes de guardar
-userSchema.pre('save', async function(next) {
-  if (!this.isModified('passwordHash')) return next();
-  
-  try {
-    const salt = await bcrypt.genSalt(parseInt(process.env.BCRYPT_ROUNDS));
-    this.passwordHash = await bcrypt.hash(this.passwordHash, salt);
-    this.passwordChangedAt = new Date();
-    next();
-  } catch (error) {
-    next(error);
+  static transformOnRead(doc) {
+    return revealAcl(doc, 'rol', 'permisos');
   }
-});
 
-// Métodos
-userSchema.methods.comparePassword = async function(candidatePassword) {
-  return await bcrypt.compare(candidatePassword, this.passwordHash);
+  static async preUpdate(update) {
+    const next = { ...(update || {}) };
+    next.$set = { ...(next.$set || {}) };
+
+    const hasRole = Object.prototype.hasOwnProperty.call(next.$set, 'rol');
+    const hasPermisos = Object.prototype.hasOwnProperty.call(next.$set, 'permisos');
+    if (!hasRole && !hasPermisos) return next;
+
+    const currentRole = hasRole ? next.$set.rol : 'viewer';
+    const currentPerms = hasPermisos ? next.$set.permisos : [];
+    const secured = protectAcl({
+      role: currentRole,
+      permissions: currentPerms,
+      recordedAt: new Date()
+    });
+
+    if (hasRole) {
+      next.$set.rol = secured.role;
+      next.$set.rolLookup = secured.roleLookup;
+    }
+    if (hasPermisos) {
+      next.$set.permisos = secured.permissions;
+      next.$set.permisosLookup = secured.permissionsLookup;
+    }
+
+    next.$set.aclSecurity = {
+      ...(next.$set.aclSecurity || {}),
+      scheme: 'aclv1',
+      securedAt: secured.securedAt,
+      recordedAt: secured.recordedAt
+    };
+
+    return next;
+  }
+
+  static async preSave(payload, instance) {
+    if (payload.passwordHash) {
+      const incoming = String(payload.passwordHash);
+      const shouldHash = !incoming.startsWith('$2a$') && !incoming.startsWith('$2b$') && !incoming.startsWith('$2y$');
+      if (shouldHash) {
+        const rounds = parseInt(process.env.BCRYPT_ROUNDS, 10);
+        const salt = await bcrypt.genSalt(Number.isFinite(rounds) && rounds > 0 ? rounds : 10);
+        payload.passwordHash = await bcrypt.hash(incoming, salt);
+        payload.passwordChangedAt = new Date();
+      }
+    }
+
+    if (payload.username) payload.username = String(payload.username).trim().toLowerCase();
+    if (payload.email) payload.email = String(payload.email).trim().toLowerCase();
+
+    const normalizedRole = normalizeRole(payload.rol || 'viewer');
+    const normalizedPerms = (Array.isArray(payload.permisos) ? payload.permisos : [])
+      .map((p) => normalizePermission(p))
+      .filter(Boolean);
+    const secured = protectAcl({
+      role: normalizedRole,
+      permissions: normalizedPerms,
+      recordedAt: payload.createdAt || new Date()
+    });
+
+    payload.rol = secured.role;
+    payload.permisos = secured.permissions;
+    payload.rolLookup = secured.roleLookup;
+    payload.permisosLookup = secured.permissionsLookup;
+    payload.aclSecurity = {
+      ...(payload.aclSecurity || {}),
+      scheme: 'aclv1',
+      securedAt: secured.securedAt,
+      recordedAt: secured.recordedAt
+    };
+
+    if (payload.createdBy) payload.createdBy = toObjectId(payload.createdBy);
+    if (payload.updatedBy) payload.updatedBy = toObjectId(payload.updatedBy);
+  }
+}
+
+User.documentPrototype = Object.create(BaseMongoDocument.prototype);
+
+User.documentPrototype.comparePassword = async function comparePassword(candidatePassword) {
+  return bcrypt.compare(String(candidatePassword || ''), this.passwordHash || '');
 };
 
-userSchema.methods.isLocked = function() {
-  return !!(this.lockUntil && this.lockUntil > new Date());
+User.documentPrototype.isLocked = function isLocked() {
+  return !!(this.lockUntil && new Date(this.lockUntil) > new Date());
 };
 
-userSchema.methods.getLockDurationMs = function(attempts) {
-  const overflow = Math.max(0, attempts - MAX_LOGIN_ATTEMPTS);
+User.documentPrototype.getLockDurationMs = function getLockDurationMs(attempts) {
+  const overflow = Math.max(0, Number(attempts || 0) - MAX_LOGIN_ATTEMPTS);
   const multiplier = Math.pow(2, overflow);
   const lockMinutes = Math.min(LOCK_MAX_MINUTES, LOCK_BASE_MINUTES * multiplier);
   return lockMinutes * 60 * 1000;
 };
 
-userSchema.methods.incrementLoginAttempts = function() {
-  if (this.lockUntil && this.lockUntil < new Date()) {
+User.documentPrototype.incrementLoginAttempts = async function incrementLoginAttempts() {
+  if (this.lockUntil && new Date(this.lockUntil) < new Date()) {
     return this.updateOne({
       $set: { loginAttempts: 1 },
-      $unset: { lockUntil: 1 }
+      $unset: { lockUntil: '' }
     });
   }
-  
+
+  const nextAttempts = Number(this.loginAttempts || 0) + 1;
   const updates = { $inc: { loginAttempts: 1 } };
-  if (this.loginAttempts + 1 >= MAX_LOGIN_ATTEMPTS) {
+
+  if (nextAttempts >= MAX_LOGIN_ATTEMPTS) {
     updates.$set = {
-      lockUntil: new Date(Date.now() + this.getLockDurationMs(this.loginAttempts + 1))
+      lockUntil: new Date(Date.now() + this.getLockDurationMs(nextAttempts))
     };
   }
+
   return this.updateOne(updates);
 };
 
-userSchema.methods.registerFailedLoginAttempt = async function() {
+User.documentPrototype.registerFailedLoginAttempt = async function registerFailedLoginAttempt() {
   const now = new Date();
 
-  if (this.lockUntil && this.lockUntil < now) {
+  if (this.lockUntil && new Date(this.lockUntil) < now) {
     this.loginAttempts = 0;
-    this.lockUntil = undefined;
+    this.lockUntil = null;
   }
 
-  this.loginAttempts = (this.loginAttempts || 0) + 1;
+  this.loginAttempts = Number(this.loginAttempts || 0) + 1;
 
   let lockUntil = null;
   if (this.loginAttempts >= MAX_LOGIN_ATTEMPTS) {
@@ -184,8 +166,10 @@ userSchema.methods.registerFailedLoginAttempt = async function() {
   };
 };
 
-userSchema.methods.hasPermission = function(permission) {
-  return this.rol === 'admin' || this.permisos.includes(permission);
+User.documentPrototype.hasPermission = function hasPermission(permission) {
+  const permisos = Array.isArray(this.permisos) ? this.permisos : [];
+  const wanted = normalizePermission(permission);
+  return permisos.includes('*') || permisos.includes(wanted);
 };
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = User;

@@ -1,7 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import AppWithAuth from './AppWithAuth.jsx'
-import './ACDMSystemMongo.css'
+import './infrastructure/styles/PapiwebSpinner.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

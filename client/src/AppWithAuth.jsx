@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react';
 import App from './acdm/acdm-system.jsx';
-import { useMongoData } from './hooks/useMongoData.js';
-import { restoreUserFromSession } from './utils/authSession.js';
+import { loginWithSession, logoutSession, performTrafficHandshake, restoreUserFromSession } from './utils/authSession.js';
+import PapiwebSpinner from './PapiwebSpinner.jsx';
 
 /**
  * Wrapper que proporciona autenticación MongoDB a acdm-system.jsx
  */
 export default function AppWithAuth() {
-  const { login: mongoLogin, logout: mongoLogout } = useMongoData();
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [isRestoringSession, setIsRestoringSession] = useState(true);
+  const [trafficLock, setTrafficLock] = useState(null);
+  const [unlocking, setUnlocking] = useState(false);
+  const [unlockError, setUnlockError] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -34,12 +36,21 @@ export default function AppWithAuth() {
     };
   }, []);
 
+  useEffect(() => {
+    const onTrafficLock = (event) => {
+      setTrafficLock(event?.detail || null);
+      setUnlockError('');
+    };
+    window.addEventListener('acdm:traffic-lock', onTrafficLock);
+    return () => window.removeEventListener('acdm:traffic-lock', onTrafficLock);
+  }, []);
+
   const handleLogin = async (username, password) => {
     setIsLoggingIn(true);
     setLoginError('');
     try {
-      const user = await mongoLogin(username, password);
-      setCurrentUser(user);
+      const session = await loginWithSession(username, password);
+      setCurrentUser(session.user);
     } catch (err) {
       setLoginError(err.message);
       throw err;
@@ -50,26 +61,84 @@ export default function AppWithAuth() {
 
   const handleLogout = async () => {
     setCurrentUser(null);
-    await mongoLogout();
+    setTrafficLock(null);
+    await logoutSession();
+  };
+
+  const handleUnlockTraffic = async () => {
+    if (!trafficLock) return;
+    setUnlocking(true);
+    setUnlockError('');
+    try {
+      await performTrafficHandshake(trafficLock);
+      setTrafficLock(null);
+    } catch (error) {
+      setUnlockError(error.message || 'No se pudo validar handshake de seguridad');
+    } finally {
+      setUnlocking(false);
+    }
   };
 
   if (isRestoringSession) {
     return (
       <div style={{
         background: '#0a0e1a',
-        color: '#e8f4f8',
-        fontFamily: "'Exo 2', sans-serif",
         minHeight: '100vh',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center'
       }}>
-        Restaurando sesión...
+        <PapiwebSpinner />
       </div>
     );
   }
 
   if (currentUser) {
+    if (trafficLock) {
+      return (
+        <div style={{
+          background: '#050914',
+          color: '#e8f4f8',
+          fontFamily: "'Exo 2', sans-serif",
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 24
+        }}>
+          <div style={{
+            width: 'min(620px, 100%)',
+            background: '#111827',
+            border: '1px solid #2a4a7f',
+            borderRadius: 12,
+            padding: 24
+          }}>
+            <h2 style={{ marginTop: 0, marginBottom: 10, color: '#00d4ff', fontFamily: 'Rajdhani, sans-serif', letterSpacing: 1 }}>
+              Lockscreen de Seguridad
+            </h2>
+            <p style={{ margin: '0 0 8px', color: '#d6e2f0' }}>
+              Se detectó tráfico inusual desde una IP no habitual. Servicios bloqueados hasta completar handshake cifrado.
+            </p>
+            <p style={{ margin: '0 0 16px', fontSize: 12, color: '#8bacc8' }}>
+              IP sesión: {trafficLock?.lock?.sessionIp || '-'} | IP actual: {trafficLock?.lock?.requestIp || '-'}
+            </p>
+            {unlockError && (
+              <div style={{ marginBottom: 12, color: '#ff7d7d', fontSize: 13 }}>
+                {unlockError}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn-primary" style={{ width: 'auto' }} onClick={handleUnlockTraffic} disabled={unlocking}>
+                {unlocking ? 'Validando...' : 'Validar Handshake'}
+              </button>
+              <button className="btn-primary" style={{ width: 'auto', background: '#233655', color: '#d4e8ff' }} onClick={handleLogout} disabled={unlocking}>
+                Cerrar sesión
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
     return <App currentUser={currentUser} onLogout={handleLogout} />;
   }
 
@@ -174,82 +243,137 @@ export default function AppWithAuth() {
           display: flex;
           gap: 8px;
         }
-        .papiweb-logo {
-          text-align: center;
+        .login-logo-container {
+          display: flex;
+          justify-content: center;
           margin-bottom: 24px;
+        }
+        .papiweb-logo {
+          position: relative;
+          background: linear-gradient(135deg, #1a2540, #0a0e1a);
+          border: 1px solid #2a4a7f;
+          border-radius: 6px;
+          padding: 8px 32px;
+          min-width: 220px;
+          text-align: center;
+          overflow: hidden;
+        }
+        .papiweb-logo::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.4) 50%, transparent 100%);
+          animation: shineEffectMirror 2.5s ease-in-out infinite;
+        }
+        .papiweb-logo::after {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, #00d4ff, transparent);
+          animation: ledScan 2s linear infinite;
         }
         .papiweb-text {
           font-family: 'Rajdhani', sans-serif;
-          font-size: 22px;
+          font-size: 26px;
           font-weight: 700;
+          letter-spacing: 6px;
+          margin-right: -6px;
           background: linear-gradient(135deg, #c0d0e8 0%, #ffffff 30%, #8098b8 50%, #ffffff 70%, #4a6fa5 100%);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
+          filter: drop-shadow(0 0 6px rgba(0,212,255,0.5));
+          animation: metalPulse 4s ease-in-out infinite;
         }
         .papiweb-sub {
           color: #4a6fa5;
           font-size: 9px;
-          letter-spacing: 1px;
+          letter-spacing: 2px;
+          font-family: 'Exo 2', sans-serif;
+          font-weight: 300;
           text-transform: uppercase;
+          margin-top: 4px;
+        }
+
+        @keyframes shineEffectMirror {
+          0% { transform: translateX(200%); opacity: 0; }
+          25% { opacity: 1; }
+          50% { transform: translateX(0%); opacity: 1; }
+          75% { opacity: 1; }
+          100% { transform: translateX(-200%); opacity: 0; }
+        }
+        @keyframes ledScan {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+        @keyframes metalPulse {
+          0%, 100% { filter: drop-shadow(0 0 6px rgba(0,212,255,0.5)); }
+          50% { filter: drop-shadow(0 0 12px rgba(0,212,255,0.8)); }
         }
       `}</style>
 
       <div className="login-box">
-        <div className="papiweb-logo">
-          <div className="papiweb-text">PAPIWEB</div>
-          <div className="papiweb-sub">Desarrollos Informáticos</div>
+        <div className="login-logo-container">
+          <div className="papiweb-logo">
+            <div className="papiweb-text">PAPIWEB</div>
+            <div className="papiweb-sub">DESARROLLOS INFORMÁTICOS</div>
+          </div>
         </div>
-        <h1 className="login-title">Sistema ACDM</h1>
-        <h2 className="login-sub">Gestión de Asistentes Celadores/as</h2>
+        <h1 className="login-title">SISTEMA ACDM</h1>
+        <h2 className="login-sub">Gestión de Asistentes de Clase</h2>
 
-        <form onSubmit={(e) => {
-          e.preventDefault();
-          const formData = new FormData(e.target);
-          handleLogin(formData.get('username'), formData.get('password'));
-        }}>
-          {loginError && (
-            <div className="error">
-              <span>⚠️</span>
-              {loginError}
+        {isLoggingIn ? (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '40px 0', minHeight: '260px' }}>
+            <PapiwebSpinner />
+          </div>
+        ) : (
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            handleLogin(formData.get('username'), formData.get('password'));
+          }}>
+            {loginError && (
+              <div className="error">
+                <span>⚠️</span>
+                {loginError}
+              </div>
+            )}
+
+            <div className="form-group">
+              <label className="form-label">Usuario</label>
+              <input
+                className="form-input"
+                type="text"
+                name="username"
+                placeholder="admin"
+                autoFocus
+                disabled={isLoggingIn}
+              />
             </div>
-          )}
 
-          <div className="form-group">
-            <label className="form-label">Usuario</label>
-            <input
-              className="form-input"
-              type="text"
-              name="username"
-              placeholder="admin"
-              autoFocus
+            <div className="form-group">
+              <label className="form-label">Contraseña</label>
+              <input
+                className="form-input"
+                type="password"
+                name="password"
+                placeholder="••••••••"
+                disabled={isLoggingIn}
+              />
+            </div>
+
+            <button
+              className="btn-primary"
+              type="submit"
               disabled={isLoggingIn}
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Contraseña</label>
-            <input
-              className="form-input"
-              type="password"
-              name="password"
-              placeholder="••••••••"
-              disabled={isLoggingIn}
-            />
-          </div>
-
-          <button
-            className="btn-primary"
-            type="submit"
-            disabled={isLoggingIn}
-          >
-            {isLoggingIn ? 'Ingresando...' : 'Ingresar →'}
-          </button>
-        </form>
-
-        <div style={{ fontSize: 11, color: '#4a6fa5', textAlign: 'center', marginTop: 16 }}>
-          Demo: <span style={{ background: '#0f1626', padding: '1px 6px', borderRadius: 4 }}>admin</span> / <span style={{ background: '#0f1626', padding: '1px 6px', borderRadius: 4 }}>admin2025</span>
-        </div>
+            >
+              Ingresar →
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );
