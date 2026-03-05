@@ -70,6 +70,9 @@ class FormEngineService {
     const entity = new FormTemplateEntity(nextPayload);
     entity.validate();
 
+    // Find the true max version for this templateKey to avoid duplicate key errors
+    const maxVersion = await this.templateRepository.getMaxVersion(current.templateKey);
+
     await this.templateRepository.markNotLatest(id);
 
     return this.templateRepository.create({
@@ -80,7 +83,7 @@ class FormEngineService {
       fields: nextPayload.fields,
       metadata: nextPayload.metadata,
       parentTemplateId: current._id,
-      version: Number(current.version || 1) + 1,
+      version: maxVersion + 1,
       isLatest: true,
       isActive: payload.isActive === undefined ? current.isActive : payload.isActive
     });

@@ -13,29 +13,42 @@ const handleValidationErrors = (req, res, next) => {
 
 const validateEscuela = [
   body('de')
+    .optional({ checkFalsy: true })
     .matches(/^DE\s\d{2}$/)
     .withMessage('DE debe tener formato DE 01'),
   body('escuela')
+    .if((value, { req }) => req.method === 'POST' || value !== undefined)
     .notEmpty()
     .trim()
     .withMessage('Nombre de escuela es requerido'),
   body('nivel')
+    .optional({ checkFalsy: true })
     .isIn(['Inicial', 'Primario', 'Secundario', 'Especial', 'Técnica', 'Adultos'])
     .withMessage('Nivel inválido'),
   body('direccion')
+    .if((value, { req }) => req.method === 'POST' || value !== undefined)
     .notEmpty()
     .withMessage('Dirección es requerida'),
   body('localidad')
-    .notEmpty()
-    .withMessage('Localidad es requerida'),
-  body('email')
-    .isEmail()
-    .withMessage('Email inválido')
-    .normalizeEmail(),
+    .optional({ checkFalsy: true }),
+  body()
+    .custom((_, { req }) => {
+      const email = req.body.email || req.body.mail;
+      if (!email && req.method === 'POST') {
+        throw new Error('Email inválido');
+      }
+      const emailRegex = /^\S+@\S+\.\S+$/;
+      if (email && !emailRegex.test(email)) {
+        throw new Error('Email inválido');
+      }
+      return true;
+    }),
   body('jornada')
+    .optional({ checkFalsy: true })
     .isIn(['Simple', 'Completa', 'Extendida', 'Doble Escolaridad'])
     .withMessage('Jornada inválida'),
   body('turno')
+    .optional({ checkFalsy: true })
     .isIn(['Mañana', 'Tarde', 'Vespertino', 'Noche', 'Completo'])
     .withMessage('Turno inválido'),
   handleValidationErrors
@@ -43,50 +56,63 @@ const validateEscuela = [
 
 const validateDocente = [
   body('nombre')
-    .notEmpty()
+    .optional({ checkFalsy: true })
     .trim()
+    .isLength({ min: 1 })
     .withMessage('Nombre es requerido'),
   body('apellido')
-    .notEmpty()
+    .optional({ checkFalsy: true })
     .trim()
+    .isLength({ min: 1 })
     .withMessage('Apellido es requerido'),
   body('dni')
+    .optional({ checkFalsy: true })
     .matches(/^\d{7,8}$/)
     .withMessage('DNI debe tener 7 u 8 dígitos'),
   body('email')
+    .optional({ checkFalsy: true })
     .isEmail()
     .withMessage('Email inválido')
     .normalizeEmail(),
   body('fechaNacimiento')
+    .optional({ checkFalsy: true })
     .isISO8601()
     .withMessage('Fecha de nacimiento inválida'),
   body('cargo')
-    .isIn(['Titular', 'Suplente', 'Interino', 'Provisorio'])
+    .optional({ checkFalsy: true })
+    .isIn([
+      'Titular', 'Suplente', 'Interino', 'Provisorio',
+      'Maestro de Grado', 'Maestro de Educación Especial',
+      'Maestro de Educación Inicial', 'Profesor', 'Directivo',
+      'Vice-director', 'Secretario', 'Auxiliar'
+    ])
     .withMessage('Cargo inválido'),
   handleValidationErrors
 ];
 
 const validateAlumno = [
   body('nombre')
-    .notEmpty()
+    .optional({ checkFalsy: true })
     .trim()
+    .isLength({ min: 1 })
     .withMessage('Nombre es requerido'),
   body('apellido')
-    .notEmpty()
+    .optional({ checkFalsy: true })
     .trim()
+    .isLength({ min: 1 })
     .withMessage('Apellido es requerido'),
   body('dni')
+    .optional({ checkFalsy: true })
     .matches(/^\d{7,8}$/)
     .withMessage('DNI debe tener 7 u 8 dígitos'),
   body('fechaNacimiento')
+    .optional({ checkFalsy: true })
     .isISO8601()
     .withMessage('Fecha de nacimiento inválida'),
   body('gradoSalaAnio')
-    .notEmpty()
-    .withMessage('Grado/Sala/Año es requerido'),
+    .optional({ checkFalsy: true }),
   body('diagnostico')
-    .notEmpty()
-    .withMessage('Diagnóstico es requerido'),
+    .optional({ checkFalsy: true }),
   handleValidationErrors
 ];
 

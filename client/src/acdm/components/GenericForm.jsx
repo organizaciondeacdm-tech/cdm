@@ -35,15 +35,19 @@ export function GenericForm({
   }, [initialData]);
 
   const validateField = (col, value) => {
-    // Validación requerida
-    if (col.required && (!value || value.toString().trim() === '')) {
-      return `${col.label} es requerido`;
+  const validateField = (col, value) => {
+    // Validación requerida - check for empty strings and null/undefined more strictly
+    if (col.required) {
+      if (value === null || value === undefined) return `${col.label} es requerido`;
+      const trimmed = String(value).trim();
+      if (trimmed === '' || trimmed === '0') return `${col.label} es requerido`;
     }
 
-    // Validación de email
+    // Validación de email - more robust pattern
     if (col.type === 'email' && value) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(value)) {
+      const trimmedEmail = String(value).trim();
+      if (trimmedEmail && !emailRegex.test(trimmedEmail)) {
         return 'Email inválido';
       }
     }

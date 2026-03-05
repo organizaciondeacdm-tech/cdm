@@ -1,9 +1,10 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import App from './acdm/acdm-system.jsx'
+import AppWithAuth from './AppWithAuth.jsx'
+import './infrastructure/styles/PapiwebSpinner.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    <AppWithAuth />
   </React.StrictMode>,
 )

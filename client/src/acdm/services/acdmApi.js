@@ -2,21 +2,33 @@
  * API Service para ACDM
  * Maneja todas las llamadas HTTP al backend
  */
+import { clearAuthSession, getAuthSession, setAuthSession } from '../../utils/authSession.js';
+import { authFetch } from '../../utils/authSession.js';
+import { getApiUrl } from '../../utils/apiConfig.js';
+import { encryptJsonBodyIfNeeded } from '../../utils/payloadCrypto.js';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = `${getApiUrl()}/api`;
+const TRAFFIC_LOCK_CODE = 'TRAFFIC_LOCK_REQUIRED';
+
+const emitTrafficLockEvent = (payload = {}) => {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+  window.dispatchEvent(new CustomEvent('acdm:traffic-lock', { detail: payload }));
+};
 
 class AcdmApiService {
   constructor(baseUrl = API_BASE_URL) {
     this.baseUrl = baseUrl;
-    this.token = localStorage.getItem('auth_token');
+    this.token = null;
   }
 
   setToken(token) {
     this.token = token;
-    localStorage.setItem('auth_token', token);
   }
 
-  getHeaders() {
+  async getHeaders() {
+    const session = await getAuthSession();
+    this.token = session?.tokens?.access || this.token || null;
+
     return {
       'Content-Type': 'application/json',
       ...(this.token && { 'Authorization': `Bearer ${this.token}` })
@@ -24,25 +36,43 @@ class AcdmApiService {
   }
 
   async request(endpoint, options = {}) {
-    const url = `${this.baseUrl}${endpoint}`;
-    const config = {
-      ...options,
-      headers: this.getHeaders()
-    };
+    const path = `/api${endpoint}`;
 
     try {
-      const response = await fetch(url, config);
+      const response = await authFetch(path, options);
+      const payload = await response.json().catch(() => ({}));
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.message || `HTTP ${response.status}`);
+      if (response.status === 423 && payload?.code === TRAFFIC_LOCK_CODE) {
+        emitTrafficLockEvent(payload);
       }
 
-      return await response.json();
+      if (!response.ok) {
+        if (response.status === 401) {
+          this.token = null;
+        }
+        const err = new Error(payload.error || payload.message || `HTTP ${response.status}`);
+        err.status = response.status;
+        err.payload = payload;
+        throw err;
+      }
+
+      return payload;
     } catch (error) {
       console.error(`API Error (${endpoint}):`, error);
       throw error;
     }
+  }
+
+  normalizeActiveSessionsResponse(payload = {}) {
+    const rows = Array.isArray(payload?.data) ? payload.data : [];
+    const now = Date.now();
+    const data = rows.filter((session) => {
+      if (!session || session.isActive === false) return false;
+      if (!session.expiresAt) return true;
+      const expiresAtMs = Date.parse(session.expiresAt);
+      return Number.isNaN(expiresAtMs) ? true : expiresAtMs > now;
+    });
+    return { ...payload, data };
   }
 
   // ==================== ESCUELAS ====================
@@ -181,23 +211,335 @@ class AcdmApiService {
   }
 
   async exportarJSON() {
-    const response = await fetch(`${this.baseUrl}/export/json`, {
-      headers: this.getHeaders()
-    });
+    const response = await authFetch('/api/export/json', { method: 'GET' });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
     return response.blob();
   }
 
   async exportarCSV() {
-    const response = await fetch(`${this.baseUrl}/export/csv`, {
-      headers: this.getHeaders()
-    });
+    const response = await authFetch('/api/export/csv', { method: 'GET' });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
     return response.blob();
+  }
+
+  // ==================== SESIONES ====================
+  async getMySessions() {
+    return this.request('/auth/sessions');
+  }
+
+  async revokeMySession(sessionId) {
+    return this.request(`/auth/sessions/${sessionId}`, { method: 'DELETE' });
+  }
+
+  async revokeMyOtherSessions() {
+    return this.request('/auth/sessions', { method: 'DELETE' });
+  }
+
+  async getAdminSessions() {
+    return this.request('/auth/admin/sessions');
+  }
+
+  async revokeSessionAsAdmin(sessionId) {
+    return this.request(`/auth/admin/sessions/${sessionId}`, { method: 'DELETE' });
+  }
+
+  // Vista unificada "Sesiones Activas" con fallback.
+  async getActiveSessionsView({ preferAdmin = true } = {}) {
+    if (preferAdmin) {
+      try {
+        const payload = await this.request('/admin/sessions');
+        return this.normalizeActiveSessionsResponse(payload);
+      } catch (_e1) {
+        try {
+          const payload = await this.request('/auth/admin/sessions');
+          return this.normalizeActiveSessionsResponse(payload);
+        } catch (_e2) {
+          const payload = await this.request('/auth/sessions');
+          return this.normalizeActiveSessionsResponse(payload);
+        }
+      }
+    }
+    const payload = await this.request('/auth/sessions');
+    return this.normalizeActiveSessionsResponse(payload);
+  }
+
+  async revokeSessionFromActiveView(sessionId, { asAdmin = true } = {}) {
+    if (asAdmin) {
+      try {
+        return await this.request(`/admin/sessions/${sessionId}`, { method: 'DELETE' });
+      } catch (_e1) {
+        try {
+          return await this.request(`/auth/admin/sessions/${sessionId}`, { method: 'DELETE' });
+        } catch (_e2) {
+          return this.request(`/auth/sessions/${sessionId}`, { method: 'DELETE' });
+        }
+      }
+    }
+    return this.request(`/auth/sessions/${sessionId}`, { method: 'DELETE' });
+  }
+
+  // ==================== USUARIOS (ADMIN) ====================
+  async getAdminUsers() {
+    return this.request('/admin/users');
+  }
+
+  async createAdminUser(payload) {
+    return this.request('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async updateAdminUser(id, payload) {
+    return this.request(`/admin/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async deleteAdminUser(id) {
+    return this.request(`/admin/users/${id}`, { method: 'DELETE' });
+  }
+
+  async bulkAdminUsers(action, userIds = []) {
+    return this.request('/admin/users/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ action, userIds })
+    });
+  }
+
+  async impersonateAdminUser(id) {
+    return this.request(`/admin/users/${id}/impersonate`, { method: 'POST' });
+  }
+
+  async getRoles() {
+    return this.request('/admin/roles');
+  }
+
+  async updateRolePermissions(role, permisos, applyToUsers = false) {
+    return this.request(`/admin/roles/${role}/permisos`, {
+      method: 'PUT',
+      body: JSON.stringify({ permisos, applyToUsers })
+    });
+  }
+
+  async bulkUpdateRolePermissions({ roles = [], permisos = [], operation = 'add', applyToUsers = false } = {}) {
+    return this.request('/admin/roles/bulk/permisos', {
+      method: 'POST',
+      body: JSON.stringify({ roles, permisos, operation, applyToUsers })
+    });
+  }
+
+  async getPermisos() {
+    return this.request('/admin/permisos');
+  }
+
+  // ==================== SEGURIDAD / TRÁFICO ====================
+  async getSecurityTrafficRealtime() {
+    return this.request('/admin/security/traffic/realtime');
+  }
+
+  async getSecurityTrafficHistory(limit = 300) {
+    return this.request(`/admin/security/traffic/history?limit=${encodeURIComponent(limit)}`);
+  }
+
+  async clearSecurityTrafficRealtime() {
+    return this.request('/admin/security/traffic/realtime/clear', {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+  }
+
+  async clearSecurityTrafficHistory() {
+    return this.request('/admin/security/traffic/history/clear', {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+  }
+
+  async getBannedIps() {
+    return this.request('/admin/security/bans');
+  }
+
+  async banIp(payload) {
+    return this.request('/admin/security/bans', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async unbanIp(ip) {
+    return this.request(`/admin/security/bans/${encodeURIComponent(ip)}`, { method: 'DELETE' });
+  }
+
+  async getSecurityRules() {
+    return this.request('/admin/security/rules');
+  }
+
+  async updateSecurityRules(payload) {
+    return this.request('/admin/security/rules', {
+      method: 'PUT',
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async cleanupSecurity(payload = {}) {
+    return this.request('/admin/security/cleanup', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async getAuditHistory(params = {}) {
+    const query = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') return;
+      query.set(key, String(value));
+    });
+    return this.request(`/admin/auditoria${query.toString() ? `?${query.toString()}` : ''}`);
+  }
+
+  async trafficHandshake(payload = {}) {
+    return this.request('/auth/traffic-handshake', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
   }
 
   // ==================== BÚSQUEDA ====================
   async buscar(query, tipo = 'all') {
     const params = new URLSearchParams({ q: query, tipo }).toString();
     return this.request(`/buscar?${params}`);
+  }
+
+  // ==================== AUTENTICACIÓN ====================
+  async login(username, password) {
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      const response = await fetch(`${this.baseUrl}/auth/login`, {
+        method: 'POST',
+        headers,
+        body: await encryptJsonBodyIfNeeded(JSON.stringify({ username, password }), headers)
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        const error = new Error(data.error || `HTTP ${response.status}`);
+        error.status = response.status;
+        error.message = data.error || error.message;
+        error.payload = data;
+        console.error('Login error:', error.message);
+        throw error;
+      }
+
+      // Guardar token si viene en la respuesta
+      if (data.data?.tokens?.access) {
+        this.setToken(data.data.tokens.access);
+        if (data.data?.tokens?.refresh && data.data?.user) {
+          await setAuthSession({
+            user: data.data.user,
+            tokens: {
+              access: data.data.tokens.access,
+              refresh: data.data.tokens.refresh
+            },
+            updatedAt: Date.now()
+          });
+        }
+      } else if (data.accessToken) {
+        this.setToken(data.accessToken);
+      }
+
+      return data;
+    } catch (error) {
+      // Re-throw with proper status code if it's a network error
+      if (!error.status) {
+        error.status = 500;
+        error.message = error.message || "Error de conexión con el servidor";
+      }
+      console.error('Login error:', error);
+      throw error;
+    }
+  }
+
+  // ==================== FORM ENGINE ====================
+  async getFormTemplates(params = {}) {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        query.append(key, value);
+      }
+    });
+    return this.request(`/form-engine/templates${query.toString() ? '?' + query.toString() : ''}`);
+  }
+
+  async createFormTemplate(data) {
+    return this.request('/form-engine/templates', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async updateFormTemplate(id, data) {
+    return this.request(`/form-engine/templates/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async deleteFormTemplate(id) {
+    return this.request(`/form-engine/templates/${id}`, { method: 'DELETE' });
+  }
+
+  async getFormSubmissions(params = {}) {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        query.append(key, value);
+      }
+    });
+    return this.request(`/form-engine/submissions${query.toString() ? '?' + query.toString() : ''}`);
+  }
+
+  async createFormSubmission(data) {
+    return this.request('/form-engine/submissions', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async updateFormSubmission(id, data) {
+    return this.request(`/form-engine/submissions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async deleteFormSubmission(id) {
+    return this.request(`/form-engine/submissions/${id}`, { method: 'DELETE' });
+  }
+
+  async bulkCreateFormSubmissions(data) {
+    return this.request('/form-engine/submissions/bulk', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async getFormSuggestions(source, query, limit = 8) {
+    const params = new URLSearchParams({ q: query, limit: limit.toString() });
+    return this.request(`/form-engine/suggestions/${source}?${params}`);
+  }
+
+  async logout() {
+    this.token = null;
+    await clearAuthSession();
   }
 }
 

@@ -1,0 +1,92 @@
+[2m[WebServer] [22m[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+Running 10 tests using 1 worker
+
+Failed /api/reportes/alumnos: [500] {"success":false,"error":"Error al generar reporte de alumnos"}
+  ✘   1 [chromium] › tests/e2e/02-protected-resources.spec.js:22:3 › Protected resources › dashboard, estadisticas, reportes, calendario y exportaciones (2.9s)
+  ✓   2 [chromium] › tests/e2e/02-protected-resources.spec.js:49:3 › Protected resources › escuelas CRUD + buscar + estadisticas (2.3s)
+  ✓   3 [chromium] › tests/e2e/02-protected-resources.spec.js:89:3 › Protected resources › docentes CRUD + endpoints de estadisticas/licencias (2.0s)
+Estadisticas fail: {"success":false,"error":"Error al obtener estadísticas"}
+  ✘   4 [chromium] › tests/e2e/02-protected-resources.spec.js:125:3 › Protected resources › alumnos CRUD + estadisticas (1.2s)
+  ✓   5 [chromium] › tests/e2e/02-protected-resources.spec.js:158:3 › Protected resources › informes globales CRUD (2.0s)
+  ✓   6 [chromium] › tests/e2e/02-protected-resources.spec.js:186:3 › Protected resources › alertas y email de alerta (967ms)
+  ✓   7 [chromium] › tests/e2e/03-forms-and-admin.spec.js:21:3 › Forms + Admin › forms public endpoints (122ms)
+  ✘   8 [chromium] › tests/e2e/03-forms-and-admin.spec.js:31:3 › Forms + Admin › forms protected template CRUD + submissions flow (828ms)
+  ✘   9 [chromium] › tests/e2e/03-forms-and-admin.spec.js:96:3 › Forms + Admin › admin endpoints de usuarios, sesiones y seguridad (1.9s)
+  ✓  10 [chromium] › tests/e2e/03-forms-and-admin.spec.js:165:3 › Forms + Admin › admin escuelas CRUD en namespace /api/admin (2.3s)
+
+
+  1) [chromium] › tests/e2e/02-protected-resources.spec.js:22:3 › Protected resources › dashboard, estadisticas, reportes, calendario y exportaciones 
+
+    Error: fallo en /api/reportes/alumnos
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m200[39m
+    Received: [31m500[39m
+
+      43 |       const res = await api.get(path, { headers });
+      44 |       if (res.status() !== expected) { console.error(`Failed ${path}: [${res.status()}]`, await res.text()); }
+    > 45 |       expect(res.status(), `fallo en ${path}`).toBe(expected);
+         |                                                ^
+      46 |     }
+      47 |   });
+      48 |
+        at /home/fbaez/Documents/cop/cariññ/cdm/tests/e2e/02-protected-resources.spec.js:45:48
+
+  2) [chromium] › tests/e2e/02-protected-resources.spec.js:125:3 › Protected resources › alumnos CRUD + estadisticas 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m200[39m
+    Received: [31m500[39m
+
+      145 |
+      146 |     expect((await api.get('/api/alumnos', { headers })).status()).toBe(200);
+    > 147 |     const stRes = await api.get('/api/alumnos/estadisticas', { headers }); if (stRes.status() !== 200) console.error('Estadisticas fail:', await stRes.text()); expect(stRes.status()).toBe(200);
+          |                                                                                                                                                                                        ^
+      148 |
+      149 |     const { response: updateRes } = await requestJson(api, 'PUT', `/api/alumnos/${alumnoId}`, {
+      150 |       diagnostico: 'TEA'
+        at /home/fbaez/Documents/cop/cariññ/cdm/tests/e2e/02-protected-resources.spec.js:147:184
+
+  3) [chromium] › tests/e2e/03-forms-and-admin.spec.js:31:3 › Forms + Admin › forms protected template CRUD + submissions flow 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m200[39m
+    Received: [31m400[39m
+
+      84 |         }
+      85 |       });
+    > 86 |       expect(updateSubmissionRes.status()).toBe(200);
+         |                                            ^
+      87 |
+      88 |       const { response: deleteSubmissionRes } = await requestJson(api, 'DELETE', `/api/forms/submissions/${submissionId}`, {});
+      89 |       expect(deleteSubmissionRes.status()).toBe(200);
+        at /home/fbaez/Documents/cop/cariññ/cdm/tests/e2e/03-forms-and-admin.spec.js:86:44
+
+  4) [chromium] › tests/e2e/03-forms-and-admin.spec.js:96:3 › Forms + Admin › admin endpoints de usuarios, sesiones y seguridad 
+
+    Error: fallo en /api/admin/permisos
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m200[39m
+    Received: [31m500[39m
+
+      112 |     for (const path of checks200) {
+      113 |       const res = await api.get(path, { headers });
+    > 114 |       expect(res.status(), `fallo en ${path}`).toBe(200);
+          |                                                ^
+      115 |     }
+      116 |
+      117 |     const createUserPayload = {
+        at /home/fbaez/Documents/cop/cariññ/cdm/tests/e2e/03-forms-and-admin.spec.js:114:48
+
+  4 failed
+    [chromium] › tests/e2e/02-protected-resources.spec.js:22:3 › Protected resources › dashboard, estadisticas, reportes, calendario y exportaciones 
+    [chromium] › tests/e2e/02-protected-resources.spec.js:125:3 › Protected resources › alumnos CRUD + estadisticas 
+    [chromium] › tests/e2e/03-forms-and-admin.spec.js:31:3 › Forms + Admin › forms protected template CRUD + submissions flow 
+    [chromium] › tests/e2e/03-forms-and-admin.spec.js:96:3 › Forms + Admin › admin endpoints de usuarios, sesiones y seguridad 
+  6 passed (22.8s)

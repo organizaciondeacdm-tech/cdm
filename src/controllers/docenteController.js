@@ -1,5 +1,47 @@
 const Docente = require('../models/Docente');
 const Escuela = require('../models/Escuela');
+const { isPrivilegedRole } = require('../services/privilegedRoleService');
+
+const splitNombreApellido = (nombreApellido = '') => {
+  const value = String(nombreApellido).trim();
+  if (!value) return { nombre: '', apellido: '' };
+  if (value.includes(',')) {
+    const [apellido, nombre] = value.split(',').map(v => v.trim());
+    return { nombre: nombre || '', apellido: apellido || '' };
+  }
+  const parts = value.split(/\s+/);
+  const nombre = parts.pop() || '';
+  const apellido = parts.join(' ') || value;
+  return { nombre, apellido };
+};
+
+const normalizeDocentePayload = (payload = {}, { partial = false } = {}) => {
+  const normalized = { ...payload };
+  const parsed = splitNombreApellido(normalized.nombreApellido);
+
+  if (!normalized.nombre && parsed.nombre) normalized.nombre = parsed.nombre;
+  if (!normalized.apellido && parsed.apellido) normalized.apellido = parsed.apellido;
+
+  if (!partial) {
+    const uniqueSeed = Date.now().toString().slice(-8);
+    normalized.dni = normalized.dni || uniqueSeed;
+    normalized.email = normalized.email || `${(normalized.nombre || 'docente').toLowerCase().replace(/\s+/g, '.')}.${uniqueSeed}@acdm.local`;
+    normalized.fechaNacimiento = normalized.fechaNacimiento || '1990-01-01';
+    normalized.cargo = normalized.cargo || 'Titular';
+  }
+
+  delete normalized.nombreApellido;
+  delete normalized.id;
+  delete normalized._id;
+
+  return normalized;
+};
+
+const isAdminOrSuperUser = async (user) => {
+  const rol = String(user?.rol || '');
+  const permisos = Array.isArray(user?.permisos) ? user.permisos : [];
+  return await isPrivilegedRole(rol) || permisos.includes('*');
+};
 
 const getDocentes = async (req, res) => {
   try {
@@ -15,15 +57,20 @@ const getDocentes = async (req, res) => {
 
     const query = { activo: true };
 
+    // Los usuarios no-admin solo ven sus propios registros
+    if (!await isAdminOrSuperUser(req.user)) {
+      query.createdBy = req.user._id;
+    }
+
     if (escuela) query.escuela = escuela;
     if (estado) query.estado = estado;
     if (cargo) query.cargo = cargo;
-    
+
     if (licenciasProximas) {
       const dias = parseInt(licenciasProximas) || 10;
       const fechaLimite = new Date();
       fechaLimite.setDate(fechaLimite.getDate() + dias);
-      
+
       query.estado = 'Licencia';
       query.fechaFinLicencia = { $lte: fechaLimite, $gte: new Date() };
     }
@@ -102,7 +149,9 @@ const getDocenteById = async (req, res) => {
 
 const createDocente = async (req, res) => {
   try {
-    const { escuela: escuelaId, titularId, ...docenteData } = req.body;
+    const escuelaId = req.body.escuela || req.body.escuelaId;
+    const titularId = req.body.titularId;
+    const docenteData = normalizeDocentePayload(req.body);
 
     // Verificar escuela
     const escuela = await Escuela.findById(escuelaId);
@@ -192,7 +241,7 @@ const updateDocente = async (req, res) => {
     const newEstado = req.body.estado;
 
     // Actualizar campos
-    Object.assign(docente, req.body);
+    Object.assign(docente, normalizeDocentePayload(req.body, { partial: true }));
     docente.updatedBy = req.user._id;
 
     await docente.save();
@@ -200,7 +249,7 @@ const updateDocente = async (req, res) => {
     // Si cambió el estado, actualizar estadísticas
     if (oldEstado !== newEstado) {
       const escuela = await Escuela.findById(docente.escuela);
-      await escuela.actualizarEstadisticas();
+      if (escuela) await escuela.actualizarEstadisticas();
     }
 
     res.json({
@@ -243,7 +292,7 @@ const deleteDocente = async (req, res) => {
 
     // Actualizar estadísticas de la escuela
     const escuela = await Escuela.findById(docente.escuela);
-    await escuela.actualizarEstadisticas();
+    if (escuela) await escuela.actualizarEstadisticas();
 
     res.json({
       success: true,
@@ -261,7 +310,7 @@ const deleteDocente = async (req, res) => {
 const getLicenciasProximas = async (req, res) => {
   try {
     const dias = parseInt(req.query.dias) || 10;
-    
+
     const docentes = await Docente.findLicenciasProximas(dias);
 
     res.json({
@@ -288,10 +337,7 @@ const getEstadisticasDocentes = async (req, res) => {
           activos: { $sum: { $cond: [{ $eq: ['$estado', 'Activo'] }, 1, 0] } },
           licencia: { $sum: { $cond: [{ $eq: ['$estado', 'Licencia'] }, 1, 0] } },
           porCargo: {
-            $push: {
-              cargo: '$cargo',
-              estado: '$estado'
-            }
+            $push: '$cargo'
           }
         }
       },
@@ -301,30 +347,27 @@ const getEstadisticasDocentes = async (req, res) => {
           total: 1,
           activos: 1,
           licencia: 1,
-          porCargo: {
-            $reduce: {
-              input: '$porCargo',
-              initialValue: {},
-              in: {
-                $$value: {
-                  $concatArrays: [
-                    { $ifNull: ['$$value.cargo', []] },
-                    [{ cargo: '$$this.cargo', estado: '$$this.estado' }]
-                  ]
-                }
-              }
-            }
-          }
+          porCargo: 1
         }
       }
     ]);
 
+    const result = estadisticas[0] || { total: 0, activos: 0, licencia: 0, porCargo: [] };
+
+    // Build cargo counts from raw array
+    const cargoCounts = {};
+    (result.porCargo || []).forEach(cargo => {
+      cargoCounts[cargo] = (cargoCounts[cargo] || 0) + 1;
+    });
+    result.porCargo = cargoCounts;
+
     res.json({
       success: true,
-      data: estadisticas[0] || { total: 0, activos: 0, licencia: 0, porCargo: [] }
+      data: result
     });
 
   } catch (error) {
+    console.error('Error en estadísticas docentes:', error);
     res.status(500).json({
       success: false,
       error: 'Error al obtener estadísticas'

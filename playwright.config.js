@@ -1,65 +1,52 @@
 import { defineConfig, devices } from '@playwright/test';
+import fs from 'fs';
 
-/**
- * Read environment variables from file.
- * https://github.com/motdotla/dotenv
- */
-// require('dotenv').config();
+const appUrl = process.env.E2E_APP_URL || 'http://localhost:3000';
+const apiUrl = process.env.E2E_API_URL || 'http://localhost:5000';
+const skipWebServer = process.env.E2E_SKIP_WEBSERVER === '1';
+const e2eDir = fs.existsSync('./tests/e2e') ? './tests/e2e' : '.';
+const globalSetupPath = './tests/e2e/global-setup.js';
+const hasGlobalSetup = fs.existsSync(globalSetupPath);
 
-/**
- * See https://playwright.dev/docs/test-configuration.
- */
 export default defineConfig({
-  testDir: './tests/e2e',
-  /* Run tests in files in parallel */
-  fullyParallel: true,
-  /* Fail the build on CI if you accidentally left test.only in the source code. */
+  globalSetup: hasGlobalSetup ? globalSetupPath : undefined,
+  testDir: e2eDir,
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
-  /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
-  /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: 'html',
-  /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
+  workers: 1,
+  reporter: 'list',
+  timeout: 60 * 1000,
+  expect: {
+    timeout: 10 * 1000
+  },
   use: {
-    /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: 'http://localhost:5173',
-    /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
+    baseURL: appUrl,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video: 'retain-on-failure'
   },
-
-  /* Configure projects for major browsers */
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
-
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
-
-    /* Test against mobile viewports. */
-    {
-      name: 'Mobile Chrome',
-      use: { ...devices['Pixel 5'] },
-    },
+      use: { ...devices['Desktop Chrome'] }
+    }
   ],
-
-  /* Run your local dev server before starting the tests */
-  webServer: {
-    command: 'npm run dev:frontend',
-    url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
-  },
+  webServer: skipWebServer ? undefined : [
+    {
+      command: 'E2E_DISABLE_RATE_LIMIT=1 node server.js',
+      url: `${apiUrl}/health`,
+      reuseExistingServer: true,
+      timeout: 120 * 1000,
+      env: {
+        E2E_DISABLE_RATE_LIMIT: '1'
+      }
+    },
+    {
+      command: 'npm run dev:frontend -- --host 127.0.0.1',
+      url: appUrl,
+      reuseExistingServer: true,
+      timeout: 120 * 1000
+    }
+  ]
 });

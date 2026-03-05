@@ -7,14 +7,39 @@ const {
   updateEscuela,
   deleteEscuela,
   getEstadisticasEscuela,
-  buscarEscuelas
+  buscarEscuelas,
+  getVisitas,
+  createVisita,
+  updateVisita,
+  deleteVisita,
+  getProyectos,
+  createProyecto,
+  updateProyecto,
+  deleteProyecto,
+  getInformesEscuela,
+  createInformeEscuela,
+  updateInformeEscuela,
+  deleteInformeEscuela
 } = require('../controllers/escuelaController');
 const { authMiddleware, requirePermission } = require('../middleware/auth');
 const { validateEscuela } = require('../middleware/validation');
 
 router.get('/buscar', authMiddleware, buscarEscuelas);
 router.get('/estadisticas', authMiddleware, getEstadisticasEscuela);
+router.get('/:id/estadisticas', authMiddleware, getEstadisticasEscuela);
 router.get('/', authMiddleware, getEscuelas);
+router.get('/:id/visitas', authMiddleware, getVisitas);
+router.post('/:id/visitas', authMiddleware, createVisita);
+router.put('/:id/visitas/:visitaId', authMiddleware, updateVisita);
+router.delete('/:id/visitas/:visitaId', authMiddleware, deleteVisita);
+router.get('/:id/proyectos', authMiddleware, getProyectos);
+router.post('/:id/proyectos', authMiddleware, createProyecto);
+router.put('/:id/proyectos/:proyectoId', authMiddleware, updateProyecto);
+router.delete('/:id/proyectos/:proyectoId', authMiddleware, deleteProyecto);
+router.get('/:id/informes', authMiddleware, getInformesEscuela);
+router.post('/:id/informes', authMiddleware, createInformeEscuela);
+router.put('/:id/informes/:informeId', authMiddleware, updateInformeEscuela);
+router.delete('/:id/informes/:informeId', authMiddleware, deleteInformeEscuela);
 router.get('/:id', authMiddleware, getEscuelaById);
 router.post('/', 
   authMiddleware, 

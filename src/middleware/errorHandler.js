@@ -1,62 +1,62 @@
-const winston = require('winston');
-
-const logger = winston.createLogger({
-  level: 'error',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'logs/combined.log' })
-  ]
-});
-
 const errorHandler = (err, req, res, next) => {
-  let error = { ...err };
-  error.message = err.message;
-
-  logger.error({
+  // Usar console.error directamente, sin logger
+  console.error({
     message: err.message,
     stack: err.stack,
+    name: err.name,
+    code: err.code,
+    url: req.originalUrl,
     method: req.method,
-    url: req.url,
-    user: req.user?._id,
-    ip: req.ip
+    ip: req.ip,
+    user: req.user?.id,
+    timestamp: new Date().toISOString()
   });
 
-  // Mongoose duplicate key
-  if (err.code === 11000) {
-    const field = Object.keys(err.keyPattern)[0];
-    const message = `El valor para ${field} ya existe`;
-    error = { statusCode: 400, message };
+  let statusCode = err.statusCode || 500;
+  let message = err.message || 'Error interno del servidor';
+
+  // Errores específicos de MongoDB
+  if (err.name === 'MongoServerError' && err.code === 11000) {
+    statusCode = 400;
+    message = 'Ya existe un registro con esos datos';
   }
 
-  // Mongoose validation error
   if (err.name === 'ValidationError') {
-    const message = Object.values(err.errors).map(val => val.message).join(', ');
-    error = { statusCode: 400, message };
+    statusCode = 400;
+    message = Object.values(err.errors).map(e => e.message).join(', ');
   }
 
-  // Mongoose cast error
   if (err.name === 'CastError') {
-    const message = `ID inválido: ${err.value}`;
-    error = { statusCode: 400, message };
+    statusCode = 400;
+    message = 'ID inválido';
   }
 
-  // JWT errors
-  if (err.name === 'JsonWebTokenError') {
-    error = { statusCode: 401, message: 'Token inválido' };
-  }
-
-  if (err.name === 'TokenExpiredError') {
-    error = { statusCode: 401, message: 'Token expirado' };
-  }
-
-  res.status(error.statusCode || 500).json({
+  const response = {
     success: false,
-    error: error.message || 'Error del servidor'
-  });
+    error: message,
+    type: err.name || 'Error',
+    timestamp: new Date().toISOString()
+  };
+
+  // Incluir información de debug avanzada
+  response.details = {
+    name: err.name,
+    code: err.code,
+    errno: err.errno,
+    syscall: err.syscall,
+    hostname: err.hostname,
+    stack: err.stack,
+    // Información del entorno
+    nodeVersion: process.version,
+    platform: process.platform,
+    environment: process.env.NODE_ENV || 'unknown',
+    // Verificar variables críticas (ahora usando JwtKeyManager si está disponible)
+    jwtSecretDefined: !!process.env.JWT_SECRET,
+    jwtRefreshSecretDefined: !!process.env.JWT_REFRESH_SECRET,
+    mongoUriDefined: !!process.env.MONGODB_URI
+  };
+
+  res.status(statusCode).json(response);
 };
 
 module.exports = errorHandler;
