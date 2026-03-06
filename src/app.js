@@ -383,6 +383,19 @@ app.use('/api', (req, res, next) => {
   const hasAuth = !!String(req.headers.authorization || '').trim();
   if (hasAuth) return next();
 
+  const hasPublicSecureHeaders = Boolean(
+    String(req.headers['x-endpoint-channel'] || '').trim()
+    || String(req.headers['x-endpoint-alias'] || '').trim()
+    || String(req.headers['x-endpoint-signature'] || '').trim()
+    || String(req.headers['x-endpoint-nonce'] || '').trim()
+    || String(req.headers['x-endpoint-ts'] || '').trim()
+    || String(req.headers['x-endpoint-seq'] || '').trim()
+  );
+
+  // Si no hay Authorization ni headers de canal público, delegar en authMiddleware
+  // para que el cliente reciba 401 y pueda refrescar sesión.
+  if (!hasPublicSecureHeaders) return next();
+
   const validation = endpointChannelService.validatePublicRequest(req, req.body);
   if (validation.ok) return next();
 
