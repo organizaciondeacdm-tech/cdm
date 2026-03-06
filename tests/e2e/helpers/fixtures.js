@@ -1,6 +1,6 @@
 const base = require('@playwright/test');
 const {
-  API_URL,
+  createApiContext,
   getSession,
   createAuthHeaders,
   createSessionKit
@@ -8,7 +8,7 @@ const {
 
 const test = base.test.extend({
   api: async ({}, use) => {
-    const context = await base.request.newContext({ baseURL: API_URL });
+    const context = await createApiContext(base.request);
     try {
       await use(context);
     } finally {
@@ -36,4 +36,3 @@ module.exports = {
   test,
   expect: base.expect
 };
-

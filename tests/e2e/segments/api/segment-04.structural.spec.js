@@ -1,5 +1,5 @@
 const { test, expect, request } = require('@playwright/test');
-const { API_URL, requestJson } = require('../../helpers/api');
+const { API_URL, createApiContext, requestJson } = require('../../helpers/api');
 
 const ALLOWED_STATUSES = [200, 201, 202, 204, 400, 401, 403, 404, 405, 409, 412, 422, 423, 429];
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -8,7 +8,7 @@ test.describe('API structural segment 04', () => {
   let api;
 
   test.beforeAll(async () => {
-    api = await request.newContext({ baseURL: API_URL });
+    api = await createApiContext(request);
   });
 
   test.afterAll(async () => {
