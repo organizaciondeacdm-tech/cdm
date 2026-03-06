@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { SubmissionsTable } from "../components/SubmissionsTable";
-import { TemplateManager } from "../components/TemplateManager";
+import { SubmissionsTable, TemplateManager } from "../components/system/forms/index.js";
 import { acdmApi } from '../services/acdmApi';
 
 export function FormulariosSection() {

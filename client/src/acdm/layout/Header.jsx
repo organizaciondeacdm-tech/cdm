@@ -1,5 +1,5 @@
 import { useAcdmContext } from "../context/AcdmContext.jsx";
-import { UserMenu } from "../components/UserMenu.jsx";
+import { UserMenu } from "../components/system/user/index.js";
 
 export function Header() {
     const {
