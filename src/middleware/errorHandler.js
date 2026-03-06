@@ -38,23 +38,22 @@ const errorHandler = (err, req, res, next) => {
     timestamp: new Date().toISOString()
   };
 
-  // Incluir información de debug avanzada
-  response.details = {
-    name: err.name,
-    code: err.code,
-    errno: err.errno,
-    syscall: err.syscall,
-    hostname: err.hostname,
-    stack: err.stack,
-    // Información del entorno
-    nodeVersion: process.version,
-    platform: process.platform,
-    environment: process.env.NODE_ENV || 'unknown',
-    // Verificar variables críticas (ahora usando JwtKeyManager si está disponible)
-    jwtSecretDefined: !!process.env.JWT_SECRET,
-    jwtRefreshSecretDefined: !!process.env.JWT_REFRESH_SECRET,
-    mongoUriDefined: !!process.env.MONGODB_URI
-  };
+  if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
+    response.details = {
+      name: err.name,
+      code: err.code,
+      errno: err.errno,
+      syscall: err.syscall,
+      hostname: err.hostname,
+      stack: err.stack,
+      nodeVersion: process.version,
+      platform: process.platform,
+      environment: process.env.NODE_ENV || 'unknown',
+      jwtSecretDefined: !!process.env.JWT_SECRET,
+      jwtRefreshSecretDefined: !!process.env.JWT_REFRESH_SECRET,
+      mongoUriDefined: !!process.env.MONGODB_URI
+    };
+  }
 
   res.status(statusCode).json(response);
 };

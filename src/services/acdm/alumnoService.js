@@ -3,6 +3,7 @@ const escuelaRepository = require('../../repositories/escuelaRepository');
 const AlumnoEntity = require('../../entities/AlumnoEntity');
 const { canViewAllRecords } = require('./accessService');
 const { httpError } = require('../../utils/errorFactory');
+const domainEventOutboxService = require('../domainEventOutboxService');
 
 class AlumnoService {
   async list(query = {}, currentUser) {
@@ -56,12 +57,26 @@ class AlumnoService {
     });
 
     await escuela.actualizarEstadisticas();
+    await domainEventOutboxService.enqueue({
+      aggregate: 'Alumno',
+      aggregateId: alumno?._id,
+      eventType: 'alumno.created',
+      payload: { escuelaId: escuelaId },
+      actorId: userId
+    });
     return alumno;
   }
 
   async update(id, payload = {}, userId) {
     const alumno = await alumnoRepository.updateById(id, AlumnoEntity.normalizePayload(payload, { partial: true }), userId);
     if (!alumno) throw httpError(404, 'Alumno no encontrado');
+    await domainEventOutboxService.enqueue({
+      aggregate: 'Alumno',
+      aggregateId: alumno?._id || id,
+      eventType: 'alumno.updated',
+      payload: { fields: Object.keys(payload || {}) },
+      actorId: userId
+    });
     return alumno;
   }
 
@@ -71,6 +86,13 @@ class AlumnoService {
 
     const escuela = await escuelaRepository.findDocumentById(alumno.escuela);
     if (escuela) await escuela.actualizarEstadisticas();
+    await domainEventOutboxService.enqueue({
+      aggregate: 'Alumno',
+      aggregateId: alumno?._id || id,
+      eventType: 'alumno.deleted',
+      payload: { escuelaId: alumno?.escuela },
+      actorId: userId
+    });
 
     return true;
   }

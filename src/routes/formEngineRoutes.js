@@ -12,18 +12,18 @@ const {
   deleteSubmission,
   getSuggestions
 } = require('../controllers/formEngineController');
-const { optionalAuth, authMiddleware } = require('../middleware/auth');
+const { optionalAuth, authMiddleware, requirePermission } = require('../middleware/auth');
 
 router.get('/templates', optionalAuth, listTemplates);
-router.post('/templates', authMiddleware, createTemplate);
-router.put('/templates/:id', authMiddleware, updateTemplate);
-router.delete('/templates/:id', authMiddleware, deleteTemplate);
+router.post('/templates', authMiddleware, requirePermission('gestionar_formularios'), createTemplate);
+router.put('/templates/:id', authMiddleware, requirePermission('gestionar_formularios'), updateTemplate);
+router.delete('/templates/:id', authMiddleware, requirePermission('gestionar_formularios'), deleteTemplate);
 
 router.get('/submissions', optionalAuth, listSubmissions);
-router.post('/submissions', optionalAuth, createSubmission);
-router.post('/submissions/bulk', optionalAuth, bulkCreateSubmissions);
-router.put('/submissions/:id', optionalAuth, updateSubmission);
-router.delete('/submissions/:id', optionalAuth, deleteSubmission);
+router.post('/submissions', authMiddleware, requirePermission('gestionar_formularios'), createSubmission);
+router.post('/submissions/bulk', authMiddleware, requirePermission('gestionar_formularios'), bulkCreateSubmissions);
+router.put('/submissions/:id', authMiddleware, requirePermission('gestionar_formularios'), updateSubmission);
+router.delete('/submissions/:id', authMiddleware, requirePermission('gestionar_formularios'), deleteSubmission);
 
 router.get('/suggestions', optionalAuth, getSuggestions);
 

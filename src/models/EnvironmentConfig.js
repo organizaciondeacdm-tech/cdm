@@ -10,10 +10,14 @@ class EnvironmentConfig extends BaseMongoModel {
 
   static transformOnRead(doc) {
     if (!doc || typeof doc !== 'object') return doc;
-    const key = normalizeKey(doc.key);
-    if (!ENCRYPTED_CONFIG_KEYS.has(key)) return doc;
-    if (doc.value == null) return doc;
-    doc.value = decryptAclValue(doc.value).value;
+
+    // Al leer, desencriptar key y value
+    if (doc.key) {
+      doc.key = decryptAclValue(doc.key).value;
+    }
+    if (doc.value != null) {
+      doc.value = decryptAclValue(doc.value).value;
+    }
     return doc;
   }
 
@@ -21,12 +25,17 @@ class EnvironmentConfig extends BaseMongoModel {
     const next = { ...(update || {}) };
     next.$set = { ...(next.$set || {}) };
 
+    let currentPlainKey = null;
+
     if (Object.prototype.hasOwnProperty.call(next.$set, 'key')) {
-      next.$set.key = normalizeKey(next.$set.key);
+      currentPlainKey = normalizeKey(next.$set.key);
+      next.$set.keyLookup = require('../utils/accessControlCrypto').buildLookupKey('config', currentPlainKey);
+      if (!isEncryptedAclValue(next.$set.key)) {
+        next.$set.key = encryptAclValue(currentPlainKey, new Date());
+      }
     }
 
-    const key = normalizeKey(next.$set.key);
-    if (ENCRYPTED_CONFIG_KEYS.has(key) && Object.prototype.hasOwnProperty.call(next.$set, 'value')) {
+    if (Object.prototype.hasOwnProperty.call(next.$set, 'value')) {
       const plainValue = String(next.$set.value ?? '');
       if (!isEncryptedAclValue(plainValue)) {
         next.$set.value = encryptAclValue(plainValue, new Date());
@@ -38,9 +47,17 @@ class EnvironmentConfig extends BaseMongoModel {
 
   static async preSave(payload) {
     payload.updatedAt = new Date();
-    if (payload.key) payload.key = normalizeKey(payload.key);
 
-    if (ENCRYPTED_CONFIG_KEYS.has(payload.key) && payload.value != null) {
+    if (payload.key) {
+      const plainKey = normalizeKey(payload.key);
+      payload.keyLookup = require('../utils/accessControlCrypto').buildLookupKey('config', plainKey);
+
+      if (!isEncryptedAclValue(payload.key)) {
+        payload.key = encryptAclValue(plainKey, new Date());
+      }
+    }
+
+    if (payload.value != null) {
       const plainValue = String(payload.value ?? '');
       if (!isEncryptedAclValue(plainValue)) {
         payload.value = encryptAclValue(plainValue, new Date());

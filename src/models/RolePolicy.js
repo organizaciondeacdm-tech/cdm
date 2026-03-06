@@ -75,14 +75,14 @@ class RolePolicy extends BaseMongoModel {
         'crear_escuela', 'editar_escuela', 'eliminar_escuela',
         'crear_docente', 'editar_docente', 'eliminar_docente',
         'crear_alumno', 'editar_alumno', 'eliminar_alumno',
-        'exportar_datos', 'ver_reportes',
+        'exportar_datos', 'ver_reportes', 'gestionar_formularios',
         'gestionar_usuarios', 'gestionar_roles_permisos', 'gestionar_seguridad', 'ver_sesiones_admin'
       ],
       supervisor: [
         'crear_escuela', 'editar_escuela', 'eliminar_escuela',
         'crear_docente', 'editar_docente', 'eliminar_docente',
         'crear_alumno', 'editar_alumno', 'eliminar_alumno',
-        'exportar_datos', 'ver_reportes'
+        'exportar_datos', 'ver_reportes', 'gestionar_formularios'
       ],
       viewer: ['ver_reportes']
     };
