@@ -1,6 +1,7 @@
 const { test, expect, request } = require('@playwright/test');
 const {
   API_URL,
+  createApiContext,
   requestJson,
   requestRaw,
   parseJsonSafe,
@@ -12,7 +13,7 @@ test.describe('Public + Auth', () => {
   let api;
 
   test.beforeAll(async () => {
-    api = await request.newContext({ baseURL: API_URL });
+    api = await createApiContext(request);
   });
 
   test.afterAll(async () => {

@@ -3,9 +3,14 @@ const crypto = require('crypto');
 const ALGO = 'aes-256-gcm';
 const PREFIX = 'aclv1';
 
-const rawSecret = process.env.ACL_CRYPTO_SECRET || process.env.ENCRYPTION_KEY || process.env.JWT_SECRET || 'fallback-change-this-key';
-const encKey = crypto.createHash('sha256').update(`enc:${rawSecret}`).digest();
-const hmacKey = crypto.createHash('sha256').update(`hmac:${rawSecret}`).digest();
+const strictEnv = !['development', 'test'].includes(String(process.env.NODE_ENV || '').toLowerCase());
+const rawSecret = process.env.ACL_CRYPTO_SECRET || process.env.ENCRYPTION_KEY || process.env.JWT_SECRET;
+if (!rawSecret && strictEnv) {
+  throw new Error('ACL_CRYPTO_SECRET o ENCRYPTION_KEY/JWT_SECRET es requerido en entorno estricto');
+}
+const resolvedSecret = rawSecret || 'dev-only-acl-secret';
+const encKey = crypto.createHash('sha256').update(`enc:${resolvedSecret}`).digest();
+const hmacKey = crypto.createHash('sha256').update(`hmac:${resolvedSecret}`).digest();
 const PUBLIC_PERM_PREFIX = 'permv1';
 const PUBLIC_ROLE_PREFIX = 'rolev1';
 const PERM_ROTATION_MINUTES = Math.max(1, Number.parseInt(process.env.PERM_OBFUSCATION_ROTATION_MINUTES || '60', 10) || 60);

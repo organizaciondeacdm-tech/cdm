@@ -1,7 +1,11 @@
 const crypto = require('crypto');
 
 const ALGO = 'aes-256-cbc';
-const SECRET = process.env.ENCRYPTION_KEY || 'papiweb-cdm-secure-key-2026-xyz1';
+const strictEnv = !['development', 'test'].includes(String(process.env.NODE_ENV || '').toLowerCase());
+const SECRET = process.env.ENCRYPTION_KEY || (strictEnv ? '' : 'dev-only-env-obfuscator-secret');
+if (!SECRET && strictEnv) {
+    throw new Error('ENCRYPTION_KEY es requerido para envObfuscator en entorno estricto');
+}
 
 const getCryptoKey = () => {
     return crypto.createHash('sha256').update(String(SECRET)).digest();

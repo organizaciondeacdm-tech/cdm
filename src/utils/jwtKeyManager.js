@@ -22,6 +22,7 @@ class JwtKeyManager {
     this._initPromise = (async () => {
       try {
         console.log('Inicializando claves JWT...');
+        const strictEnv = !['development', 'test'].includes(String(process.env.NODE_ENV || '').toLowerCase());
 
         this.jwtSecret = process.env.JWT_SECRET || await JwtKey.getOrCreateKey('JWT_SECRET');
         this.jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || await JwtKey.getOrCreateKey('JWT_REFRESH_SECRET');
@@ -30,11 +31,15 @@ class JwtKeyManager {
         console.log('Claves JWT inicializadas exitosamente');
       } catch (error) {
         console.error('Error inicializando claves JWT:', error);
-        // Fallback so the server stays usable even if DB is temporarily unreachable
-        this.jwtSecret = process.env.JWT_SECRET || 'fallback-jwt-secret-key';
-        this.jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || 'fallback-jwt-refresh-secret-key';
-        this.initialized = true; // mark done so we don't retry on every request
-        console.warn('Usando claves JWT de fallback');
+        const strictEnv = !['development', 'test'].includes(String(process.env.NODE_ENV || '').toLowerCase());
+        if (strictEnv) {
+          this.initialized = false;
+          throw new Error('No se pudieron inicializar claves JWT en entorno estricto');
+        }
+        this.jwtSecret = process.env.JWT_SECRET || 'dev-only-jwt-secret';
+        this.jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || 'dev-only-jwt-refresh-secret';
+        this.initialized = true;
+        console.warn('Usando claves JWT de fallback solo para desarrollo/test');
       } finally {
         this._initPromise = null; // allow re-init if called again after reset
       }
