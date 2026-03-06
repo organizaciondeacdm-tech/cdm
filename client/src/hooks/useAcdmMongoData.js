@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { authFetch, getAuthSession } from '../utils/authSession.js';
 import { ACDM_EVENTS, emitAcdmEvent, useAcdmEvent } from './useAcdmEvents.js';
+import { readJsonPayload } from '../utils/payloadCrypto.js';
 
 const toDateInput = (value) => {
   if (!value) return null;
@@ -154,7 +155,7 @@ export function useAcdmMongoData(currentUser) {
     const method = String(options.method || 'GET').toUpperCase();
     const response = await authFetch(path, options);
 
-    const payload = await response.json().catch(() => ({}));
+    const payload = await readJsonPayload(response, {});
     if (!response.ok) {
       const errorMessage = payload.error || (payload.errors && payload.errors.length > 0 ? payload.errors.map(e => e.msg || e.message).join(', ') : `Error HTTP ${response.status}`);
       emitAcdmEvent(ACDM_EVENTS.ERROR, { path, method, message: errorMessage, status: response.status });

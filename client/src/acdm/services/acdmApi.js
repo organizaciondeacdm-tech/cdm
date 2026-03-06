@@ -5,7 +5,7 @@
 import { clearAuthSession, getAuthSession, setAuthSession } from '../../utils/authSession.js';
 import { authFetch } from '../../utils/authSession.js';
 import { getApiUrl } from '../../utils/apiConfig.js';
-import { encryptJsonBodyIfNeeded } from '../../utils/payloadCrypto.js';
+import { encryptJsonBodyIfNeeded, readJsonPayload, securePublicFetch, withPayloadIntercept } from '../../utils/payloadCrypto.js';
 
 const API_BASE_URL = `${getApiUrl()}/api`;
 const TRAFFIC_LOCK_CODE = 'TRAFFIC_LOCK_REQUIRED';
@@ -48,7 +48,7 @@ class AcdmApiService {
 
     try {
       const response = await authFetch(path, options);
-      const payload = await response.json().catch(() => ({}));
+      const payload = await readJsonPayload(response, {});
 
       if (
         (response.status === 423 && payload?.code === TRAFFIC_LOCK_CODE)
@@ -224,7 +224,7 @@ class AcdmApiService {
   async exportarJSON() {
     const response = await authFetch('/api/export/json', { method: 'GET' });
     if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
+      const payload = await readJsonPayload(response, {});
       throw new Error(payload.error || `HTTP ${response.status}`);
     }
     return response.blob();
@@ -233,7 +233,7 @@ class AcdmApiService {
   async exportarCSV() {
     const response = await authFetch('/api/export/csv', { method: 'GET' });
     if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
+      const payload = await readJsonPayload(response, {});
       throw new Error(payload.error || `HTTP ${response.status}`);
     }
     return response.blob();
@@ -416,6 +416,34 @@ class AcdmApiService {
     return this.request(`/admin/auditoria${query.toString() ? `?${query.toString()}` : ''}`);
   }
 
+  // ==================== OUTBOX (ADMIN) ====================
+  async getOutboxStats() {
+    return this.request('/admin/outbox/stats');
+  }
+
+  async getOutboxEvents(params = {}) {
+    const query = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') return;
+      query.set(key, String(value));
+    });
+    return this.request(`/admin/outbox/events${query.toString() ? `?${query.toString()}` : ''}`);
+  }
+
+  async processOutboxNow() {
+    return this.request('/admin/outbox/process-now', {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+  }
+
+  async requeueOutbox({ ids = [], fromStatus = 'dead_letter' } = {}) {
+    return this.request('/admin/outbox/requeue', {
+      method: 'POST',
+      body: JSON.stringify({ ids, fromStatus })
+    });
+  }
+
   async trafficHandshake(payload = {}) {
     return this.request('/auth/traffic-handshake', {
       method: 'POST',
@@ -432,14 +460,14 @@ class AcdmApiService {
   // ==================== AUTENTICACIÓN ====================
   async login(username, password) {
     try {
-      const headers = { 'Content-Type': 'application/json' };
-      const response = await fetch(`${this.baseUrl}/auth/login`, {
+      const headers = withPayloadIntercept({ 'Content-Type': 'application/json' });
+      const response = await securePublicFetch(`${this.baseUrl}/auth/login`, {
         method: 'POST',
         headers,
         body: await encryptJsonBodyIfNeeded(JSON.stringify({ username, password }), headers)
       });
 
-      const data = await response.json();
+      const data = await readJsonPayload(response, {});
 
       if (!response.ok) {
         const error = new Error(data.error || `HTTP ${response.status}`);
@@ -460,6 +488,7 @@ class AcdmApiService {
               access: data.data.tokens.access,
               refresh: data.data.tokens.refresh
             },
+            secureChannel: data?.data?.secureChannel || null,
             updatedAt: Date.now()
           });
         }

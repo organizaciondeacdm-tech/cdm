@@ -1,13 +1,15 @@
 import { getApiUrl } from './apiConfig.js';
 import { getSecureItem, removeSecureItem, setSecureItem } from './secureStorage.js';
-import { encryptJsonBodyIfNeeded } from './payloadCrypto.js';
+import { encryptJsonBodyIfNeeded, readJsonPayload, securePublicFetch, withPayloadIntercept } from './payloadCrypto.js';
 
 const AUTH_SESSION_KEY = 'acdm_auth_session';
 const TRAFFIC_LOCK_CODE = 'TRAFFIC_LOCK_REQUIRED';
 const ACCESS_TOKEN_REQUIRED_CODE = 'ACCESS_TOKEN_REQUIRED';
+const SECURE_ENDPOINT_REQUIRED_CODE = 'SECURE_ENDPOINT_REQUIRED';
 
 let authCache = null;
 let refreshPromise = null;
+let secureMetaQueue = Promise.resolve();
 
 const emitTrafficLockEvent = (payload = {}) => {
   if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
@@ -36,6 +38,110 @@ const sha256Hex = async (input) => {
     .join('');
 };
 
+const randomBase64Url = (size = 18) => {
+  const bytes = window.crypto.getRandomValues(new Uint8Array(size));
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+};
+
+const normalizeSecureChannel = (value) => {
+  if (!value || typeof value !== 'object') return null;
+  const sessionId = String(value.sessionId || '').trim();
+  const serverNonce = String(value.serverNonce || '').trim();
+  const clientToken = String(value.clientToken || '').trim();
+  if (!sessionId || !serverNonce || !clientToken) return null;
+  return {
+    version: String(value.version || 'secchan1'),
+    sessionId,
+    serverNonce,
+    clientToken,
+    issuedAt: value.issuedAt || new Date().toISOString(),
+    expiresAt: value.expiresAt || null,
+    seq: Number(value.seq || 0) || 0
+  };
+};
+
+const withSecureChannel = async (session, secureChannel) => {
+  const normalized = normalizeSecureChannel(secureChannel);
+  if (!session || !normalized) return session;
+  const next = {
+    ...session,
+    secureChannel: {
+      ...(session.secureChannel || {}),
+      ...normalized
+    },
+    updatedAt: Date.now()
+  };
+  await setAuthSession(next);
+  return next;
+};
+
+const digestRequestBody = async (body) => {
+  if (body == null) return sha256Hex('');
+  if (typeof body === 'string') return sha256Hex(body);
+  if (typeof body === 'object') {
+    try {
+      return sha256Hex(JSON.stringify(body));
+    } catch {
+      return sha256Hex('');
+    }
+  }
+  return sha256Hex(String(body));
+};
+
+const reserveSecureRequestHeaders = async ({ session, path, method, body }) => {
+  if (!session?.tokens?.access || !session?.secureChannel?.sessionId || !session?.secureChannel?.serverNonce) {
+    return { headers: {}, session };
+  }
+
+  return (secureMetaQueue = secureMetaQueue.then(async () => {
+    const liveSession = await getAuthSession() || session;
+    const secureChannel = normalizeSecureChannel(liveSession?.secureChannel);
+    if (!secureChannel || !liveSession?.tokens?.access) {
+      return { headers: {}, session: liveSession || session };
+    }
+
+    const nextSeq = Number(secureChannel.seq || 0) + 1;
+    const ts = Date.now();
+    const nonce = randomBase64Url(16);
+    const bodyHash = await digestRequestBody(body);
+    const channelKey = await sha256Hex(
+      `${liveSession.tokens.access}|${secureChannel.serverNonce}|${secureChannel.sessionId}|${secureChannel.clientToken}`
+    );
+    const upperMethod = String(method || 'GET').toUpperCase();
+    const aliasHash = await sha256Hex(
+      `${channelKey}|alias|${upperMethod}|${path}|${nextSeq}|${nonce}|${ts}`
+    );
+    const signatureHash = await sha256Hex(
+      `${channelKey}|sig|${upperMethod}|${path}|${nextSeq}|${nonce}|${ts}|${bodyHash}`
+    );
+
+    const nextSession = {
+      ...liveSession,
+      secureChannel: {
+        ...secureChannel,
+        seq: nextSeq
+      },
+      updatedAt: Date.now()
+    };
+    await setAuthSession(nextSession);
+
+    return {
+      session: nextSession,
+      headers: {
+        'X-Endpoint-Alias': `epa1.${aliasHash.slice(0, 48)}`,
+        'X-Endpoint-Signature': `eps1.${signatureHash.slice(0, 64)}`,
+        'X-Endpoint-Seq': String(nextSeq),
+        'X-Endpoint-Nonce': nonce,
+        'X-Endpoint-Ts': String(ts)
+      }
+    };
+  }).catch(() => ({ headers: {}, session })));
+};
+
 const cleanupLegacyAuthStorage = () => {
   localStorage.removeItem('authToken');
   localStorage.removeItem('currentUser');
@@ -48,7 +154,7 @@ const withJsonHeaders = (headers = {}, body) => {
   if (!isFormData && !finalHeaders['Content-Type']) {
     finalHeaders['Content-Type'] = 'application/json';
   }
-  return finalHeaders;
+  return withPayloadIntercept(finalHeaders);
 };
 
 export async function getAuthSession() {
@@ -71,15 +177,15 @@ export async function clearAuthSession() {
 }
 
 export async function loginWithSession(username, password) {
-  const loginHeaders = { 'Content-Type': 'application/json' };
+  const loginHeaders = withPayloadIntercept({ 'Content-Type': 'application/json' });
   const loginBody = await encryptJsonBodyIfNeeded(JSON.stringify({ username, password }), loginHeaders);
-  const response = await fetch(`${getApiUrl()}/api/auth/login`, {
+  const response = await securePublicFetch(`${getApiUrl()}/api/auth/login`, {
     method: 'POST',
     headers: loginHeaders,
     body: loginBody
   });
 
-  const payload = await response.json().catch(() => ({}));
+  const payload = await readJsonPayload(response, {});
   if (!response.ok) {
     const error = new Error(payload.error || `HTTP ${response.status}`);
     error.status = response.status;
@@ -98,6 +204,7 @@ export async function loginWithSession(username, password) {
   const session = {
     user,
     tokens: { access, refresh },
+    secureChannel: normalizeSecureChannel(payload?.data?.secureChannel),
     updatedAt: Date.now()
   };
 
@@ -116,13 +223,16 @@ async function refreshAuthSession() {
       throw new Error('No hay refresh token para renovar sesión');
     }
 
-    const response = await fetch(`${getApiUrl()}/api/auth/refresh-token`, {
+    const response = await securePublicFetch(`${getApiUrl()}/api/auth/refresh-token`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: await encryptJsonBodyIfNeeded(JSON.stringify({ refreshToken }), { 'Content-Type': 'application/json' })
+      headers: withPayloadIntercept({ 'Content-Type': 'application/json' }),
+      body: await encryptJsonBodyIfNeeded(
+        JSON.stringify({ refreshToken }),
+        withPayloadIntercept({ 'Content-Type': 'application/json' })
+      )
     });
 
-    const payload = await response.json().catch(() => ({}));
+    const payload = await readJsonPayload(response, {});
 
     if (!response.ok) {
       await clearAuthSession();
@@ -143,6 +253,7 @@ async function refreshAuthSession() {
     const nextSession = {
       ...session,
       tokens: { access, refresh },
+      secureChannel: normalizeSecureChannel(payload?.data?.secureChannel) || session?.secureChannel || null,
       updatedAt: Date.now()
     };
 
@@ -162,6 +273,13 @@ export async function authFetch(path, options = {}) {
 
   const doRequest = async (token) => {
     const headers = withJsonHeaders(options.headers, options.body);
+    const secure = await reserveSecureRequestHeaders({
+      session: await getAuthSession(),
+      path,
+      method: options.method || 'GET',
+      body: options.body
+    });
+    Object.assign(headers, secure.headers || {});
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
@@ -176,8 +294,20 @@ export async function authFetch(path, options = {}) {
 
   let response = await doRequest(accessToken);
 
+  if (response.status === 428) {
+    const payload = await readJsonPayload(response.clone(), {});
+    if (String(payload?.code || '').toUpperCase() === SECURE_ENDPOINT_REQUIRED_CODE) {
+      const secureChannel = payload?.secureChannel;
+      const sessionForUpdate = await getAuthSession();
+      if (sessionForUpdate && secureChannel) {
+        await withSecureChannel(sessionForUpdate, secureChannel);
+        response = await doRequest(sessionForUpdate?.tokens?.access || accessToken);
+      }
+    }
+  }
+
   if (response.status === 423 || response.status === 401) {
-    const payload = await response.clone().json().catch(() => ({}));
+    const payload = await readJsonPayload(response.clone(), {});
     if (payload?.code === TRAFFIC_LOCK_CODE || isAccessTokenRequiredPayload(payload)) {
       emitTrafficLockEvent(payload);
     }
@@ -188,7 +318,7 @@ export async function authFetch(path, options = {}) {
   }
 
   if (response.status === 401) {
-    const payload = await response.clone().json().catch(() => ({}));
+    const payload = await readJsonPayload(response.clone(), {});
     if (isAccessTokenRequiredPayload(payload)) {
       return response;
     }
@@ -202,7 +332,7 @@ export async function authFetch(path, options = {}) {
     const refreshedSession = await refreshAuthSession();
     response = await doRequest(refreshedSession.tokens.access);
     if (response.status === 401) {
-      const payload = await response.clone().json().catch(() => ({}));
+      const payload = await readJsonPayload(response.clone(), {});
       if (isAccessTokenRequiredPayload(payload)) {
         emitTrafficLockEvent(payload);
       }
@@ -229,7 +359,7 @@ export async function restoreUserFromSession() {
     return null;
   }
 
-  const payload = await response.json().catch(() => ({}));
+  const payload = await readJsonPayload(response, {});
   const user = payload?.data || session.user;
   const nextSession = {
     ...session,
@@ -249,10 +379,10 @@ export async function logoutSession({ allDevices = false } = {}) {
     if (token) {
       await fetch(`${getApiUrl()}/api/auth/logout`, {
         method: 'POST',
-        headers: {
+        headers: withPayloadIntercept({
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
-        },
+        }),
         body: await encryptJsonBodyIfNeeded(JSON.stringify({ allDevices }), {
           'Content-Type': 'application/json'
         })
@@ -285,12 +415,18 @@ export async function performTrafficHandshake(lockPayload = null) {
     method: 'POST',
     body: JSON.stringify({ challenge, proof })
   });
-  const payload = await response.json().catch(() => ({}));
+  const payload = await readJsonPayload(response, {});
   if (!response.ok) {
     const err = new Error(payload?.error || 'Handshake inválido');
     err.status = response.status;
     err.payload = payload;
     throw err;
+  }
+  if (payload?.data?.secureChannel) {
+    const sessionNow = await getAuthSession();
+    if (sessionNow) {
+      await withSecureChannel(sessionNow, payload.data.secureChannel);
+    }
   }
   return payload;
 }

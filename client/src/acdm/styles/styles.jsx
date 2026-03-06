@@ -313,6 +313,37 @@ const STYLES = `
   .form-textarea { resize: vertical; min-height: 80px; }
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
+  /* FIELD (GenericFormModal field components) */
+  .field {
+    display: flex; flex-direction: column; gap: 6px;
+    width: 100%; margin-bottom: 0;
+  }
+  .field span:first-child, .field > span {
+    display: block; font-size: 11px; font-weight: 600;
+    letter-spacing: 1px; color: var(--text2); text-transform: uppercase;
+  }
+  .field input, .field select, .field textarea {
+    width: 100%; background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--radius2); padding: 9px 14px;
+    color: var(--text); font-family: 'Exo 2', sans-serif; font-size: 13px;
+    transition: all 0.2s ease; outline: none;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus {
+    border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,212,255,0.1);
+  }
+  .field .suggestions {
+    background: var(--card2); border: 1px solid var(--border2);
+    border-radius: var(--radius2); overflow: hidden; margin-top: 4px;
+  }
+  .field .suggestions button {
+    display: block; width: 100%; text-align: left;
+    padding: 8px 12px; background: none; border: none;
+    border-bottom: 1px solid var(--border); color: var(--text);
+    cursor: pointer; font-size: 12px; transition: background 0.15s;
+  }
+  .field .suggestions button:last-child { border-bottom: none; }
+  .field .suggestions button:hover { background: rgba(0,212,255,0.08); }
+
   /* TABLE */
   .table-wrap { overflow-x: auto; border-radius: var(--radius); }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -580,7 +611,7 @@ const STYLES = `
     .header .search-input-wrap { width: 100%; }
     .sidebar { display: none; }
     .content { padding: 12px; }
-    .form-row { grid-template-columns: 1fr; }
+    .form-row, .field-row { grid-template-columns: 1fr; }
     .stats-grid { grid-template-columns: 1fr; }
     .card-grid { grid-template-columns: 1fr; }
     .school-info-grid { grid-template-columns: 1fr; }

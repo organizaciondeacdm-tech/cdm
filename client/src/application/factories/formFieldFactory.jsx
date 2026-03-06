@@ -1,8 +1,8 @@
-import { TextField } from '../../ui/components/fields/TextField';
-import { TextAreaField } from '../../ui/components/fields/TextAreaField';
-import { SelectField } from '../../ui/components/fields/SelectField';
-import { DateField } from '../../ui/components/fields/DateField';
-import { NumberField } from '../../ui/components/fields/NumberField';
+import { TextField } from '../../acdm/components/fields/TextField.jsx';
+import { TextAreaField } from '../../acdm/components/fields/TextAreaField.jsx';
+import { SelectField } from '../../acdm/components/fields/SelectField.jsx';
+import { DateField } from '../../acdm/components/fields/DateField.jsx';
+import { NumberField } from '../../acdm/components/fields/NumberField.jsx';
 
 const map = {
   text: TextField,
