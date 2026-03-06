@@ -3,25 +3,30 @@ import STYLES from "./styles/styles.jsx";
 import './styles/acdm.css';
 import { AcdmProvider, useAcdmContext } from "./context/AcdmContext.jsx";
 import { AcdmLayout } from "./layout/AcdmLayout.jsx";
-import { Login } from "./components/Login.jsx";
-import { Statistics } from "./components/Statistics.jsx";
-import { AlertPanel } from "./components/AlertPanel.jsx";
-import { EscuelaDetail } from "./components/EscuelaDetail.jsx";
-import { CalendarioView } from "./components/CalendarioView.jsx";
-import { ExportPDF } from "./components/ExportPDF.jsx";
-import { MailsExtractor } from "./components/MailsExtractor.jsx";
-import { EscuelaModal } from "./components/EscuelaModal.jsx";
-import { DocenteModal } from "./components/DocenteModal.jsx";
-import { AlumnoModal } from "./components/AlumnoModal.jsx";
-import { VisitaModal } from "./components/VisitaModal.jsx";
-import { ProyectoModal } from "./components/ProyectoModal.jsx";
-import { InformeModal } from "./components/InformeModal.jsx";
-import { SecretAdminPanel } from "./components/SecretAdminPanel.jsx";
-import { AdminControlCenter } from "./components/AdminControlCenter.jsx";
-import { DaysRemaining } from "./components/DaysRemaining.jsx";
-import { AlertMessage } from "./components/AlertMessage.jsx";
+import {
+  AdminControlCenter,
+  AlertMessage,
+  AlumnoModal,
+  DocenteModal,
+  EscuelaModal,
+  ExportPDF,
+  InformeModal,
+  Login,
+  MailsExtractor,
+  ProyectoModal,
+  SecretAdminPanel,
+  VisitaModal
+} from "./components/system/index.js";
+import { AlertasSection } from "./sections/AlertasSection.jsx";
+import { CalendarioSection } from "./sections/CalendarioSection.jsx";
+import { DashboardSection } from "./sections/DashboardSection.jsx";
+import { EscuelasSection } from "./sections/EscuelasSection.jsx";
+import { EstadisticasSection } from "./sections/EstadisticasSection.jsx";
+import { ExportPanelSection } from "./sections/ExportPanelSection.jsx";
 import { FormulariosSection } from "./sections/FormulariosSection.jsx";
-import { formatDate } from "./utils/dateUtils.js";
+import { InformesSection } from "./sections/InformesSection.jsx";
+import { ProyectosSection } from "./sections/ProyectosSection.jsx";
+import { VisitasSection } from "./sections/VisitasSection.jsx";
 
 function AcdmContent() {
   const [feedback, setFeedback] = useState(null);
@@ -125,235 +130,63 @@ function AcdmContent() {
       )}
       <AcdmLayout>
         {activeSection === "dashboard" && (
-          <div>
-            <div className="flex items-center justify-between mb-24">
-              <div>
-                <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2 }}>Dashboard</h1>
-                <p style={{ color: 'var(--text2)', fontSize: 13 }}>Vista general del sistema — {new Date().toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-              </div>
-            </div>
-            <Statistics escuelas={escuelas} onNavigate={setActiveSection} />
-          </div>
+          <DashboardSection escuelas={escuelas} onNavigate={setActiveSection} />
         )}
 
         {activeSection === "escuelas" && (
-          <div>
-            <div className="flex items-center justify-between mb-16">
-              <div>
-                <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2 }}>Escuelas</h1>
-                <p style={{ color: 'var(--text2)', fontSize: 13 }}>{filteredEscuelas.length} escuela(s) encontrada(s)</p>
-              </div>
-              <div className="flex gap-8 items-center flex-wrap">
-                <div className="view-toggle">
-                  <button className={`view-btn ${viewMode === "full" ? "active" : ""}`} onClick={() => setViewMode("full")}>Completo</button>
-                  <button className={`view-btn ${viewMode === "compact" ? "active" : ""}`} onClick={() => setViewMode("compact")}>Compacto</button>
-                </div>
-                {canManageOperationalSections && <button className="btn btn-primary" onClick={() => setEscuelaModal({ isNew: true, data: null })}>➕ Nueva Escuela</button>}
-              </div>
-            </div>
-
-            {filteredEscuelas.length === 0 && <div className="no-data card">No se encontraron escuelas. {canManageOperationalSections && <button className="btn btn-primary btn-sm" style={{ marginLeft: 8 }} onClick={() => setEscuelaModal({ isNew: true, data: null })}>Crear primera escuela</button>}</div>}
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {filteredEscuelas.map(esc => (
-                <EscuelaDetail key={esc.id} esc={esc} viewMode={viewMode} isAdmin={canManageOperationalSections}
-                  onEdit={() => setEscuelaModal({ isNew: false, data: esc })}
-                  onDelete={() => notifyDeleteResult(deleteEscuela, [esc.id], 'Escuela eliminada correctamente.')}
-                  onAddDocente={(escId, titularId) => setDocenteModal({ isNew: true, escuelaId: escId, titularId: titularId || null, data: null })}
-                  onEditDocente={(escId, doc, titularId) => setDocenteModal({ isNew: false, escuelaId: escId, titularId: titularId || null, data: doc })}
-                  onDeleteDocente={(escId, docId) => notifyDeleteResult(deleteDocente, [escId, docId], 'Docente eliminado correctamente.')}
-                  onAddAlumno={(escId) => setAlumnoModal({ isNew: true, escuelaId: escId, data: null })}
-                  onEditAlumno={(escId, alumno) => setAlumnoModal({ isNew: false, escuelaId: escId, data: alumno })}
-                  onDeleteAlumno={(escId, alumnoId) => notifyDeleteResult(deleteAlumno, [escId, alumnoId], 'Alumno eliminado correctamente.')}
-                />
-              ))}
-            </div>
-          </div>
+          <EscuelasSection
+            filteredEscuelas={filteredEscuelas}
+            viewMode={viewMode}
+            setViewMode={setViewMode}
+            canManageOperationalSections={canManageOperationalSections}
+            setEscuelaModal={setEscuelaModal}
+            setDocenteModal={setDocenteModal}
+            setAlumnoModal={setAlumnoModal}
+            deleteEscuela={deleteEscuela}
+            deleteDocente={deleteDocente}
+            deleteAlumno={deleteAlumno}
+            onNotifyDelete={notifyDeleteResult}
+          />
         )}
 
         {activeSection === "alertas" && (
-          <div>
-            <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2, marginBottom: 8 }}>Centro de Alertas</h1>
-            <AlertPanel escuelas={escuelas} />
-
-            <div className="card mt-16">
-              <div className="card-header"><span className="card-title">📋 Resumen de Licencias Activas</span></div>
-              <div className="table-wrap">
-                <table>
-                  <thead><tr><th>Escuela</th><th>Docente</th><th>Motivo</th><th>Inicio</th><th>Fin</th><th>Días Rest.</th><th>Suplente</th></tr></thead>
-                  <tbody>
-                    {escuelas.flatMap(esc => esc.docentes.filter(d => d.estado === "Licencia").map(d => (
-                      <tr key={`${esc.id}-${d.id}`}>
-                        <td style={{ maxWidth: 180, fontSize: 12 }}>{esc.escuela}</td>
-                        <td style={{ fontFamily: 'Rajdhani', fontWeight: 700 }}>{d.nombreApellido}</td>
-                        <td style={{ fontSize: 12 }}>{d.motivo}</td>
-                        <td style={{ fontSize: 12 }}>{formatDate(d.fechaInicioLicencia)}</td>
-                        <td style={{ fontSize: 12 }}>{formatDate(d.fechaFinLicencia)}</td>
-                        <td><DaysRemaining fechaFin={d.fechaFinLicencia} /></td>
-                        <td style={{ fontSize: 12 }}>{d.suplentes.length > 0 ? d.suplentes.map(s => s.nombreApellido).join(", ") : <span className="badge badge-danger">SIN SUPLENTE</span>}</td>
-                      </tr>
-                    )))}
-                  </tbody>
-                </table>
-                {escuelas.flatMap(e => e.docentes.filter(d => d.estado === "Licencia")).length === 0 && <div className="no-data">No hay licencias activas</div>}
-              </div>
-            </div>
-          </div>
+          <AlertasSection escuelas={escuelas} />
         )}
 
         {activeSection === "estadisticas" && (
-          <div>
-            <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2, marginBottom: 24 }}>Estadísticas</h1>
-            <Statistics escuelas={escuelas} />
-          </div>
+          <EstadisticasSection escuelas={escuelas} />
         )}
 
-        {activeSection === "calendario" && <CalendarioView escuelas={escuelas} isAdmin={isAdmin} />}
+        {activeSection === "calendario" && <CalendarioSection escuelas={escuelas} isAdmin={isAdmin} />}
 
         {activeSection === "visitas" && (
-          <div>
-            <div className="flex items-center justify-between mb-16">
-              <div>
-                <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2 }}>Visitas a Escuelas</h1>
-                <p style={{ color: 'var(--text2)', fontSize: 13 }}>Registro de visitas y observaciones a las escuelas</p>
-              </div>
-              {canManageOperationalSections && <button className="btn btn-primary" onClick={() => setVisitaModal({ isNew: true, data: null, escuelaId: null })}>➕ Nueva Visita</button>}
-            </div>
-            {filteredVisitas.length === 0 && search && <div className="no-data card">No se encontraron visitas para "{search}"</div>}
-            <div className="card-grid">
-              {filteredVisitas.map(esc => (
-                <div key={esc.id} className="card">
-                  <div className="card-header">
-                    <span className="card-title">{esc.escuela}</span>
-                    <span style={{ fontSize: 11, color: 'var(--text3)' }}>{esc.de}</span>
-                  </div>
-                  {(!esc.visitas || esc.visitas.length === 0) ? (
-                    <div className="no-data">Sin visitas registradas</div>
-                  ) : (
-                    esc.visitas.map(v => (
-                      <div key={v.id} style={{ padding: '12px', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                          <div>
-                            <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, color: 'var(--accent)' }}>📅 {formatDate(v.fecha)}</div>
-                            <div style={{ color: 'var(--text2)', marginTop: 6, fontSize: 12 }}>{v.observaciones}</div>
-                          </div>
-                          {canManageOperationalSections && (
-                            <div className="flex gap-4">
-                              <button className="btn btn-secondary btn-sm" onClick={() => setVisitaModal({ isNew: false, data: v, escuelaId: esc.id })}>✏️</button>
-                              <button className="btn btn-danger btn-sm" onClick={() => notifyDeleteResult(deleteVisita, [esc.id, v.id], 'Visita eliminada correctamente.')}>🗑️</button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                  {canManageOperationalSections && (
-                    <button className="btn btn-secondary btn-sm" style={{ marginTop: 12, width: '100%' }} onClick={() => setVisitaModal({ isNew: true, data: null, escuelaId: esc.id })}>+ Agregar visita</button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+          <VisitasSection
+            filteredVisitas={filteredVisitas}
+            search={search}
+            canManageOperationalSections={canManageOperationalSections}
+            setVisitaModal={setVisitaModal}
+            deleteVisita={deleteVisita}
+            onNotifyDelete={notifyDeleteResult}
+          />
         )}
 
         {activeSection === "proyectos" && (
-          <div>
-            <div className="flex items-center justify-between mb-16">
-              <div>
-                <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2 }}>Proyectos Entregados</h1>
-                <p style={{ color: 'var(--text2)', fontSize: 13 }}>Proyectos desarrollados e implementados por los ACDM</p>
-              </div>
-              {canManageOperationalSections && <button className="btn btn-primary" onClick={() => setProyectoModal({ isNew: true, data: null, escuelaId: null })}>➕ Nuevo Proyecto</button>}
-            </div>
-            {filteredProyectos.length === 0 && search && <div className="no-data card">No se encontraron proyectos para "{search}"</div>}
-            <div className="card-grid">
-              {filteredProyectos.map(esc => (
-                <div key={esc.id} className="card">
-                  <div className="card-header">
-                    <span className="card-title">{esc.escuela}</span>
-                    <span style={{ fontSize: 11, color: 'var(--text3)' }}>{esc.de}</span>
-                  </div>
-                  {(!esc.proyectos || esc.proyectos.length === 0) ? (
-                    <div className="no-data">Sin proyectos registrados</div>
-                  ) : (
-                    esc.proyectos.map(p => (
-                      <div key={p.id} style={{ padding: '12px', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, color: 'var(--accent)' }}>{p.nombre}</div>
-                            <div style={{ color: 'var(--text2)', marginTop: 4, fontSize: 11 }}>{p.descripcion}</div>
-                            <div style={{ marginTop: 6, display: 'flex', gap: 12, fontSize: 11 }}>
-                              <span className={`badge badge-${p.estado === 'Completado' ? 'active' : 'warning'}`}>{p.estado}</span>
-                              <span style={{ color: 'var(--text3)' }}>📅 {formatDate(p.fechaInicio)} → {formatDate(p.fechaBaja)}</span>
-                            </div>
-                          </div>
-                          {canManageOperationalSections && (
-                            <div className="flex gap-4" style={{ marginLeft: 8 }}>
-                              <button className="btn btn-secondary btn-sm" onClick={() => setProyectoModal({ isNew: false, data: p, escuelaId: esc.id })}>✏️</button>
-                              <button className="btn btn-danger btn-sm" onClick={() => notifyDeleteResult(deleteProyecto, [esc.id, p.id], 'Proyecto eliminado correctamente.')}>🗑️</button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                  {canManageOperationalSections && (
-                    <button className="btn btn-secondary btn-sm" style={{ marginTop: 12, width: '100%' }} onClick={() => setProyectoModal({ isNew: true, data: null, escuelaId: esc.id })}>+ Agregar proyecto</button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+          <ProyectosSection
+            filteredProyectos={filteredProyectos}
+            search={search}
+            canManageOperationalSections={canManageOperationalSections}
+            setProyectoModal={setProyectoModal}
+            deleteProyecto={deleteProyecto}
+            onNotifyDelete={notifyDeleteResult}
+          />
         )}
 
         {activeSection === "informes" && (
-          <div>
-            <div className="flex items-center justify-between mb-16">
-              <div>
-                <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2 }}>Informes Entregados</h1>
-                <p style={{ color: 'var(--text2)', fontSize: 13 }}>Informes periódicos entregados por los ACDM</p>
-              </div>
-              {canManageOperationalSections && <button className="btn btn-primary" onClick={() => setInformeModal({ isNew: true, data: null, escuelaId: null })}>➕ Nuevo Informe</button>}
-            </div>
-            {filteredInformes.length === 0 && search && <div className="no-data card">No se encontraron informes para "{search}"</div>}
-            <div className="card-grid">
-              {filteredInformes.map(esc => (
-                <div key={esc.id} className="card">
-                  <div className="card-header">
-                    <span className="card-title">{esc.escuela}</span>
-                    <span style={{ fontSize: 11, color: 'var(--text3)' }}>{esc.de}</span>
-                  </div>
-                  {(!esc.informes || esc.informes.length === 0) ? (
-                    <div className="no-data">Sin informes registrados</div>
-                  ) : (
-                    esc.informes.map((i, idx) => (
-                      <div key={i.id || i._id || `${esc.id}-inf-${idx}`} style={{ padding: '12px', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, color: 'var(--accent)' }}>{String(i?.titulo || 'Sin título')}</div>
-                            <div style={{ color: 'var(--text2)', marginTop: 4, fontSize: 11 }}>{String(i?.observaciones || '') || 'Sin observaciones'}</div>
-                            <div style={{ marginTop: 6, display: 'flex', gap: 12, fontSize: 11 }}>
-                              <span className={`badge badge-${String(i?.estado || '') === 'Entregado' ? 'active' : 'warning'}`}>{String(i?.estado || 'Pendiente')}</span>
-                              <span style={{ color: 'var(--text3)' }}>📅 {formatDate(i?.fechaEntrega)}</span>
-                            </div>
-                          </div>
-                          {canManageOperationalSections && (
-                            <div className="flex gap-4" style={{ marginLeft: 8 }}>
-                              <button className="btn btn-secondary btn-sm" onClick={() => setInformeModal({ isNew: false, data: i, escuelaId: esc.id })}>✏️</button>
-                              <button className="btn btn-danger btn-sm" onClick={() => notifyDeleteResult(deleteInforme, [esc.id, i.id || i._id], 'Informe eliminado correctamente.')}>🗑️</button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                  {canManageOperationalSections && (
-                    <button className="btn btn-secondary btn-sm" style={{ marginTop: 12, width: '100%' }} onClick={() => setInformeModal({ isNew: true, data: null, escuelaId: esc.id })}>+ Agregar informe</button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+          <InformesSection
+            filteredInformes={filteredInformes}
+            search={search}
+            onNotifyDelete={notifyDeleteResult}
+          />
         )}
 
         {activeSection === "formularios" && (
@@ -361,22 +194,10 @@ function AcdmContent() {
         )}
 
         {activeSection === "exportar" && (
-          <div>
-            <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2, marginBottom: 24 }}>Exportar</h1>
-            <div className="card-grid">
-              <div className="card">
-                <div className="card-header"><span className="card-title">Reporte de Datos</span></div>
-                <p style={{ color: 'var(--text2)', marginBottom: 16, fontSize: 13 }}>Genera reportes en formato texto, CSV o Excel con los datos del sistema.</p>
-                <button className="btn btn-primary" onClick={() => setShowExport(true)}>📄 Generar Reporte</button>
-              </div>
-
-              <div className="card">
-                <div className="card-header"><span className="card-title">Extraer Mails</span></div>
-                <p style={{ color: 'var(--text2)', marginBottom: 16, fontSize: 13 }}>Extrae todos los emails de las escuelas. Puedes copiarlos o descargarlos como archivo.</p>
-                <button className="btn btn-primary" onClick={() => setShowMailsExtractor(true)}>✉️ Extraer Emails</button>
-              </div>
-            </div>
-          </div>
+          <ExportPanelSection
+            setShowExport={setShowExport}
+            setShowMailsExtractor={setShowMailsExtractor}
+          />
         )}
 
         {activeSection === "admin-secret" && showHiddenAdmin && (
