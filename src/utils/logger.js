@@ -92,7 +92,8 @@ class CustomLogger {
             } else if (transport.type === 'file' && !process.env.VERCEL) {
                 ensureLogsDir();
                 const logFilePath = path.isAbsolute(transport.filename) ? transport.filename : path.join(__dirname, '../../', transport.filename);
-                const formatted = transport.format === 'json' ? formatJSON(level, message, meta) : formatJSON(level, message, meta); // Files default to JSON usually
+                // Respect format config for files too, default to JSON
+                const formatted = transport.format === 'simple' ? formatSimple(level, message, meta) : formatJSON(level, message, meta);
 
                 try {
                     fs.appendFileSync(logFilePath, formatted + '\n', 'utf8');

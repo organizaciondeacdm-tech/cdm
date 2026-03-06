@@ -9,6 +9,7 @@ const formatDate = (date) => {
   if (!date) return '-';
   const d = new Date(date);
   return d.toLocaleDateString('es-AR', {
+    timeZone: 'America/Argentina/Buenos_Aires',
     day: '2-digit',
     month: '2-digit',
     year: 'numeric'
@@ -27,6 +28,7 @@ const formatDateTime = (date) => {
   if (!date) return '-';
   const d = new Date(date);
   return d.toLocaleString('es-AR', {
+    timeZone: 'America/Argentina/Buenos_Aires',
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -55,9 +57,9 @@ const generateId = () => {
 const paginateResults = (items, page = 1, limit = 10) => {
   const startIndex = (page - 1) * limit;
   const endIndex = page * limit;
-  
+
   const paginatedItems = items.slice(startIndex, endIndex);
-  
+
   return {
     items: paginatedItems,
     pagination: {
@@ -86,7 +88,7 @@ const filterFields = (obj, allowedFields) => {
 const parseQueryFilters = (query) => {
   const filters = {};
   const excludeFields = ['page', 'limit', 'sort', 'fields', 'populate'];
-  
+
   Object.keys(query).forEach(key => {
     if (!excludeFields.includes(key)) {
       // Si el valor es 'true' o 'false' convertirlo a booleano
@@ -95,7 +97,7 @@ const parseQueryFilters = (query) => {
       else filters[key] = query[key];
     }
   });
-  
+
   return filters;
 };
 
@@ -105,22 +107,22 @@ const generateRandomPassword = (length = 10) => {
   const lowercase = 'abcdefghijklmnopqrstuvwxyz';
   const numbers = '0123456789';
   const special = '!@#$%^&*';
-  
+
   const allChars = uppercase + lowercase + numbers + special;
   let password = '';
-  
+
   // Asegurar al menos uno de cada tipo
   password += uppercase[crypto.randomInt(0, uppercase.length)];
   password += lowercase[crypto.randomInt(0, lowercase.length)];
   password += numbers[crypto.randomInt(0, numbers.length)];
   password += special[crypto.randomInt(0, special.length)];
-  
+
   // Completar el resto
   for (let i = password.length; i < length; i++) {
     const randomIndex = crypto.randomInt(0, allChars.length);
     password += allChars[randomIndex];
   }
-  
+
   // Mezclar la contraseña
   return password.split('').sort(() => crypto.randomInt(-1, 2)).join('');
 };
@@ -152,7 +154,7 @@ const calculateAge = (birthDate) => {
   const birth = new Date(birthDate);
   let age = today.getFullYear() - birth.getFullYear();
   const monthDiff = today.getMonth() - birth.getMonth();
-  
+
   if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
     age--;
   }
@@ -199,12 +201,12 @@ const sortBy = (array, key, order = 'asc') => {
 // Calcular estadísticas básicas de un array numérico
 const calculateStats = (numbers) => {
   if (!numbers || numbers.length === 0) return null;
-  
+
   const sum = numbers.reduce((a, b) => a + b, 0);
   const avg = sum / numbers.length;
   const max = Math.max(...numbers);
   const min = Math.min(...numbers);
-  
+
   return { sum, avg, max, min, count: numbers.length };
 };
 
