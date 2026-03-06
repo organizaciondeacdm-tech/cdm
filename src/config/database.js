@@ -1,6 +1,10 @@
+const dotenv = require('dotenv');
 const { createLogger } = require('../utils/logger');
 const fs = require('fs');
 const path = require('path');
+
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
 const { initializeDataSource } = require('./typeorm');
 const { loadRuntimeEnvFromMongo } = require('./runtimeEnv');
 

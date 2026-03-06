@@ -1,4 +1,9 @@
 const crypto = require('crypto');
+const {
+  obfuscateJsonDeep,
+  deobfuscateJsonDeep,
+  isObfuscatedJsonEnvelope
+} = require('../../../utils/jsonDeepObfuscation');
 
 class CryptoAdapter {
   constructor() {
@@ -11,7 +16,8 @@ class CryptoAdapter {
     const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv(this.algorithm, this.key, iv);
 
-    const serialized = JSON.stringify(value);
+    const obfuscated = obfuscateJsonDeep(value);
+    const serialized = JSON.stringify(obfuscated);
     const encrypted = Buffer.concat([cipher.update(serialized, 'utf8'), cipher.final()]);
     const authTag = cipher.getAuthTag();
 
@@ -36,7 +42,11 @@ class CryptoAdapter {
       decipher.final()
     ]);
 
-    return JSON.parse(decrypted.toString('utf8'));
+    const parsed = JSON.parse(decrypted.toString('utf8'));
+    if (isObfuscatedJsonEnvelope(parsed)) {
+      return deobfuscateJsonDeep(parsed);
+    }
+    return parsed;
   }
 }
 

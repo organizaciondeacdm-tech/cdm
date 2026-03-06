@@ -9,7 +9,8 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const mongoSanitize = require('express-mongo-sanitize');
 const xss = require('xss');
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const connectDB = require('./config/database');
 const errorHandler = require('./middleware/errorHandler');
@@ -47,6 +48,8 @@ const Docente = require('./models/Docente');
 const Alumno = require('./models/Alumno');
 const securityMonitorService = require('./services/securityMonitorService');
 const SessionService = require('./services/sessionService');
+const domainEventOutboxProcessor = require('./services/domainEventOutboxProcessor');
+const endpointChannelService = require('./services/endpointChannelService');
 const RolePolicy = require('./models/RolePolicy');
 const { isPrivilegedRole } = require('./services/privilegedRoleService');
 const {
@@ -58,7 +61,43 @@ const {
   resolveRoleFromTransport,
   resolvePermissionFromTransport
 } = require('./utils/accessControlCrypto');
-const { isEncryptedEnvelope, decryptPayloadEnvelope } = require('./utils/payloadTransportCrypto');
+const {
+  isEncryptedEnvelope,
+  decryptPayloadEnvelope,
+  encryptPayloadEnvelope
+} = require('./utils/payloadTransportCrypto');
+
+const FIELD_ALIAS_META_KEY = '__acdmFieldAliasV1';
+const FIELD_ALIAS_DATA_KEY = '__acdmPayloadV1';
+const FIELD_ALIAS_SCHEME = 'fid1';
+const SECURE_ENDPOINT_CODE = 'SECURE_ENDPOINT_REQUIRED';
+const PUBLIC_SECURE_BYPASS_PATHS = new Set([
+  '/api/security/bootstrap',
+  '/api/health',
+  '/api/test'
+]);
+
+const deobfuscateAliasedBody = (payload) => {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+  const meta = payload[FIELD_ALIAS_META_KEY];
+  const data = payload[FIELD_ALIAS_DATA_KEY];
+  if (!meta || !data || typeof meta !== 'object' || typeof data !== 'object') return payload;
+  if (String(meta.scheme || '') !== FIELD_ALIAS_SCHEME) return payload;
+
+  const map = meta.map && typeof meta.map === 'object' ? meta.map : {};
+  const out = {};
+  Object.entries(data).forEach(([aliasKey, value]) => {
+    const original = String(map[aliasKey] || aliasKey);
+    out[original] = value;
+  });
+
+  Object.keys(payload).forEach((key) => {
+    if (key === FIELD_ALIAS_META_KEY || key === FIELD_ALIAS_DATA_KEY) return;
+    out[key] = payload[key];
+  });
+
+  return out;
+};
 
 const app = express();
 const PUBLIC_RUNTIME_ENV_KEYS = ['VITE_API_URL', 'VITE_AUTH_STORAGE_SECRET'];
@@ -75,6 +114,7 @@ const STATIC_PERMISSION_CATALOG = [
   'eliminar_alumno',
   'exportar_datos',
   'ver_reportes',
+  'gestionar_formularios',
   'gestionar_usuarios',
   'gestionar_roles_permisos',
   'gestionar_seguridad',
@@ -225,6 +265,18 @@ const ensureDbConnection = async () => {
   return connectionPromise;
 };
 
+let outboxWorkerStarted = false;
+const ensureOutboxWorker = () => {
+  if (outboxWorkerStarted) return;
+  const started = domainEventOutboxProcessor.start({ ensureDbConnection });
+  if (started) {
+    outboxWorkerStarted = true;
+    console.log('[OUTBOX] Worker started');
+  } else {
+    console.log('[OUTBOX] Worker disabled by environment');
+  }
+};
+
 // Middleware de conexión a DB (solo para rutas que la necesitan)
 app.use('/api', async (req, res, next) => {
   // Rutas que NO necesitan DB (solo salud y test)
@@ -241,6 +293,7 @@ app.use('/api', async (req, res, next) => {
   // Intentar conectar a DB
   try {
     await ensureDbConnection();
+    ensureOutboxWorker();
     next();
   } catch (error) {
     console.error('❌ Error en middleware DB:', error);
@@ -288,6 +341,54 @@ app.use('/api', limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Interceptor global de salida para payloads JSON de /api
+app.use((req, res, next) => {
+  const isApiRoute = String(req.originalUrl || '').startsWith('/api/');
+  const wantsIntercept = String(req.headers['x-payload-intercept'] || '').trim() === '1';
+  if (!isApiRoute || !wantsIntercept) return next();
+
+  const originalJson = res.json.bind(res);
+  res.json = (payload) => {
+    if (isEncryptedEnvelope(payload)) {
+      return originalJson(payload);
+    }
+
+    try {
+      res.setHeader('x-payload-intercept', '1');
+      return originalJson(encryptPayloadEnvelope(payload));
+    } catch (_error) {
+      return originalJson({
+        success: false,
+        error: 'No se pudo cifrar el payload de respuesta'
+      });
+    }
+  };
+
+  return next();
+});
+
+// Validación global de endpoint seguro para rutas /api sin sesión autenticada
+app.use('/api', (req, res, next) => {
+  if (String(req.method || '').toUpperCase() === 'OPTIONS') return next();
+  const path = String(req.originalUrl || '').split('?')[0];
+  if (PUBLIC_SECURE_BYPASS_PATHS.has(path)) return next();
+
+  const hasAuth = !!String(req.headers.authorization || '').trim();
+  if (hasAuth) return next();
+
+  const validation = endpointChannelService.validatePublicRequest(req, req.body);
+  if (validation.ok) return next();
+
+  const publicChannel = endpointChannelService.issuePublicChannel(req);
+  return res.status(428).json({
+    success: false,
+    code: SECURE_ENDPOINT_CODE,
+    error: 'Se requiere handshake seguro de endpoint',
+    reason: validation.reason || 'public_secure_required',
+    publicChannel
+  });
+});
+
 // Descifrado obligatorio de payload JSON en métodos mutables de /api
 app.use((req, res, next) => {
   const isApiRoute = String(req.originalUrl || '').startsWith('/api/');
@@ -310,7 +411,7 @@ app.use((req, res, next) => {
   }
 
   try {
-    req.body = decryptPayloadEnvelope(req.body);
+    req.body = deobfuscateAliasedBody(decryptPayloadEnvelope(req.body));
     return next();
   } catch (_error) {
     return res.status(400).json({
@@ -352,14 +453,23 @@ if (process.env.NODE_ENV === 'development') {
 
 // Middleware de auditoría simplificado
 app.use((req, res, next) => {
-  if (req.method !== 'GET' && req.user) {
+  if (req.method !== 'GET') {
     res.on('finish', () => {
       if (res.statusCode < 400) {
+        const actor = req.user || {
+          _id: null,
+          username: 'anonymous',
+          rol: 'anonymous'
+        };
         registrarAccion(
-          req.user,
+          actor,
           `${req.method} ${req.originalUrl}`,
           req.baseUrl.split('/').pop() || 'unknown',
-          { body: req.body, params: req.params },
+          {
+            body: req.body,
+            params: req.params,
+            authContext: req.user ? 'authenticated' : 'anonymous'
+          },
           req
         ).catch(err => console.error('Auditoría no crítica:', err.message));
       }
@@ -369,8 +479,24 @@ app.use((req, res, next) => {
 });
 
 // Rutas
+app.get('/api/security/bootstrap', (req, res) => {
+  const publicChannel = endpointChannelService.issuePublicChannel(req);
+  res.json({
+    success: true,
+    data: {
+      publicChannel
+    }
+  });
+});
+
 app.get('/api/runtime-environment', async (_req, res) => {
   try {
+    // Si el runtime env aún no está cargado, forzar la conexión a DB
+    const { loaded } = getRuntimeEnvState();
+    if (!loaded) {
+      await ensureDbConnection();
+    }
+
     const data = PUBLIC_RUNTIME_ENV_KEYS.reduce((acc, key) => {
       const value = process.env[key];
       if (value !== undefined && value !== null && value !== '') {
@@ -1227,6 +1353,63 @@ app.get('/api/admin/auditoria', authMiddleware, requireAdmin, async (req, res) =
     res.json({ success: true, data });
   } catch (_error) {
     res.status(500).json({ success: false, error: 'Error al consultar histórico de auditoría' });
+  }
+});
+
+// Outbox: observabilidad y control manual
+app.get('/api/admin/outbox/stats', authMiddleware, requireAdmin, async (_req, res) => {
+  try {
+    const data = await domainEventOutboxProcessor.getStats();
+    res.json({ success: true, data });
+  } catch (_error) {
+    res.status(500).json({ success: false, error: 'Error al obtener estadísticas del outbox' });
+  }
+});
+
+app.get('/api/admin/outbox/events', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const data = await domainEventOutboxProcessor.list({
+      status: req.query.status,
+      page: req.query.page,
+      limit: req.query.limit
+    });
+    res.json({ success: true, data });
+  } catch (_error) {
+    res.status(500).json({ success: false, error: 'Error al listar eventos del outbox' });
+  }
+});
+
+app.post('/api/admin/outbox/process-now', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const data = await domainEventOutboxProcessor.processBatch();
+    registrarAccion(
+      req.user,
+      'outbox_process_now',
+      'DomainEventOutbox',
+      data,
+      req
+    );
+    res.json({ success: true, data, message: 'Batch de outbox procesado' });
+  } catch (_error) {
+    res.status(500).json({ success: false, error: 'Error al procesar outbox manualmente' });
+  }
+});
+
+app.post('/api/admin/outbox/requeue', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    const fromStatus = String(req.body?.fromStatus || 'dead_letter');
+    const data = await domainEventOutboxProcessor.requeue({ ids, fromStatus });
+    registrarAccion(
+      req.user,
+      'outbox_requeue',
+      'DomainEventOutbox',
+      { fromStatus, ...data },
+      req
+    );
+    res.json({ success: true, data, message: 'Eventos reencolados' });
+  } catch (_error) {
+    res.status(500).json({ success: false, error: 'Error al reencolar eventos del outbox' });
   }
 });
 
