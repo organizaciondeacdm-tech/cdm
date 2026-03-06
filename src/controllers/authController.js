@@ -2,8 +2,8 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { hashPassword, comparePassword } = require('../config/auth');
 const crypto = require('crypto');
-const TryCatchDecorator = require('../utils/decorators');
-const { Unauthorized, InternalServerError, BadRequest } = require('../utils/httpExceptions');
+const BaseController = require('./BaseController');
+const { InternalServerError } = require('../utils/httpExceptions');
 const JwtKeyManager = require('../utils/jwtKeyManager');
 const SessionService = require('../services/sessionService');
 const AuthThrottle = require('../models/AuthThrottle');
@@ -1088,17 +1088,17 @@ const trafficHandshake = async (req, res) => {
 };
 
 module.exports = {
-  login,
-  refreshToken,
-  logout,
-  changePassword,
-  getProfile,
-  getActiveSessions,
-  revokeSession,
-  revokeAllSessions,
-  getAllActiveSessions,
-  revokeSessionByAdmin,
-  getWatchedIpLog,
-  getKnownIps,
-  trafficHandshake
+  login: BaseController.handle(login, { defaultMessage: 'Error al iniciar sesión' }),
+  refreshToken: BaseController.handle(refreshToken, { defaultMessage: 'Error al refrescar token' }),
+  logout: BaseController.handle(logout, { defaultMessage: 'Error al cerrar sesión' }),
+  changePassword: BaseController.handle(changePassword, { defaultMessage: 'Error al cambiar contraseña' }),
+  getProfile: BaseController.handle(getProfile, { defaultMessage: 'Error al obtener perfil' }),
+  getActiveSessions: BaseController.handle(getActiveSessions, { defaultMessage: 'Error al obtener sesiones activas' }),
+  revokeSession: BaseController.handle(revokeSession, { defaultMessage: 'Error al revocar sesión' }),
+  revokeAllSessions: BaseController.handle(revokeAllSessions, { defaultMessage: 'Error al revocar sesiones' }),
+  getAllActiveSessions: BaseController.handle(getAllActiveSessions, { defaultMessage: 'Error al obtener sesiones activas' }),
+  revokeSessionByAdmin: BaseController.handle(revokeSessionByAdmin, { defaultMessage: 'Error al revocar sesión como admin' }),
+  getWatchedIpLog: BaseController.handle(getWatchedIpLog, { defaultMessage: 'Error al obtener watch log' }),
+  getKnownIps: BaseController.handle(getKnownIps, { defaultMessage: 'Error al obtener IPs conocidas' }),
+  trafficHandshake: BaseController.handle(trafficHandshake, { defaultMessage: 'Error al validar handshake' })
 };

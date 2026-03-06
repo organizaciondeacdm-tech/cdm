@@ -866,8 +866,9 @@ app.delete('/api/admin/users/:id', authMiddleware, requireAdmin, async (req, res
     if (String(req.params.id) === String(req.user._id)) {
       return res.status(400).json({ success: false, error: 'No puedes eliminar tu propio usuario' });
     }
-    const user = await User.findByIdAndDelete(req.params.id);
+    const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
+    await User.deleteOne({ _id: user._id });
     res.json({ success: true, message: 'Usuario eliminado exitosamente' });
   } catch (e) {
     res.status(500).json({ success: false, error: 'Error al eliminar usuario' });
