@@ -3,6 +3,7 @@ const escuelaRepository = require('../../repositories/escuelaRepository');
 const DocenteEntity = require('../../entities/DocenteEntity');
 const { canViewAllRecords } = require('./accessService');
 const { httpError } = require('../../utils/errorFactory');
+const domainEventOutboxService = require('../domainEventOutboxService');
 
 class DocenteService {
   async list(query = {}, currentUser) {
@@ -82,6 +83,13 @@ class DocenteService {
     }
 
     await escuela.actualizarEstadisticas();
+    await domainEventOutboxService.enqueue({
+      aggregate: 'Docente',
+      aggregateId: docente?._id,
+      eventType: 'docente.created',
+      payload: { escuelaId, titularId: titularId || null, cargo: docenteData.cargo },
+      actorId: userId
+    });
     return docente;
   }
 
@@ -100,6 +108,13 @@ class DocenteService {
       const escuela = await escuelaRepository.findDocumentById(docente.escuela);
       if (escuela) await escuela.actualizarEstadisticas();
     }
+    await domainEventOutboxService.enqueue({
+      aggregate: 'Docente',
+      aggregateId: docente?._id || id,
+      eventType: 'docente.updated',
+      payload: { oldEstado, newEstado, fields: Object.keys(payload || {}) },
+      actorId: userId
+    });
 
     return docente;
   }
@@ -119,6 +134,13 @@ class DocenteService {
 
     const escuela = await escuelaRepository.findDocumentById(docente.escuela);
     if (escuela) await escuela.actualizarEstadisticas();
+    await domainEventOutboxService.enqueue({
+      aggregate: 'Docente',
+      aggregateId: docente?._id || id,
+      eventType: 'docente.deleted',
+      payload: { escuelaId: docente?.escuela, titularId: docente?.titularId || null },
+      actorId: userId
+    });
 
     return true;
   }

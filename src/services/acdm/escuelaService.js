@@ -6,6 +6,7 @@ const Alumno = require('../../models/Alumno');
 const EscuelaEntity = require('../../entities/EscuelaEntity');
 const { canViewAllRecords } = require('./accessService');
 const { httpError } = require('../../utils/errorFactory');
+const domainEventOutboxService = require('../domainEventOutboxService');
 
 class EscuelaService {
   async list(query = {}, currentUser) {
@@ -51,10 +52,18 @@ class EscuelaService {
   }
 
   async create(payload = {}, userId) {
-    return escuelaRepository.create({
+    const escuela = await escuelaRepository.create({
       ...EscuelaEntity.normalizePayload(payload),
       createdBy: userId
     });
+    await domainEventOutboxService.enqueue({
+      aggregate: 'Escuela',
+      aggregateId: escuela?._id,
+      eventType: 'escuela.created',
+      payload: { de: escuela?.de, nivel: escuela?.nivel },
+      actorId: userId
+    });
+    return escuela;
   }
 
   async update(id, payload = {}, userId) {
@@ -64,6 +73,13 @@ class EscuelaService {
     Object.assign(escuela, EscuelaEntity.normalizePayload(payload, { partial: true }));
     escuela.updatedBy = userId;
     await escuela.save();
+    await domainEventOutboxService.enqueue({
+      aggregate: 'Escuela',
+      aggregateId: escuela?._id || id,
+      eventType: 'escuela.updated',
+      payload: { fields: Object.keys(payload || {}) },
+      actorId: userId
+    });
     return escuela;
   }
 
@@ -77,6 +93,13 @@ class EscuelaService {
     }
 
     await escuelaRepository.deleteById(escuela._id);
+    await domainEventOutboxService.enqueue({
+      aggregate: 'Escuela',
+      aggregateId: escuela?._id || id,
+      eventType: 'escuela.deleted',
+      payload: { de: escuela?.de, nivel: escuela?.nivel },
+      actorId: null
+    });
     return true;
   }
 
@@ -168,6 +191,13 @@ class EscuelaService {
     escuela[collection].push(EscuelaEntity.sanitizeNestedPayload(collection, payload));
     escuela.updatedBy = userId;
     await escuela.save();
+    await domainEventOutboxService.enqueue({
+      aggregate: 'Escuela',
+      aggregateId: escuela?._id || escuelaId,
+      eventType: `escuela.${collection}.created`,
+      payload: { collection },
+      actorId: userId
+    });
 
     return escuela[collection][escuela[collection].length - 1];
   }
@@ -193,6 +223,13 @@ class EscuelaService {
     escuela[collection] = items;
     escuela.updatedBy = userId;
     await escuela.save();
+    await domainEventOutboxService.enqueue({
+      aggregate: 'Escuela',
+      aggregateId: escuela?._id || escuelaId,
+      eventType: `escuela.${collection}.updated`,
+      payload: { collection, itemId },
+      actorId: userId
+    });
 
     return escuela[collection][index];
   }
@@ -209,6 +246,13 @@ class EscuelaService {
     escuela[collection] = items;
     escuela.updatedBy = userId;
     await escuela.save();
+    await domainEventOutboxService.enqueue({
+      aggregate: 'Escuela',
+      aggregateId: escuela?._id || escuelaId,
+      eventType: `escuela.${collection}.deleted`,
+      payload: { collection, itemId },
+      actorId: userId
+    });
     return true;
   }
 }

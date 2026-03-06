@@ -22,6 +22,8 @@ const WHITELISTED_IPS = new Set([
 ]);
 
 const isWhitelisted = (ip) => WHITELISTED_IPS.has(ip);
+const useMemoryCounters = process.env.SECURITY_MONITOR_USE_MEMORY_COUNTERS !== '0';
+const memoryWindowsByIp = new Map();
 
 const getIp = (req) => String(
   req.headers['x-forwarded-for']?.split(',')[0] ||
@@ -31,6 +33,45 @@ const getIp = (req) => String(
   req.ip ||
   'unknown'
 ).trim();
+
+const pruneWindow = (arr, cutoffTs) => {
+  if (!Array.isArray(arr) || arr.length === 0) return [];
+  const start = arr.findIndex((ts) => ts >= cutoffTs);
+  return start <= 0 ? (start === -1 ? [] : arr) : arr.slice(start);
+};
+
+const evaluateRateWindowInMemory = ({ ip, nowTs, globalWindowMs, burstWindowMs }) => {
+  const existing = memoryWindowsByIp.get(ip) || { global: [], burst: [], lastSeenTs: 0 };
+  const globalCutoff = nowTs - globalWindowMs;
+  const burstCutoff = nowTs - burstWindowMs;
+
+  existing.global = pruneWindow(existing.global, globalCutoff);
+  existing.burst = pruneWindow(existing.burst, burstCutoff);
+  existing.lastSeenTs = nowTs;
+  memoryWindowsByIp.set(ip, existing);
+
+  return {
+    globalCount: existing.global.length,
+    burstCount: existing.burst.length
+  };
+};
+
+const incrementRateWindowInMemory = ({ ip, nowTs }) => {
+  const existing = memoryWindowsByIp.get(ip) || { global: [], burst: [], lastSeenTs: 0 };
+  existing.global.push(nowTs);
+  existing.burst.push(nowTs);
+  existing.lastSeenTs = nowTs;
+  memoryWindowsByIp.set(ip, existing);
+};
+
+const cleanupMemoryWindows = () => {
+  const cutoff = Date.now() - (DEFAULT_RULES.globalWindowMs * 2);
+  for (const [ip, row] of memoryWindowsByIp.entries()) {
+    if ((row?.lastSeenTs || 0) < cutoff) {
+      memoryWindowsByIp.delete(ip);
+    }
+  }
+};
 
 const getRulesDoc = async () => {
   const doc = await SecurityRule.getGlobalRules();
@@ -173,13 +214,27 @@ const middleware = () => async (req, res, next) => {
     }
 
     const now = new Date();
-    const globalStart = new Date(now.getTime() - rules.globalWindowMs);
-    const burstStart = new Date(now.getTime() - rules.burstWindowMs);
+    const nowTs = now.getTime();
+    let globalCount = 0;
+    let burstCount = 0;
 
-    const [globalCount, burstCount] = await Promise.all([
-      SecurityTrafficEvent.countDocuments({ ip, ts: { $gte: globalStart } }),
-      SecurityTrafficEvent.countDocuments({ ip, ts: { $gte: burstStart } })
-    ]);
+    if (useMemoryCounters) {
+      const evaluated = evaluateRateWindowInMemory({
+        ip,
+        nowTs,
+        globalWindowMs: rules.globalWindowMs,
+        burstWindowMs: rules.burstWindowMs
+      });
+      globalCount = evaluated.globalCount;
+      burstCount = evaluated.burstCount;
+    } else {
+      const globalStart = new Date(nowTs - rules.globalWindowMs);
+      const burstStart = new Date(nowTs - rules.burstWindowMs);
+      [globalCount, burstCount] = await Promise.all([
+        SecurityTrafficEvent.countDocuments({ ip, ts: { $gte: globalStart } }),
+        SecurityTrafficEvent.countDocuments({ ip, ts: { $gte: burstStart } })
+      ]);
+    }
 
     if ((globalCount + 1) > rules.globalMaxRequests || (burstCount + 1) > rules.burstMaxRequests) {
       ipState.blockedUntil = new Date(Date.now() + rules.autoBanMinutes * 60 * 1000);
@@ -209,6 +264,11 @@ const middleware = () => async (req, res, next) => {
         error: 'Demasiadas solicitudes. IP bloqueada temporalmente.',
         retryAfterSeconds
       });
+    }
+
+    if (useMemoryCounters) {
+      incrementRateWindowInMemory({ ip, nowTs });
+      cleanupMemoryWindows();
     }
 
     res.on('finish', async () => {

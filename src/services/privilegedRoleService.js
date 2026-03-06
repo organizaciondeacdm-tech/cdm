@@ -25,7 +25,7 @@ const setCache = (role) => {
 
 const getRoleFromConfig = async () => {
   const config = await EnvironmentConfig.findOne({
-    key: ADMIN_ROLE_CONFIG_KEY,
+    keyLookup: buildLookupKey('config', ADMIN_ROLE_CONFIG_KEY),
     enabled: true
   }).lean();
   const value = normalizeRole(config?.value || '');
@@ -62,7 +62,7 @@ const getPrivilegedRole = async ({ forceRefresh = false } = {}) => {
   const wildcardUserRole = await getRoleFromWildcardUsers();
   if (wildcardUserRole) {
     await EnvironmentConfig.updateOne(
-      { key: ADMIN_ROLE_CONFIG_KEY },
+      { keyLookup: buildLookupKey('config', ADMIN_ROLE_CONFIG_KEY) },
       {
         $set: {
           key: ADMIN_ROLE_CONFIG_KEY,
@@ -78,7 +78,7 @@ const getPrivilegedRole = async ({ forceRefresh = false } = {}) => {
   const policyRole = await getRoleFromPolicies();
   if (policyRole) {
     await EnvironmentConfig.updateOne(
-      { key: ADMIN_ROLE_CONFIG_KEY },
+      { keyLookup: buildLookupKey('config', ADMIN_ROLE_CONFIG_KEY) },
       {
         $set: {
           key: ADMIN_ROLE_CONFIG_KEY,

@@ -1,4 +1,42 @@
 const Session = require('../models/Session');
+const crypto = require('crypto');
+
+const SECURE_CHANNEL_TTL_MINUTES = Math.max(5, Number.parseInt(process.env.SECURE_CHANNEL_TTL_MINUTES || '120', 10) || 120);
+const SECURE_CHANNEL_VERSION = 'secchan1';
+
+const sha256Hex = (value = '') => crypto.createHash('sha256').update(String(value)).digest('hex');
+const toBase64Url = (buf) => Buffer.from(buf).toString('base64url');
+
+const buildSecureChannelState = (deviceInfo = {}, previous = null) => {
+  const now = Date.now();
+  const expiresAt = new Date(now + (SECURE_CHANNEL_TTL_MINUTES * 60 * 1000));
+  const recentNonces = Array.isArray(previous?.recentNonces) ? previous.recentNonces.slice(0, 64) : [];
+
+  return {
+    version: SECURE_CHANNEL_VERSION,
+    serverNonce: toBase64Url(crypto.randomBytes(24)),
+    clientToken: toBase64Url(crypto.randomBytes(24)),
+    issuedAt: new Date(now),
+    expiresAt,
+    seq: 0,
+    recentNonces,
+    uaHash: sha256Hex(deviceInfo?.userAgent || ''),
+    ipHash: sha256Hex(deviceInfo?.ip || '')
+  };
+};
+
+const toPublicSecureChannel = (session = {}) => {
+  const secure = session?.secureChannel || {};
+  return {
+    version: secure.version || SECURE_CHANNEL_VERSION,
+    sessionId: String(session?._id || ''),
+    serverNonce: String(secure.serverNonce || ''),
+    clientToken: String(secure.clientToken || ''),
+    issuedAt: secure.issuedAt || new Date(),
+    expiresAt: secure.expiresAt || new Date(Date.now() + (SECURE_CHANNEL_TTL_MINUTES * 60 * 1000)),
+    seq: Number(secure.seq || 0) || 0
+  };
+};
 
 class SessionService {
   /**
@@ -24,7 +62,8 @@ class SessionService {
           os: deviceInfo.os || 'Unknown'
         },
         expiresAt,
-        refreshExpiresAt
+        refreshExpiresAt,
+        secureChannel: buildSecureChannelState(deviceInfo)
       });
 
       await session.save();
@@ -130,6 +169,24 @@ class SessionService {
    */
   static async cleanupExpiredSessions() {
     return Session.cleanupExpired();
+  }
+
+  static getPublicSecureChannel(session) {
+    return toPublicSecureChannel(session);
+  }
+
+  static async rotateSecureChannel(sessionId, deviceInfo = {}) {
+    const session = await Session.findById(sessionId);
+    if (!session) return null;
+
+    const nextState = buildSecureChannelState(deviceInfo, session?.secureChannel);
+    await Session.updateOne(
+      { _id: session._id },
+      { $set: { secureChannel: nextState } }
+    );
+
+    const updated = await Session.findById(session._id);
+    return updated ? toPublicSecureChannel(updated) : null;
   }
 
   /**
