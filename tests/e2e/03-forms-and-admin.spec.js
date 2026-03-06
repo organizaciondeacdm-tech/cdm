@@ -1,6 +1,7 @@
 const { test, expect, request } = require('@playwright/test');
 const {
   API_URL,
+  createApiContext,
   requestJson,
   requestRaw,
   createAuthHeaders,
@@ -11,7 +12,7 @@ test.describe('Forms + Admin', () => {
   let api;
 
   test.beforeAll(async () => {
-    api = await request.newContext({ baseURL: API_URL });
+    api = await createApiContext(request);
   });
 
   test.afterAll(async () => {
@@ -106,7 +107,9 @@ test.describe('Forms + Admin', () => {
       '/api/admin/security/traffic/realtime',
       '/api/admin/security/traffic/history',
       '/api/admin/security/bans',
-      '/api/admin/security/rules'
+      '/api/admin/security/rules',
+      '/api/admin/outbox/stats',
+      '/api/admin/outbox/events'
     ];
 
     for (const path of checks200) {
@@ -146,6 +149,29 @@ test.describe('Forms + Admin', () => {
       historyRetentionDays: 30
     }, headers);
     expect(cleanupSecRes.status()).toBe(200);
+
+    const { response: outboxProcessRes, json: outboxProcessJson } = await requestJson(
+      api,
+      'POST',
+      '/api/admin/outbox/process-now',
+      {},
+      headers
+    );
+    expect(outboxProcessRes.status()).toBe(200);
+    expect(outboxProcessJson?.success).toBeTruthy();
+    expect(typeof outboxProcessJson?.data?.processed).toBe('number');
+
+    const { response: outboxRequeueRes, json: outboxRequeueJson } = await requestJson(
+      api,
+      'POST',
+      '/api/admin/outbox/requeue',
+      { ids: [], fromStatus: 'dead_letter' },
+      headers
+    );
+    expect(outboxRequeueRes.status()).toBe(200);
+    expect(outboxRequeueJson?.success).toBeTruthy();
+    expect(outboxRequeueJson?.data?.requested).toBe(0);
+    expect(outboxRequeueJson?.data?.modified).toBe(0);
 
     const { response: banRes } = await requestJson(api, 'POST', '/api/admin/security/bans', {
       ip: '203.0.113.9',

@@ -1,11 +1,15 @@
 const { test, expect, request } = require('@playwright/test');
-const { API_URL, requestJson } = require('./helpers/api');
+const {
+  API_URL,
+  createApiContext,
+  requestJson
+} = require('./helpers/api');
 
 test.describe('Unauthorized protection', () => {
   let api;
 
   test.beforeAll(async () => {
-    api = await request.newContext({ baseURL: API_URL });
+    api = await createApiContext(request);
   });
 
   test.afterAll(async () => {

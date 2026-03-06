@@ -23,6 +23,196 @@ const PAYLOAD_ENVELOPE = 'acdm-payload-v1';
 const SESSION_TTL_SKEW_SECONDS = 30;
 const sessionCacheByContext = new WeakMap();
 const payloadSecretByContext = new WeakMap();
+const transportStateByContext = new WeakMap();
+
+const sha256Hex = (value = '') => crypto.createHash('sha256').update(String(value)).digest('hex');
+const normalizePath = (value = '') => String(value || '').split('?')[0];
+
+const payloadDigest = (payload) => {
+  if (payload === undefined) return sha256Hex('');
+  try {
+    return sha256Hex(JSON.stringify(payload));
+  } catch {
+    return sha256Hex('');
+  }
+};
+
+const getTransportState = (context) => {
+  const current = transportStateByContext.get(context);
+  if (current) return current;
+  const initial = {
+    publicChannel: null,
+    secureByToken: new Map()
+  };
+  transportStateByContext.set(context, initial);
+  return initial;
+};
+
+const parseBearerToken = (headers = {}) => {
+  const raw = String(headers?.Authorization || headers?.authorization || '').trim();
+  if (!raw.toLowerCase().startsWith('bearer ')) return '';
+  return raw.slice(7).trim();
+};
+
+const makeNonce = () => crypto.randomBytes(16).toString('base64url');
+
+const buildPublicEndpointHeaders = ({ channel, method, path, body }) => {
+  const ts = Date.now();
+  const seq = Number(channel?.seq || 0) + 1;
+  const nonce = makeNonce();
+  const key = sha256Hex(`${String(channel?.channelId || '')}|${String(channel?.serverNonce || '')}|${String(channel?.clientToken || '')}`);
+  const bodyHash = payloadDigest(body);
+  const normalizedPath = normalizePath(path);
+  const alias = `epa1.${sha256Hex(`${key}|alias|${method}|${normalizedPath}|${seq}|${nonce}|${ts}`).slice(0, 48)}`;
+  const signature = `eps1.${sha256Hex(`${key}|sig|${method}|${normalizedPath}|${seq}|${nonce}|${ts}|${bodyHash}`).slice(0, 64)}`;
+  channel.seq = seq;
+  return {
+    'x-endpoint-channel': String(channel?.channelId || ''),
+    'x-endpoint-nonce': nonce,
+    'x-endpoint-ts': String(ts),
+    'x-endpoint-seq': String(seq),
+    'x-endpoint-alias': alias,
+    'x-endpoint-signature': signature
+  };
+};
+
+const buildSecureEndpointHeaders = ({ channel, token, method, path, body }) => {
+  const ts = Date.now();
+  const seq = Number(channel?.seq || 0) + 1;
+  const nonce = makeNonce();
+  const key = sha256Hex(`${String(token || '')}|${String(channel?.serverNonce || '')}|${String(channel?.sessionId || '')}|${String(channel?.clientToken || '')}`);
+  const bodyHash = payloadDigest(body);
+  const normalizedPath = normalizePath(path);
+  const alias = `epa1.${sha256Hex(`${key}|alias|${method}|${normalizedPath}|${seq}|${nonce}|${ts}`).slice(0, 48)}`;
+  const signature = `eps1.${sha256Hex(`${key}|sig|${method}|${normalizedPath}|${seq}|${nonce}|${ts}|${bodyHash}`).slice(0, 64)}`;
+  channel.seq = seq;
+  return {
+    'x-endpoint-nonce': nonce,
+    'x-endpoint-ts': String(ts),
+    'x-endpoint-seq': String(seq),
+    'x-endpoint-alias': alias,
+    'x-endpoint-signature': signature
+  };
+};
+
+const setPublicChannel = (context, channel) => {
+  if (!channel || !channel.channelId) return;
+  const state = getTransportState(context);
+  state.publicChannel = {
+    ...channel,
+    seq: Number(channel.seq || 0) || 0
+  };
+};
+
+const setSecureChannel = (context, token, channel) => {
+  if (!token || !channel || !channel.serverNonce || !channel.clientToken) return;
+  const state = getTransportState(context);
+  state.secureByToken.set(token, {
+    ...channel,
+    seq: Number(channel.seq || 0) || 0
+  });
+};
+
+const readSecureHint = async (response) => {
+  if (response.status() !== 428) return null;
+  const payload = await parseJsonSafe(response);
+  if (!payload || payload.code !== 'SECURE_ENDPOINT_REQUIRED') return null;
+  return payload;
+};
+
+const performSecureFetch = async (context, path, options = {}) => {
+  const rawFetch = context.__rawFetch || context.fetch.bind(context);
+  const requestPath = String(path || '');
+  const method = String(options.method || 'GET').toUpperCase();
+  const isApiRoute = requestPath.startsWith('/api/');
+  if (!isApiRoute) {
+    return rawFetch(path, { ...options, method });
+  }
+
+  const baseHeaders = {
+    ...(options.headers || {})
+  };
+  const alreadySigned = !!String(baseHeaders['x-endpoint-signature'] || baseHeaders['X-Endpoint-Signature'] || '').trim();
+  if (alreadySigned) {
+    return rawFetch(path, { ...options, method, headers: baseHeaders });
+  }
+
+  const token = parseBearerToken(baseHeaders);
+  const payloadBody = options.data;
+  const state = getTransportState(context);
+
+  const signHeaders = () => {
+    if (token) {
+      const secureChannel = state.secureByToken.get(token);
+      return secureChannel
+        ? buildSecureEndpointHeaders({ channel: secureChannel, token, method, path: requestPath, body: payloadBody })
+        : {};
+    }
+    return state.publicChannel
+      ? buildPublicEndpointHeaders({ channel: state.publicChannel, method, path: requestPath, body: payloadBody })
+      : {};
+  };
+
+  let response = await rawFetch(path, {
+    ...options,
+    method,
+    headers: {
+      ...baseHeaders,
+      ...signHeaders()
+    }
+  });
+
+  const secureHint = await readSecureHint(response);
+  if (!secureHint) return response;
+
+  if (token) {
+    setSecureChannel(context, token, secureHint.secureChannel);
+  } else {
+    setPublicChannel(context, secureHint.publicChannel);
+  }
+
+  return rawFetch(path, {
+    ...options,
+    method,
+    headers: {
+      ...baseHeaders,
+      ...signHeaders()
+    }
+  });
+};
+
+const installSecureTransport = (context) => {
+  if (!context || context.__secureTransportInstalled) return context;
+
+  const rawFetch = context.fetch.bind(context);
+  Object.defineProperty(context, '__rawFetch', {
+    value: rawFetch,
+    writable: false,
+    enumerable: false,
+    configurable: false
+  });
+  Object.defineProperty(context, '__secureTransportInstalled', {
+    value: true,
+    writable: false,
+    enumerable: false,
+    configurable: false
+  });
+
+  context.fetch = (path, options = {}) => performSecureFetch(context, path, options);
+  context.get = (path, options = {}) => context.fetch(path, { ...options, method: 'GET' });
+  context.head = (path, options = {}) => context.fetch(path, { ...options, method: 'HEAD' });
+  context.delete = (path, options = {}) => context.fetch(path, { ...options, method: 'DELETE' });
+  context.post = (path, options = {}) => context.fetch(path, { ...options, method: 'POST' });
+  context.put = (path, options = {}) => context.fetch(path, { ...options, method: 'PUT' });
+  context.patch = (path, options = {}) => context.fetch(path, { ...options, method: 'PATCH' });
+
+  return context;
+};
+
+async function createApiContext(request) {
+  const context = await request.newContext({ baseURL: API_URL });
+  return installSecureTransport(context);
+}
 
 const getPayloadSecretFallback = () => (
   process.env.VITE_AUTH_STORAGE_SECRET ||
@@ -37,7 +227,7 @@ async function resolvePayloadSecret(context) {
 
   let resolved = getPayloadSecretFallback();
   try {
-    const response = await context.fetch('/api/runtime-environment', { method: 'GET' });
+    const response = await performSecureFetch(context, '/api/runtime-environment', { method: 'GET' });
     const payload = await parseJsonSafe(response);
     const runtimeSecret = payload?.data?.VITE_AUTH_STORAGE_SECRET;
     if (response.status() === 200 && runtimeSecret) {
@@ -81,9 +271,10 @@ async function parseJsonSafe(response) {
 }
 
 async function requestJson(context, method, path, body, headers = {}) {
+  installSecureTransport(context);
   const doRequest = async (secret) => {
     const encryptedBody = body === undefined ? undefined : encryptPayloadForApi(body, secret);
-    const response = await context.fetch(path, {
+    const response = await performSecureFetch(context, path, {
       method,
       headers: {
         'content-type': 'application/json',
@@ -111,7 +302,8 @@ async function requestJson(context, method, path, body, headers = {}) {
 }
 
 async function requestRaw(context, method, path, headers = {}) {
-  const response = await context.fetch(path, {
+  installSecureTransport(context);
+  const response = await performSecureFetch(context, path, {
     method,
     headers
   });
@@ -173,6 +365,7 @@ async function login(context) {
         lastError = json?.error;
 
         if (response.status() === 200 && json?.data?.tokens?.access) {
+          setSecureChannel(context, json.data.tokens.access, json?.data?.secureChannel);
           resolvedCredentials = { username, password };
           return {
             user: json.data.user,
@@ -298,6 +491,7 @@ function uniqueSuffix() {
 
 module.exports = {
   API_URL,
+  createApiContext,
   requestJson,
   requestRaw,
   parseJsonSafe,

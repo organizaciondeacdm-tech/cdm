@@ -1,5 +1,10 @@
 const { test, expect } = require('@playwright/test');
-const { uniqueSuffix, API_URL, getResolvedCredentials } = require('./helpers/api');
+const {
+  uniqueSuffix,
+  API_URL,
+  createApiContext,
+  getResolvedCredentials
+} = require('./helpers/api');
 const { request } = require('@playwright/test');
 
 async function loginFromUi(page, credentials) {
@@ -22,7 +27,7 @@ test.describe('Escuelas UI', () => {
   let credentials;
 
   test.beforeAll(async () => {
-    const api = await request.newContext({ baseURL: API_URL });
+    const api = await createApiContext(request);
     try {
       credentials = await getResolvedCredentials(api);
     } finally {
