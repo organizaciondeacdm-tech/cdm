@@ -1,5 +1,5 @@
 import { getApiUrl } from './apiConfig.js';
-import { securePublicFetch } from './payloadCrypto.js';
+import { readJsonPayload, securePublicFetch } from './payloadCrypto.js';
 
 let runtimeEnvCache = null;
 let runtimeEnvPromise = null;
@@ -14,7 +14,7 @@ export async function loadRuntimeEnvironment() {
         throw new Error(`No se pudo cargar runtime environment (HTTP ${response.status})`);
       }
 
-      const payload = await response.json().catch(() => ({}));
+      const payload = await readJsonPayload(response, {});
       runtimeEnvCache = payload?.data || {};
       return runtimeEnvCache;
     })

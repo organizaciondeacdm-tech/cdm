@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { authFetch, getAuthSession } from '../utils/authSession.js';
 import { ACDM_EVENTS, emitAcdmEvent, useAcdmEvent } from './useAcdmEvents.js';
 import { readJsonPayload } from '../utils/payloadCrypto.js';
@@ -83,7 +83,7 @@ const buildInformePayload = (form = {}) => ({
 });
 
 const buildEscuelaPayload = (form = {}) => ({
-  de: form.de ? form.de.toUpperCase().replace(/^DE(\d{2})$/, 'DE $1').replace(/^DE\s*(\d{2})$/, 'DE $1').trim() : form.de,
+  de: form.de ? `DE ${String(form.de).replace(/\D/g, '').padStart(2, '0')}` : form.de,
   escuela: form.escuela,
   nivel: form.nivel,
   direccion: form.direccion,
@@ -114,6 +114,7 @@ const buildDocentePayload = (form = {}, escuelaId, titularId) => {
     dni: form.dni,
     email: form.email,
     fechaNacimiento: form.fechaNacimiento
+    // suplentes is NOT sent — managed server-side
   };
 
   Object.keys(payload).forEach((key) => {
@@ -144,16 +145,22 @@ const buildAlumnoPayload = (form = {}, escuelaId) => {
   return payload;
 };
 
+const isPersistedMongoId = (value) => /^[a-f\d]{24}$/i.test(String(value || '').trim());
+
 export function useAcdmMongoData(currentUser) {
   const [db, setDb] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const latestLoadRequestRef = useRef(0);
 
   const request = useCallback(async (path, options = {}) => {
     const session = await getAuthSession();
     if (!session?.tokens?.refresh) throw new Error('No hay sesión autenticada');
     const method = String(options.method || 'GET').toUpperCase();
-    const response = await authFetch(path, options);
+    const response = await authFetch(path, {
+      ...(method === 'GET' ? { cache: 'no-store' } : {}),
+      ...options
+    });
 
     const payload = await readJsonPayload(response, {});
     if (!response.ok) {
@@ -179,6 +186,9 @@ export function useAcdmMongoData(currentUser) {
       return;
     }
 
+    const requestId = latestLoadRequestRef.current + 1;
+    latestLoadRequestRef.current = requestId;
+
     try {
       setLoading(true);
       setError(null);
@@ -196,17 +206,21 @@ export function useAcdmMongoData(currentUser) {
         informes: []
       };
 
+      if (requestId !== latestLoadRequestRef.current) return;
+
       setDb(nextDb);
       emitAcdmEvent(ACDM_EVENTS.LOADED, {
         escuelas: nextDb.escuelas.length,
         timestamp: new Date().toISOString()
       });
     } catch (err) {
+      if (requestId !== latestLoadRequestRef.current) return;
       console.error('Error cargando datos ACDM:', err);
       setError(err.message);
       setDb({ escuelas: [], alumnos: [], docentes: [], usuarios: [currentUser], visitas: [], proyectos: [], informes: [] });
       emitAcdmEvent(ACDM_EVENTS.ERROR, { source: 'loadAllData', message: err.message });
     } finally {
+      if (requestId !== latestLoadRequestRef.current) return;
       setLoading(false);
     }
   }, [currentUser, request]);
@@ -219,10 +233,12 @@ export function useAcdmMongoData(currentUser) {
     loadAllData();
   });
 
-  const saveEscuela = useCallback(async (form) => {
+  const saveEscuela = useCallback(async (form, options = {}) => {
     try {
-      const isUpdate = Boolean(form.id);
-      const endpoint = isUpdate ? `/api/escuelas/${form.id}` : '/api/escuelas';
+      const persistedId = form?._id || form?.id;
+      const forceUpdate = options?.isNew === false;
+      const isUpdate = forceUpdate ? Boolean(persistedId) : isPersistedMongoId(persistedId);
+      const endpoint = isUpdate ? `/api/escuelas/${persistedId}` : '/api/escuelas';
       const method = isUpdate ? 'PUT' : 'POST';
 
       await request(endpoint, {

@@ -11,7 +11,7 @@ const FALLBACK_SECRET = 'acdm-default-payload-secret-change-me';
 const SECURE_ENDPOINT_REQUIRED_CODE = 'SECURE_ENDPOINT_REQUIRED';
 const PUBLIC_CHANNEL_ENDPOINT = '/api/security/bootstrap';
 const RUNTIME_ENV_ENDPOINT = '/api/runtime-environment';
-const PUBLIC_CHANNEL_BYPASS = new Set([PUBLIC_CHANNEL_ENDPOINT, RUNTIME_ENV_ENDPOINT, '/api/health', '/api/test']);
+const PUBLIC_CHANNEL_BYPASS = new Set([PUBLIC_CHANNEL_ENDPOINT, '/api/health', '/api/test']);
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 let publicChannelState = null;
@@ -222,40 +222,11 @@ const getSharedSecret = async () => {
     return sharedSecretResolved;
   }
   if (!sharedSecretPromise) {
-    // Obtener el secreto usando un canal público FRESCO y PROPIO,
-    // completamente independiente de publicChannelQueue para evitar deadlocks.
     sharedSecretPromise = (async () => {
       try {
-        // 1. Obtener canal fresco desde bootstrap (fetch directo, sin queue)
-        const bootstrapRes = await fetch(`${getApiUrl()}${PUBLIC_CHANNEL_ENDPOINT}`);
-        const bootstrapPayload = await bootstrapRes.json().catch(() => ({}));
-        const freshChannel = normalizePublicChannel(
-          bootstrapPayload?.data?.publicChannel || bootstrapPayload?.publicChannel
-        );
-        if (!freshChannel) return null;
-
-        // 2. Firmar la request con ese canal fresco (sin tocar publicChannelState)
-        const nextSeq = 1;
-        const ts = Date.now();
-        const nonce = randomToken(16);
-        const bodyHash = await sha256Hex('');
-        const key = await sha256Hex(`${freshChannel.channelId}|${freshChannel.serverNonce}|${freshChannel.clientToken}`);
-        const path = RUNTIME_ENV_ENDPOINT;
-        const aliasHash = await sha256Hex(`${key}|alias|GET|${path}|${nextSeq}|${nonce}|${ts}`);
-        const signatureHash = await sha256Hex(`${key}|sig|GET|${path}|${nextSeq}|${nonce}|${ts}|${bodyHash}`);
-        const headers = {
-          'X-Endpoint-Channel': freshChannel.channelId,
-          'X-Endpoint-Alias': `epa1.${aliasHash.slice(0, 48)}`,
-          'X-Endpoint-Signature': `eps1.${signatureHash.slice(0, 64)}`,
-          'X-Endpoint-Seq': String(nextSeq),
-          'X-Endpoint-Nonce': nonce,
-          'X-Endpoint-Ts': String(ts)
-        };
-
-        // 3. Fetch directo — respuesta en claro (no cifrada con el secreto)
-        const response = await fetch(`${getApiUrl()}${RUNTIME_ENV_ENDPOINT}`, { headers });
+        const response = await securePublicFetch(`${getApiUrl()}${RUNTIME_ENV_ENDPOINT}`);
         if (!response.ok) return null;
-        const payload = await response.json().catch(() => ({}));
+        const payload = await readJsonPayload(response, {});
         return payload?.data?.VITE_AUTH_STORAGE_SECRET || null;
       } catch {
         return null;

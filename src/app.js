@@ -345,7 +345,13 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Interceptor global de salida para payloads JSON de /api
 app.use((req, res, next) => {
   const isApiRoute = String(req.originalUrl || '').startsWith('/api/');
-  const wantsIntercept = String(req.headers['x-payload-intercept'] || '').trim() === '1';
+  const requestPath = String(req.originalUrl || '').split('?')[0];
+  const hasAuthHeader = !!String(req.headers.authorization || '').trim();
+  const isPublicBypassPath = PUBLIC_SECURE_BYPASS_PATHS.has(requestPath);
+  const wantsIntercept = (
+    String(req.headers['x-payload-intercept'] || '').trim() === '1'
+    || (hasAuthHeader && !isPublicBypassPath)
+  );
   if (!isApiRoute || !wantsIntercept) return next();
 
   const originalJson = res.json.bind(res);
