@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MiniCalendar } from "../calendar/MiniCalendar.jsx";
 import { DevAutofillButton } from "./DevAutofillButton";
 import { useDevAutofill } from "../../../hooks/useDevAutofill";
@@ -8,22 +8,24 @@ import { useDevAutofill } from "../../../hooks/useDevAutofill";
 // ============================================================
 export function DocenteModal({ docente, titularId, isNew, onSave, onClose, isDeveloper }) {
     const { getDocente } = useDevAutofill();
-    // When editing, preserve existing suplentes array; when creating new, initialize empty
-    const [form, setForm] = useState(() => {
-        if (isNew) {
-            return {
-                id: `d${Date.now()}`, cargo: "Titular", nombreApellido: "",
-                estado: "Activo", motivo: "-", motivoPersonalizado: "", diasAutorizados: 0,
-                fechaInicioLicencia: null, fechaFinLicencia: null, suplentes: [],
-                jornada: "Completa"
-            };
-        }
-        // Editing mode - preserve suplentes array
-        return {
-            ...docente,
-            suplentes: docente.suplentes || []
-        };
+    const buildDefaultDocente = () => ({
+        cargo: titularId ? "Suplente" : "Titular",
+        nombreApellido: "",
+        estado: "Activo",
+        motivo: "-",
+        motivoPersonalizado: "",
+        diasAutorizados: 0,
+        fechaInicioLicencia: null,
+        fechaFinLicencia: null,
+        suplentes: [],
+        jornada: "Completa"
     });
+    const [form, setForm] = useState(() => isNew
+        ? buildDefaultDocente()
+        : {
+            ...docente,
+            suplentes: docente?.suplentes || []
+        });
 
     const MOTIVOS = ["-", "Art. 101 - Enfermedad", "Art. 102 - Familiar enfermo", "Art. 103 - Maternidad", "Art. 104 - Accidente de trabajo", "Art. 108 - Gremial", "Art. 115 - Estudio", "Art. 140 - Concurso", "Otro"];
 
@@ -39,12 +41,49 @@ export function DocenteModal({ docente, titularId, isNew, onSave, onClose, isDev
     const [saving, setSaving] = useState(false);
     const [submitError, setSubmitError] = useState("");
 
+    useEffect(() => {
+        setForm(isNew
+            ? buildDefaultDocente()
+            : {
+                ...docente,
+                suplentes: docente?.suplentes || []
+            });
+    }, [docente, isNew, titularId]);
+
     const handleSave = async () => {
         if (saving) return;
+        const nombreApellido = String(form?.nombreApellido || "").trim();
+        if (!nombreApellido) {
+            setSubmitError("El nombre y apellido del docente es obligatorio.");
+            return;
+        }
+        if (form.estado === "Licencia") {
+            if (!form.fechaInicioLicencia || !form.fechaFinLicencia) {
+                setSubmitError("Debe completar fecha de inicio y fin de licencia.");
+                return;
+            }
+            const inicio = new Date(form.fechaInicioLicencia);
+            const fin = new Date(form.fechaFinLicencia);
+            if (Number.isNaN(inicio.getTime()) || Number.isNaN(fin.getTime()) || fin < inicio) {
+                setSubmitError("El rango de licencia no es válido.");
+                return;
+            }
+        }
+
         setSaving(true);
         setSubmitError("");
         try {
-            await onSave(form);
+            const normalized = form.estado === "Licencia"
+                ? form
+                : {
+                    ...form,
+                    motivo: "-",
+                    motivoPersonalizado: "",
+                    diasAutorizados: 0,
+                    fechaInicioLicencia: null,
+                    fechaFinLicencia: null
+                };
+            await onSave(normalized);
             onClose();
         } catch (error) {
             setSubmitError(error?.message || "Error al guardar el docente");

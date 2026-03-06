@@ -1,14 +1,52 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DevAutofillButton } from "./DevAutofillButton";
 import { useDevAutofill } from "../../../hooks/useDevAutofill";
+
+const buildDefaultProyecto = () => ({
+    nombre: "",
+    descripcion: "",
+    estado: "Completado",
+    fechaInicio: new Date().toISOString().split('T')[0],
+    fechaBaja: ""
+});
 
 // ============================================================
 // PROYECTO FORM MODAL
 // ============================================================
 export function ProyectoModal({ proyecto, isNew, onSave, onClose, escuelas, escuelaId, isDeveloper }) {
-    const [form, setForm] = useState(proyecto || { id: `p${Date.now()}`, nombre: "", descripcion: "", estado: "En Progreso", fechaInicio: new Date().toISOString().split('T')[0], fechaBaja: "" });
+    const [form, setForm] = useState(proyecto || buildDefaultProyecto());
     const [selectedEscuela, setSelectedEscuela] = useState(escuelaId || "");
+    const [saving, setSaving] = useState(false);
     const { getProyecto } = useDevAutofill();
+    const lockEscuelaSelection = !isNew && Boolean(escuelaId);
+
+    useEffect(() => {
+        setForm(proyecto || buildDefaultProyecto());
+        setSelectedEscuela(escuelaId || "");
+    }, [proyecto, escuelaId]);
+
+    const handleSubmit = async () => {
+        const escId = selectedEscuela || escuelaId;
+        if (!escId) {
+            alert("Debe seleccionar una escuela");
+            return;
+        }
+        if (!String(form?.nombre || "").trim()) {
+            alert("El nombre del proyecto es obligatorio");
+            return;
+        }
+
+        setSaving(true);
+        try {
+            await onSave(form, escId);
+            onClose();
+        } catch (error) {
+            alert(error?.message || "No se pudo guardar el proyecto");
+        } finally {
+            setSaving(false);
+        }
+    };
+
     return (
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
             <div className="modal">
@@ -21,12 +59,20 @@ export function ProyectoModal({ proyecto, isNew, onSave, onClose, escuelas, escu
                 </div>
                 <div className="form-group">
                     <label className="form-label">Escuela</label>
-                    <select className="form-select" value={selectedEscuela} onChange={e => setSelectedEscuela(e.target.value)}>
+                    <select
+                        className="form-select"
+                        value={selectedEscuela}
+                        onChange={e => setSelectedEscuela(e.target.value)}
+                        disabled={lockEscuelaSelection}
+                    >
                         <option value="">Seleccionar escuela...</option>
                         {escuelas.map(esc => (
                             <option key={esc.id} value={esc.id}>{esc.escuela} ({esc.de})</option>
                         ))}
                     </select>
+                    {lockEscuelaSelection && (
+                        <p style={{ color: 'var(--text3)', fontSize: 11, marginTop: 6 }}>Para cambiar de escuela, elimine y vuelva a crear el proyecto.</p>
+                    )}
                 </div>
                 <div className="form-group">
                     <label className="form-label">Nombre del Proyecto</label>
@@ -58,8 +104,8 @@ export function ProyectoModal({ proyecto, isNew, onSave, onClose, escuelas, escu
                     </div>
                 </div>
                 <div className="flex gap-8 justify-end mt-16">
-                    <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-                    <button className="btn btn-primary" onClick={() => { onSave(form, selectedEscuela || escuelaId); onClose(); }}>Guardar</button>
+                    <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancelar</button>
+                    <button className="btn btn-primary" onClick={handleSubmit} disabled={saving}>{saving ? "Guardando..." : "Guardar"}</button>
                 </div>
             </div>
         </div>
