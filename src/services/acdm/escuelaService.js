@@ -1,5 +1,6 @@
 const escuelaRepository = require('../../repositories/escuelaRepository');
 const docenteRepository = require('../../repositories/docenteRepository');
+const { ObjectId } = require('mongodb');
 const Docente = require('../../models/Docente');
 const Escuela = require('../../models/Escuela');
 const Alumno = require('../../models/Alumno');
@@ -7,6 +8,47 @@ const EscuelaEntity = require('../../entities/EscuelaEntity');
 const { canViewAllRecords } = require('./accessService');
 const { httpError } = require('../../utils/errorFactory');
 const domainEventOutboxService = require('../domainEventOutboxService');
+
+const ensureNestedIds = (items = []) => {
+  let changed = false;
+  const normalized = (Array.isArray(items) ? items : []).map((item) => {
+    if (item && item._id) return item;
+    changed = true;
+    return {
+      ...(item || {}),
+      _id: new ObjectId()
+    };
+  });
+  return { normalized, changed };
+};
+
+const repairEscuelaNestedIds = async (escuela) => {
+  if (!escuela || !escuela._id) return escuela;
+
+  const visitas = ensureNestedIds(escuela.visitas);
+  const proyectos = ensureNestedIds(escuela.proyectos);
+  const informes = ensureNestedIds(escuela.informes);
+  const changed = visitas.changed || proyectos.changed || informes.changed;
+  if (!changed) return escuela;
+
+  await Escuela.updateOne(
+    { _id: escuela._id },
+    {
+      $set: {
+        visitas: visitas.normalized,
+        proyectos: proyectos.normalized,
+        informes: informes.normalized
+      }
+    }
+  );
+
+  return {
+    ...escuela,
+    visitas: visitas.normalized,
+    proyectos: proyectos.normalized,
+    informes: informes.normalized
+  };
+};
 
 class EscuelaService {
   async list(query = {}, currentUser) {
@@ -38,15 +80,18 @@ class EscuelaService {
       Escuela.aggregate([{ $match: filter }, { $group: { _id: '$de', count: { $sum: 1 } } }])
     ]);
 
+    const repairedItems = await Promise.all(items.map((item) => repairEscuelaNestedIds(item)));
+
     return {
-      escuelas: items,
+      escuelas: repairedItems,
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
       estadisticas: { totalEscuelas: total, porNivel, porDE }
     };
   }
 
   async getById(id) {
-    const escuela = await escuelaRepository.findById(id, { withNested: true });
+    const escuelaRaw = await escuelaRepository.findById(id, { withNested: true });
+    const escuela = await repairEscuelaNestedIds(escuelaRaw);
     if (!escuela) throw httpError(404, 'Escuela no encontrada');
     return escuela;
   }
@@ -188,7 +233,10 @@ class EscuelaService {
     if (!escuela) throw httpError(404, 'Escuela no encontrada');
 
     if (!Array.isArray(escuela[collection])) escuela[collection] = [];
-    escuela[collection].push(EscuelaEntity.sanitizeNestedPayload(collection, payload));
+    escuela[collection].push({
+      _id: new ObjectId(),
+      ...EscuelaEntity.sanitizeNestedPayload(collection, payload)
+    });
     escuela.updatedBy = userId;
     await escuela.save();
     await domainEventOutboxService.enqueue({

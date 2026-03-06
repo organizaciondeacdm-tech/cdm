@@ -7,7 +7,11 @@ class EscuelaRepository {
   list(query = {}, { sort = { escuela: 1 }, skip = 0, limit = 10 } = {}) {
     return Promise.all([
       Escuela.find(query)
-        .populate({ path: 'docentes', match: { activo: true } })
+        .populate({
+          path: 'docentes',
+          match: { activo: true },
+          populate: { path: 'suplentes', match: { activo: true } }
+        })
         .populate({ path: 'alumnos', match: { activo: true } })
         .sort(sort)
         .skip(skip)
