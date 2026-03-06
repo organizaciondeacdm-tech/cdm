@@ -3,6 +3,9 @@ import { diasRestantes, formatDate } from "../../../utils/dateUtils.js";
 import { MiniCalendar } from "../calendar/MiniCalendar.jsx";
 import { DaysRemaining } from "../alerts/DaysRemaining.jsx";
 
+const cargoBadgeClass = (cargo, fallback = "interino") => String(cargo || fallback).toLowerCase();
+const cargoLabel = (cargo, fallback = "Interino") => String(cargo || fallback);
+
 // ============================================================
 // SCHOOL DETAIL VIEW
 // ============================================================
@@ -58,7 +61,7 @@ export function EscuelaDetail({ esc, onEdit, onDelete, onAddDocente, onEditDocen
                         ) : esc.docentes.map(doc => (
                             <div key={doc.id} style={{ marginBottom: 8 }}>
                                 <div className="flex items-center gap-8 flex-wrap">
-                                    <span className={`badge badge-${doc.cargo.toLowerCase()}`}>{doc.cargo}</span>
+                                    <span className={`badge badge-${cargoBadgeClass(doc.cargo)}`}>{cargoLabel(doc.cargo)}</span>
                                     <span style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 15 }}>{doc.nombreApellido}</span>
                                     <span className={`badge badge-${doc.estado === "Activo" ? "active" : "licencia"}`}>{doc.estado}</span>
                                     <span style={{ fontSize: 11, color: 'var(--text3)', background: 'rgba(0,100,200,0.1)', padding: '2px 8px', borderRadius: '4px' }}>📅 {doc.jornada || "N/D"}</span>
@@ -143,18 +146,18 @@ function EscuelaExpandida({ esc, onEdit, onDelete, onAddDocente, onEditDocente, 
                         <div key={doc.id}>
                             <div className="docente-row">
                                 <div className="docente-header">
-                                    <span className={`badge badge-${doc.cargo.toLowerCase()}`}>{doc.cargo}</span>
+                                        <span className={`badge badge-${cargoBadgeClass(doc.cargo)}`}>{cargoLabel(doc.cargo)}</span>
                                     <span className="docente-name">{doc.nombreApellido}</span>
                                     <span className={`badge badge-${doc.estado === "Activo" ? "active" : "licencia"}`}>{doc.estado}</span>
                                     <span style={{ fontSize: 11, color: 'var(--text3)', background: 'rgba(0,100,200,0.1)', padding: '2px 8px', borderRadius: '4px' }}>📅 {doc.jornada || "N/D"}</span>
                                     {doc.estado === "Licencia" && <DaysRemaining fechaFin={doc.fechaFinLicencia} />}
-                                    {isAdmin && (
-                                        <div className="flex gap-4" style={{ marginLeft: 'auto' }}>
-                                            <button className="btn btn-secondary btn-sm" onClick={() => onEditDocente(esc.id, doc)}>✏️</button>
-                                            <button className="btn btn-danger btn-sm" onClick={() => onDeleteDocente(esc.id, doc.id)}>🗑️</button>
-                                            {doc.cargo === "Titular" && <button className="btn btn-secondary btn-sm" onClick={() => onAddDocente(esc.id, doc.id)}>+ Suplente</button>}
-                                        </div>
-                                    )}
+                                        {isAdmin && (
+                                            <div className="flex gap-4" style={{ marginLeft: 'auto' }}>
+                                                <button className="btn btn-secondary btn-sm" onClick={() => onEditDocente(esc.id, doc)}>✏️</button>
+                                                <button className="btn btn-danger btn-sm" disabled={!doc.id} onClick={() => onDeleteDocente(esc.id, doc.id)}>🗑️</button>
+                                                {doc.cargo === "Titular" && <button className="btn btn-secondary btn-sm" onClick={() => onAddDocente(esc.id, doc.id)}>+ Suplente</button>}
+                                            </div>
+                                        )}
                                 </div>
                                 {doc.estado === "Licencia" && (
                                     <div className="docente-details mt-8">
@@ -174,15 +177,15 @@ function EscuelaExpandida({ esc, onEdit, onDelete, onAddDocente, onEditDocente, 
                                 <div key={s.id} className="docente-row suplente-row">
                                     <div className="docente-header">
                                         <span style={{ fontSize: 12, color: 'var(--yellow)' }}>↳ Cubre a: <strong>{doc.nombreApellido}</strong></span>
-                                        <span className={`badge badge-${s.cargo.toLowerCase()}`}>{s.cargo}</span>
+                                        <span className={`badge badge-${cargoBadgeClass(s.cargo, "suplente")}`}>{cargoLabel(s.cargo, "Suplente")}</span>
                                         <span className="docente-name">{s.nombreApellido}</span>
                                         <span className={`badge badge-${s.estado === "Activo" ? "active" : "licencia"}`}>{s.estado}</span>
                                         <span style={{ fontSize: 11, color: 'var(--text3)', background: 'rgba(0,100,200,0.1)', padding: '2px 8px', borderRadius: '4px' }}>📅 {s.jornada || "N/D"}</span>
                                         {s.fechaIngreso && <span style={{ fontSize: 11, color: 'var(--text3)' }}>desde {formatDate(s.fechaIngreso)}</span>}
                                         {isAdmin && (
                                             <div className="flex gap-4" style={{ marginLeft: 'auto' }}>
-                                                <button className="btn btn-secondary btn-sm" onClick={() => onEditDocente(esc.id, s, doc.id)}>✏️</button>
-                                                <button className="btn btn-danger btn-sm" onClick={() => onDeleteDocente(esc.id, s.id, doc.id)}>🗑️</button>
+                                                <button className="btn btn-secondary btn-sm" disabled={!s.id} onClick={() => onEditDocente(esc.id, s, doc.id)}>✏️</button>
+                                                <button className="btn btn-danger btn-sm" disabled={!s.id} onClick={() => onDeleteDocente(esc.id, s.id, doc.id)}>🗑️</button>
                                             </div>
                                         )}
                                     </div>
@@ -210,7 +213,7 @@ function EscuelaExpandida({ esc, onEdit, onDelete, onAddDocente, onEditDocente, 
                                         <td style={{ color: 'var(--text2)', fontSize: 12, maxWidth: 200 }}>{a.observaciones}</td>
                                         {isAdmin && <td><div className="flex gap-4">
                                             <button className="btn btn-secondary btn-sm" onClick={() => onEditAlumno(esc.id, a)}>✏️</button>
-                                            <button className="btn btn-danger btn-sm" onClick={() => onDeleteAlumno(esc.id, a.id)}>🗑️</button>
+                                            <button className="btn btn-danger btn-sm" disabled={!a.id} onClick={() => onDeleteAlumno(esc.id, a.id)}>🗑️</button>
                                         </div></td>}
                                     </tr>
                                 ))}
@@ -231,8 +234,8 @@ function EscuelaExpandida({ esc, onEdit, onDelete, onAddDocente, onEditDocente, 
                                         <td style={{ whiteSpace: 'nowrap' }}>{v.fecha || '—'}</td>
                                         <td style={{ color: 'var(--text2)', fontSize: 12 }}>{v.observaciones}</td>
                                         {isAdmin && <td><div className="flex gap-4">
-                                            {onEditVisita && <button className="btn btn-secondary btn-sm" onClick={() => onEditVisita(esc.id, v)}>✏️</button>}
-                                            {onDeleteVisita && <button className="btn btn-danger btn-sm" onClick={() => onDeleteVisita(esc.id, v.id || v._id)}>🗑️</button>}
+                                            {onEditVisita && <button className="btn btn-secondary btn-sm" disabled={!(v.id || v._id)} onClick={() => onEditVisita(esc.id, v)}>✏️</button>}
+                                            {onDeleteVisita && <button className="btn btn-danger btn-sm" disabled={!(v.id || v._id)} onClick={() => onDeleteVisita(esc.id, v.id || v._id)}>🗑️</button>}
                                         </div></td>}
                                     </tr>
                                 ))}

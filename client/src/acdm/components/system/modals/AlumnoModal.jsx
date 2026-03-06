@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DevAutofillButton } from "./DevAutofillButton";
 import { useDevAutofill } from "../../../hooks/useDevAutofill";
 
@@ -7,12 +7,21 @@ import { useDevAutofill } from "../../../hooks/useDevAutofill";
 // ============================================================
 export function AlumnoModal({ alumno, isNew, onSave, onClose, isDeveloper }) {
     const { getAlumno } = useDevAutofill();
-    const [form, setForm] = useState(alumno || { id: `a${Date.now()}`, gradoSalaAnio: "", nombre: "", diagnostico: "", observaciones: "" });
+    const buildDefaultAlumno = () => ({ gradoSalaAnio: "", nombre: "", diagnostico: "", observaciones: "" });
+    const [form, setForm] = useState(alumno || buildDefaultAlumno());
     const [saving, setSaving] = useState(false);
     const [submitError, setSubmitError] = useState("");
 
+    useEffect(() => {
+        setForm(alumno || buildDefaultAlumno());
+    }, [alumno, isNew]);
+
     const handleSave = async () => {
         if (saving) return;
+        if (!String(form?.nombre || "").trim()) {
+            setSubmitError("El nombre del alumno es obligatorio.");
+            return;
+        }
         setSaving(true);
         setSubmitError("");
         try {

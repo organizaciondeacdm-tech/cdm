@@ -28,6 +28,16 @@ import { InformesSection } from "./sections/InformesSection.jsx";
 import { ProyectosSection } from "./sections/ProyectosSection.jsx";
 import { VisitasSection } from "./sections/VisitasSection.jsx";
 
+const normalizeProyectoEstado = (value) => String(value || '').trim().toLowerCase();
+
+const isProyectoEntregado = (proyecto) => {
+  const estado = normalizeProyectoEstado(proyecto?.estado);
+  if (estado === 'completado' || estado === 'completa') return true;
+  if (estado.includes('entreg')) return true;
+  if (estado.includes('finaliz')) return true;
+  return Boolean(proyecto?.fechaBaja);
+};
+
 function AcdmContent() {
   const [feedback, setFeedback] = useState(null);
   const {
@@ -99,13 +109,18 @@ function AcdmContent() {
 
   const filteredProyectos = escuelas.map(esc => ({
     ...esc,
-    proyectos: (!esc.proyectos || !search) ? (esc.proyectos || []) : esc.proyectos.filter(p =>
-      p.nombre.toLowerCase().includes(search.toLowerCase()) ||
-      p.descripcion.toLowerCase().includes(search.toLowerCase()) ||
-      esc.escuela.toLowerCase().includes(search.toLowerCase()) ||
-      esc.de.toLowerCase().includes(search.toLowerCase())
-    )
-  })).filter(esc => !search || esc.proyectos.length > 0);
+    proyectos: (esc.proyectos || []).filter((p) => {
+      if (!isProyectoEntregado(p)) return false;
+      if (!search) return true;
+      const term = search.toLowerCase();
+      return (
+        String(p?.nombre || '').toLowerCase().includes(term) ||
+        String(p?.descripcion || '').toLowerCase().includes(term) ||
+        String(esc?.escuela || '').toLowerCase().includes(term) ||
+        String(esc?.de || '').toLowerCase().includes(term)
+      );
+    })
+  })).filter(esc => esc.proyectos.length > 0);
 
   const filteredInformes = escuelas.map(esc => ({
     ...esc,

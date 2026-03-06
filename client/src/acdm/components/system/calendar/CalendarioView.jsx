@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { diasRestantes, getDaysInMonth, getFirstDayOfMonth, formatDate } from "../../../utils/dateUtils.js";
 
 // ============================================================
@@ -9,13 +9,23 @@ export function CalendarioView({ escuelas }) {
     const [month, setMonth] = useState(new Date().getMonth());
     const [selectedDay, setSelectedDay] = useState(null);
     const [selectedEscuela, setSelectedEscuela] = useState("");
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState("");
+    const [selectedDocente, setSelectedDocente] = useState("");
     const [periodoInicio, setPeriodoInicio] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
     const [periodoFin, setPeriodoFin] = useState(new Date(new Date().getFullYear(), 11, 31).toISOString().split('T')[0]);
 
     const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
     const dayNames = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+    const normalizeDateKey = (value) => {
+        if (!value) return null;
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return null;
+        return date.toISOString().split("T")[0];
+    };
+    const firstDate = periodoInicio && periodoFin && periodoInicio > periodoFin ? periodoFin : periodoInicio;
+    const lastDate = periodoInicio && periodoFin && periodoInicio > periodoFin ? periodoInicio : periodoFin;
+    const startBound = firstDate || "0000-01-01";
+    const endBound = lastDate || "9999-12-31";
+    const hasInvalidRange = Boolean(periodoInicio && periodoFin && periodoInicio > periodoFin);
 
     function navCal(d) {
         let m = month + d; let y = year;
@@ -26,49 +36,61 @@ export function CalendarioView({ escuelas }) {
     const daysInMonth = getDaysInMonth(year, month);
     const firstDay = getFirstDayOfMonth(year, month);
 
-    // Obtener datos filtrados según la escuela seleccionada
-    const dataToUse = selectedEscuela
-        ? escuelas.filter(e => e.id === selectedEscuela)
-        : escuelas;
+    const escuelasFiltradas = useMemo(() => (
+        selectedEscuela
+            ? escuelas.filter((escuela) => escuela.id === selectedEscuela)
+            : escuelas
+    ), [escuelas, selectedEscuela]);
 
-    // Filtrar licencias por período
-    function isLicenciaInPeriodo(licencia) {
-        if (!licencia.fechaInicioLicencia || !licencia.fechaFinLicencia) return false;
-        const inicio = new Date(licencia.fechaInicioLicencia);
-        const fin = new Date(licencia.fechaFinLicencia);
-        const periodoStart = new Date(periodoInicio);
-        const periodoEnd = new Date(periodoFin);
-        // La licencia se superpone con el período si: inicio <= fin del período Y fin >= inicio del período
-        return inicio <= periodoEnd && fin >= periodoStart;
-    }
-
-    // Get events per day
-    function getEventsForDay(d) {
-        const date = new Date(year, month, d);
-        const events = [];
-        dataToUse.forEach(esc => {
-            (esc.docentes || []).forEach(doc => {
-                if (doc.fechaInicioLicencia && doc.fechaFinLicencia && isLicenciaInPeriodo(doc)) {
-                    const s = new Date(doc.fechaInicioLicencia);
-                    const e = new Date(doc.fechaFinLicencia);
-                    if (date >= s && date <= e) {
-                        events.push({
-                            type: "licencia",
-                            id: doc.id,
-                            name: doc.nombreApellido,
-                            esc: esc.escuela,
-                            escId: esc.id,
-                            docId: doc.id,
-                            motivo: doc.motivo,
-                            estado: doc.estado,
-                            diasRestantes: diasRestantes(doc.fechaFinLicencia)
-                        });
-                    }
-                }
+    const docenteOptions = useMemo(() => {
+        const map = new Map();
+        escuelasFiltradas.forEach((escuela) => {
+            (escuela.docentes || []).forEach((docente) => {
+                if (!docente?.id) return;
+                map.set(docente.id, {
+                    id: docente.id,
+                    nombreApellido: docente.nombreApellido || "Sin nombre",
+                    escuela: escuela.escuela,
+                    de: escuela.de
+                });
             });
         });
-        return events;
-    }
+        return Array.from(map.values()).sort((a, b) => a.nombreApellido.localeCompare(b.nombreApellido, "es"));
+    }, [escuelasFiltradas]);
+
+    const licencias = useMemo(() => {
+        const items = [];
+        escuelasFiltradas.forEach((escuela) => {
+            (escuela.docentes || []).forEach((docente) => {
+                const inicio = normalizeDateKey(docente.fechaInicioLicencia);
+                const fin = normalizeDateKey(docente.fechaFinLicencia || docente.fechaInicioLicencia);
+                if (!inicio || !fin) return;
+                if (selectedDocente && docente.id !== selectedDocente) return;
+                if (fin < startBound || inicio > endBound) return;
+                items.push({
+                    type: "licencia",
+                    id: `${escuela.id}-${docente.id}-${inicio}-${fin}`,
+                    docenteId: docente.id,
+                    docente: docente.nombreApellido || "Sin nombre",
+                    escuelaId: escuela.id,
+                    escuela: escuela.escuela,
+                    de: escuela.de,
+                    motivo: docente.motivo || "-",
+                    inicio,
+                    fin,
+                    diasRestantes: diasRestantes(fin)
+                });
+            });
+        });
+        return items.sort((a, b) => `${a.inicio}-${a.docente}`.localeCompare(`${b.inicio}-${b.docente}`, "es"));
+    }, [escuelasFiltradas, selectedDocente, startBound, endBound]);
+
+    const getEventsForDay = (day) => {
+        const dateKey = normalizeDateKey(new Date(year, month, day));
+        if (!dateKey) return [];
+        if (dateKey < startBound || dateKey > endBound) return [];
+        return licencias.filter((licencia) => licencia.inicio <= dateKey && licencia.fin >= dateKey);
+    };
 
     const dayEvents = selectedDay ? getEventsForDay(selectedDay) : [];
     const today = new Date();
@@ -77,23 +99,9 @@ export function CalendarioView({ escuelas }) {
     for (let i = 0; i < firstDay; i++) cells.push(null);
     for (let d = 1; d <= daysInMonth; d++) cells.push(d);
 
-    // Obtener licencias del mes actual filtrando por período
-    const monthLicencias = dataToUse.flatMap(esc =>
-        (esc.docentes || [])
-            .filter(d => {
-                if (!d.fechaInicioLicencia) return false;
-                const s = new Date(d.fechaInicioLicencia);
-                const e = d.fechaFinLicencia ? new Date(d.fechaFinLicencia) : s;
-                const monthMatch = s.getMonth() <= month && e.getMonth() >= month &&
-                    s.getFullYear() <= year && e.getFullYear() >= year;
-                return monthMatch && isLicenciaInPeriodo(d);
-            })
-            .map(d => ({
-                ...d,
-                esc: esc.escuela,
-                escId: esc.id
-            }))
-    );
+    const monthStart = normalizeDateKey(new Date(year, month, 1));
+    const monthEnd = normalizeDateKey(new Date(year, month, daysInMonth));
+    const monthLicencias = licencias.filter((licencia) => licencia.fin >= monthStart && licencia.inicio <= monthEnd);
 
     return (
         <div>
@@ -118,7 +126,24 @@ export function CalendarioView({ escuelas }) {
                 </div>
 
                 <div>
-                    <label className="form-label">Período Inicio</label>
+                    <label className="form-label">Filtrar por Docente</label>
+                    <select
+                        className="form-select"
+                        value={selectedDocente}
+                        onChange={e => setSelectedDocente(e.target.value)}
+                        style={{ minWidth: 320 }}
+                    >
+                        <option value="">Todos los docentes</option>
+                        {docenteOptions.map((docente) => (
+                            <option key={docente.id} value={docente.id}>
+                                {docente.nombreApellido} - {docente.escuela} ({docente.de})
+                            </option>
+                        ))}
+                    </select>
+                </div>
+
+                <div>
+                    <label className="form-label">Desde</label>
                     <input
                         type="date"
                         className="form-input"
@@ -129,7 +154,7 @@ export function CalendarioView({ escuelas }) {
                 </div>
 
                 <div>
-                    <label className="form-label">Período Fin</label>
+                    <label className="form-label">Hasta</label>
                     <input
                         type="date"
                         className="form-input"
@@ -152,7 +177,12 @@ export function CalendarioView({ escuelas }) {
                 </button>
             </div>
 
-            {error && <div className="alert alert-danger" style={{ marginBottom: 24 }}>{error}</div>}
+            {hasInvalidRange && (
+                <div className="alert alert-warning" style={{ marginBottom: 24 }}>
+                    <span>⚠️</span>
+                    El rango se normalizó automáticamente (Desde mayor que Hasta).
+                </div>
+            )}
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 24 }}>
                 <div className="card">
@@ -197,20 +227,21 @@ export function CalendarioView({ escuelas }) {
                                 <span className="card-title">{selectedDay} de {monthNames[month]}</span>
                                 <button className="btn-icon" onClick={() => setSelectedDay(null)}>✕</button>
                             </div>
-                            {loading ? (
-                                <div style={{ color: 'var(--text2)', padding: '20px', textAlign: 'center' }}>Cargando...</div>
-                            ) : dayEvents.length === 0 ? (
+                            {dayEvents.length === 0 ? (
                                 <div style={{ color: 'var(--text3)', fontSize: 13, padding: '20px 0' }}>Sin eventos para este día</div>
                             ) : (
                                 dayEvents.map((ev, i) => (
                                     <div key={i} className="alert alert-danger" style={{ marginBottom: 8 }}>
                                         <span>🔴</span>
                                         <div style={{ flex: 1 }}>
-                                            <strong>{ev.name}</strong><br />
-                                            <span style={{ fontSize: 12 }}>{ev.esc}</span><br />
+                                            <strong>{ev.docente}</strong><br />
+                                            <span style={{ fontSize: 12 }}>{ev.escuela} ({ev.de})</span><br />
                                             <span style={{ fontSize: 11, opacity: 0.8 }}>{ev.motivo}</span>
                                             <span style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginTop: 4 }}>
-                                                📅 {ev.diasRestantes} día(s) restante(s)
+                                                {formatDate(ev.inicio)} → {formatDate(ev.fin)}
+                                            </span>
+                                            <span style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginTop: 2 }}>
+                                                ⏱ {ev.diasRestantes} día(s) restante(s)
                                             </span>
                                         </div>
                                     </div>
@@ -220,23 +251,21 @@ export function CalendarioView({ escuelas }) {
                     ) : (
                         <div className="card">
                             <div className="card-header"><span className="card-title">📋 Licencias del Mes</span></div>
-                            {loading ? (
-                                <div style={{ color: 'var(--text2)', padding: '20px', textAlign: 'center' }}>Cargando...</div>
-                            ) : monthLicencias.length === 0 ? (
+                            {monthLicencias.length === 0 ? (
                                 <div className="no-data">Sin licencias registradas</div>
                             ) : (
                                 monthLicencias.map((d, i) => (
                                     <div key={i} className="docente-row" style={{ marginBottom: 8, cursor: 'pointer', padding: 8, borderRadius: 4, transition: 'all 0.2s', ':hover': { background: 'var(--border)' } }}
                                         onMouseEnter={e => e.currentTarget.style.background = 'var(--border)'}
                                         onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                                        <div style={{ fontFamily: 'Rajdhani', fontWeight: 700 }}>{d.nombreApellido}</div>
-                                        <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>{d.esc}</div>
+                                        <div style={{ fontFamily: 'Rajdhani', fontWeight: 700 }}>{d.docente}</div>
+                                        <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>{d.escuela} ({d.de})</div>
                                         <div style={{ fontSize: 11, color: 'var(--yellow)', marginTop: 2 }}>{d.motivo}</div>
                                         <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-                                            {formatDate(d.fechaInicioLicencia)} → {formatDate(d.fechaFinLicencia)}
+                                            {formatDate(d.inicio)} → {formatDate(d.fin)}
                                         </div>
                                         <div style={{ fontSize: 10, color: 'var(--accent3)', marginTop: 4, fontWeight: 700 }}>
-                                            ⏱ {diasRestantes(d.fechaFinLicencia)} día(s)
+                                            ⏱ {d.diasRestantes} día(s)
                                         </div>
                                     </div>
                                 ))
