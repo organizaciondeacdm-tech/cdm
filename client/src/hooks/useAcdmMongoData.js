@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { authFetch, getAuthSession } from '../utils/authSession.js';
 import { ACDM_EVENTS, emitAcdmEvent, useAcdmEvent } from './useAcdmEvents.js';
 import { readJsonPayload } from '../utils/payloadCrypto.js';
@@ -25,18 +25,57 @@ const splitNombreApellido = (value = '') => {
   return { nombre, apellido };
 };
 
-const mapDocente = (docente) => ({
+const resolveEntityId = (value) => {
+  if (value == null) return null;
+  if (typeof value === 'string' || typeof value === 'number') {
+    const id = String(value).trim();
+    return id || null;
+  }
+  if (typeof value !== 'object') return null;
+  const id = value._id || value.id;
+  if (!id) return null;
+  return String(id).trim() || null;
+};
+
+const toDocenteDisplayName = (docente = {}) => {
+  const explicit = String(docente.nombreApellido || '').trim();
+  if (explicit) return explicit;
+  const apellido = String(docente.apellido || '').trim();
+  const nombre = String(docente.nombre || '').trim();
+  const combined = [apellido, nombre].filter(Boolean).join(', ');
+  return combined || 'Sin nombre';
+};
+
+const mapSuplente = (suplente) => {
+  const id = resolveEntityId(suplente);
+  if (!id) return null;
+  const raw = (suplente && typeof suplente === 'object') ? suplente : { _id: id };
+  return {
+    ...raw,
+    id,
+    titularId: resolveEntityId(raw.titularId),
+    cargo: raw.cargo || 'Suplente',
+    nombreApellido: toDocenteDisplayName(raw),
+    estado: raw.estado || 'Activo',
+    jornada: raw.jornada || 'Completa',
+    motivo: raw.motivo || '-',
+    diasAutorizados: Number(raw.diasAutorizados || 0),
+    fechaInicioLicencia: toDateInput(raw.fechaInicioLicencia),
+    fechaFinLicencia: toDateInput(raw.fechaFinLicencia)
+  };
+};
+
+const mapDocente = (docente = {}) => ({
   ...docente,
-  id: docente._id || docente.id,
-  nombreApellido: docente.nombreApellido || [docente.apellido, docente.nombre].filter(Boolean).join(', '),
+  id: resolveEntityId(docente),
+  titularId: resolveEntityId(docente.titularId),
+  cargo: docente.cargo || 'Interino',
+  nombreApellido: toDocenteDisplayName(docente),
   jornada: docente.jornada || 'Completa',
-  suplentes: (docente.suplentes || []).map((suplente) => ({
-    ...suplente,
-    id: suplente._id || suplente.id,
-    nombreApellido: suplente.nombreApellido || [suplente.apellido, suplente.nombre].filter(Boolean).join(', '),
-    fechaInicioLicencia: toDateInput(suplente.fechaInicioLicencia),
-    fechaFinLicencia: toDateInput(suplente.fechaFinLicencia)
-  })),
+  estado: docente.estado || 'Activo',
+  motivo: docente.motivo || '-',
+  diasAutorizados: Number(docente.diasAutorizados || 0),
+  suplentes: (docente.suplentes || []).map(mapSuplente).filter(Boolean),
   fechaInicioLicencia: toDateInput(docente.fechaInicioLicencia),
   fechaFinLicencia: toDateInput(docente.fechaFinLicencia)
 });
@@ -56,7 +95,7 @@ const mapEscuela = (escuela) => ({
   telefonos: Array.isArray(escuela.telefonos)
     ? escuela.telefonos.map((t) => (typeof t === 'string' ? t : (t?.numero || ''))).filter(Boolean)
     : [],
-  docentes: (escuela.docentes || []).map(mapDocente),
+  docentes: (escuela.docentes || []).map(mapDocente).filter((docente) => Boolean(docente?.id)),
   alumnos: (escuela.alumnos || []).map(mapAlumno),
   visitas: (escuela.visitas || []).map((visita) => ({ ...visita, id: visita._id || visita.id, fecha: toDateInput(visita.fecha) })),
   proyectos: (escuela.proyectos || []).map((proyecto) => ({
@@ -82,6 +121,19 @@ const buildInformePayload = (form = {}) => ({
   observaciones: String(form.observaciones || '').trim()
 });
 
+const buildProyectoPayload = (form = {}) => ({
+  nombre: String(form.nombre || '').trim(),
+  descripcion: String(form.descripcion || '').trim(),
+  estado: String(form.estado || 'En Progreso').trim() || 'En Progreso',
+  fechaInicio: form.fechaInicio || null,
+  fechaBaja: form.fechaBaja || null
+});
+
+const buildVisitaPayload = (form = {}) => ({
+  fecha: form.fecha || null,
+  observaciones: String(form.observaciones || '').trim()
+});
+
 const buildEscuelaPayload = (form = {}) => ({
   de: form.de ? `DE ${String(form.de).replace(/\D/g, '').padStart(2, '0')}` : form.de,
   escuela: form.escuela,
@@ -99,17 +151,25 @@ const buildEscuelaPayload = (form = {}) => ({
 
 const buildDocentePayload = (form = {}, escuelaId, titularId) => {
   const parsed = splitNombreApellido(form.nombreApellido);
+  const formTitularId = resolveEntityId(form.titularId || form.titular || form.docenteTitularId);
+  const resolvedTitularId = resolveEntityId(titularId) || formTitularId;
+  const estado = String(form.estado || 'Activo').trim() || 'Activo';
+  const isLicencia = estado === 'Licencia';
+  const motivo = form.motivo === 'Otro'
+    ? (String(form.motivoPersonalizado || '').trim() || 'Otro')
+    : (String(form.motivo || '-').trim() || '-');
+
   const payload = {
     escuela: escuelaId,
-    titularId: titularId || null,
+    titularId: resolvedTitularId || null,
     cargo: form.cargo,
     nombre: form.nombre || parsed.nombre,
     apellido: form.apellido || parsed.apellido,
-    estado: form.estado,
-    motivo: form.motivo === 'Otro' ? (form.motivoPersonalizado || form.motivo) : (form.motivo || '-'),
-    diasAutorizados: Number(form.diasAutorizados || 0),
-    fechaInicioLicencia: form.fechaInicioLicencia || null,
-    fechaFinLicencia: form.fechaFinLicencia || null,
+    estado,
+    motivo: isLicencia ? motivo : '-',
+    diasAutorizados: isLicencia ? Number(form.diasAutorizados || 0) : 0,
+    fechaInicioLicencia: isLicencia ? (form.fechaInicioLicencia || null) : null,
+    fechaFinLicencia: isLicencia ? (form.fechaFinLicencia || null) : null,
     jornada: form.jornada || 'Completa',
     dni: form.dni,
     email: form.email,
@@ -151,7 +211,6 @@ export function useAcdmMongoData(currentUser) {
   const [db, setDb] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const latestLoadRequestRef = useRef(0);
 
   const request = useCallback(async (path, options = {}) => {
     const session = await getAuthSession();
@@ -186,9 +245,6 @@ export function useAcdmMongoData(currentUser) {
       return;
     }
 
-    const requestId = latestLoadRequestRef.current + 1;
-    latestLoadRequestRef.current = requestId;
-
     try {
       setLoading(true);
       setError(null);
@@ -206,21 +262,17 @@ export function useAcdmMongoData(currentUser) {
         informes: []
       };
 
-      if (requestId !== latestLoadRequestRef.current) return;
-
       setDb(nextDb);
       emitAcdmEvent(ACDM_EVENTS.LOADED, {
         escuelas: nextDb.escuelas.length,
         timestamp: new Date().toISOString()
       });
     } catch (err) {
-      if (requestId !== latestLoadRequestRef.current) return;
       console.error('Error cargando datos ACDM:', err);
       setError(err.message);
       setDb({ escuelas: [], alumnos: [], docentes: [], usuarios: [currentUser], visitas: [], proyectos: [], informes: [] });
       emitAcdmEvent(ACDM_EVENTS.ERROR, { source: 'loadAllData', message: err.message });
     } finally {
-      if (requestId !== latestLoadRequestRef.current) return;
       setLoading(false);
     }
   }, [currentUser, request]);
@@ -285,6 +337,9 @@ export function useAcdmMongoData(currentUser) {
   const updateDocente = useCallback(async (escuelaId, docForm, titularId) => {
     try {
       const id = docForm.id || docForm._id;
+      if (!id) {
+        throw new Error('Docente inválido para actualizar');
+      }
       await request(`/api/docentes/${id}`, {
         method: 'PUT',
         body: JSON.stringify(buildDocentePayload(docForm, escuelaId, titularId))
@@ -356,9 +411,12 @@ export function useAcdmMongoData(currentUser) {
 
   const addVisita = useCallback(async (escuelaId, visitaForm) => {
     try {
+      if (!escuelaId) {
+        throw new Error('Debe seleccionar una escuela');
+      }
       await request(`/api/escuelas/${escuelaId}/visitas`, {
         method: 'POST',
-        body: JSON.stringify(visitaForm)
+        body: JSON.stringify(buildVisitaPayload(visitaForm))
       });
       await loadAllData();
     } catch (err) {
@@ -370,10 +428,16 @@ export function useAcdmMongoData(currentUser) {
 
   const updateVisita = useCallback(async (escuelaId, visitaForm) => {
     try {
+      if (!escuelaId) {
+        throw new Error('Debe seleccionar una escuela');
+      }
       const visitaId = visitaForm.id || visitaForm._id;
+      if (!visitaId) {
+        throw new Error('La visita seleccionada no tiene identificador. Eliminela y vuelva a crearla.');
+      }
       await request(`/api/escuelas/${escuelaId}/visitas/${visitaId}`, {
         method: 'PUT',
-        body: JSON.stringify(visitaForm)
+        body: JSON.stringify(buildVisitaPayload(visitaForm))
       });
       await loadAllData();
     } catch (err) {
@@ -387,6 +451,9 @@ export function useAcdmMongoData(currentUser) {
     if (!confirm('¿Eliminar visita?')) return false;
 
     try {
+      if (!escuelaId || !visitaId) {
+        throw new Error('Visita inválida para eliminar');
+      }
       await request(`/api/escuelas/${escuelaId}/visitas/${visitaId}`, { method: 'DELETE' });
       await loadAllData();
       return true;
@@ -399,9 +466,12 @@ export function useAcdmMongoData(currentUser) {
 
   const addProyecto = useCallback(async (escuelaId, proyectoForm) => {
     try {
+      if (!escuelaId) {
+        throw new Error('Debe seleccionar una escuela');
+      }
       await request(`/api/escuelas/${escuelaId}/proyectos`, {
         method: 'POST',
-        body: JSON.stringify(proyectoForm)
+        body: JSON.stringify(buildProyectoPayload(proyectoForm))
       });
       await loadAllData();
     } catch (err) {
@@ -413,10 +483,16 @@ export function useAcdmMongoData(currentUser) {
 
   const updateProyecto = useCallback(async (escuelaId, proyectoForm) => {
     try {
+      if (!escuelaId) {
+        throw new Error('Debe seleccionar una escuela');
+      }
       const proyectoId = proyectoForm.id || proyectoForm._id;
+      if (!proyectoId) {
+        throw new Error('Proyecto inválido para actualizar');
+      }
       await request(`/api/escuelas/${escuelaId}/proyectos/${proyectoId}`, {
         method: 'PUT',
-        body: JSON.stringify(proyectoForm)
+        body: JSON.stringify(buildProyectoPayload(proyectoForm))
       });
       await loadAllData();
     } catch (err) {

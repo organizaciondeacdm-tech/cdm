@@ -346,17 +346,13 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use((req, res, next) => {
   const isApiRoute = String(req.originalUrl || '').startsWith('/api/');
   const requestPath = String(req.originalUrl || '').split('?')[0];
-  const hasAuthHeader = !!String(req.headers.authorization || '').trim();
   const isPublicBypassPath = PUBLIC_SECURE_BYPASS_PATHS.has(requestPath);
-  const wantsIntercept = (
-    String(req.headers['x-payload-intercept'] || '').trim() === '1'
-    || (hasAuthHeader && !isPublicBypassPath)
-  );
-  if (!isApiRoute || !wantsIntercept) return next();
+  if (!isApiRoute || isPublicBypassPath) return next();
 
   const originalJson = res.json.bind(res);
   res.json = (payload) => {
     if (isEncryptedEnvelope(payload)) {
+      res.setHeader('x-payload-intercept', '1');
       return originalJson(payload);
     }
 

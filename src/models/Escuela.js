@@ -19,7 +19,7 @@ class Escuela extends BaseMongoModel {
     if (!Array.isArray(payload.informes)) payload.informes = [];
 
     payload.visitas = payload.visitas.map((item) => ({
-      _id: item?._id || undefined,
+      _id: item?._id ? toObjectId(item._id) : toObjectId(),
       fecha: item?.fecha ? new Date(item.fecha) : new Date(),
       visitante: item?.visitante || '',
       observaciones: item?.observaciones || '',
@@ -28,7 +28,7 @@ class Escuela extends BaseMongoModel {
     }));
 
     payload.proyectos = payload.proyectos.map((item) => ({
-      _id: item?._id || undefined,
+      _id: item?._id ? toObjectId(item._id) : toObjectId(),
       nombre: item?.nombre || 'Sin nombre',
       descripcion: item?.descripcion || '',
       estado: item?.estado || 'En Progreso',
@@ -39,7 +39,7 @@ class Escuela extends BaseMongoModel {
     }));
 
     payload.informes = payload.informes.map((item) => ({
-      _id: item?._id || undefined,
+      _id: item?._id ? toObjectId(item._id) : toObjectId(),
       titulo: item?.titulo || 'Sin título',
       estado: item?.estado || 'Pendiente',
       fechaEntrega: item?.fechaEntrega ? new Date(item.fechaEntrega) : null,
