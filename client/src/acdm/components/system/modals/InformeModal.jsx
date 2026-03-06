@@ -1,11 +1,14 @@
 import { useState } from "react";
+import { DevAutofillButton } from "./DevAutofillButton";
+import { useDevAutofill } from "../../../hooks/useDevAutofill";
 
 // ============================================================
 // INFORME FORM MODAL
 // ============================================================
-export function InformeModal({ informe, isNew, onSave, onClose, escuelas, escuelaId }) {
+export function InformeModal({ informe, isNew, onSave, onClose, escuelas, escuelaId, isDeveloper }) {
     const [form, setForm] = useState(informe || { titulo: "", estado: "Pendiente", fechaEntrega: "", observaciones: "" });
     const [selectedEscuela, setSelectedEscuela] = useState(escuelaId || "");
+    const { getInforme } = useDevAutofill();
     const handleSave = () => {
         const targetEscuela = selectedEscuela || escuelaId;
         const titulo = String(form.titulo || "").trim();
@@ -24,7 +27,10 @@ export function InformeModal({ informe, isNew, onSave, onClose, escuelas, escuel
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
             <div className="modal">
                 <div className="modal-header">
-                    <div className="modal-title">{isNew ? "➕ Nuevo Informe" : "✏️ Editar Informe"}</div>
+                    <div className="modal-title">
+                        {isNew ? "➕ Nuevo Informe" : "✏️ Editar Informe"}
+                        {isDeveloper && <DevAutofillButton onFill={() => setForm(f => ({ ...f, ...getInforme() }))} />}
+                    </div>
                     <button className="btn-icon" onClick={onClose}>✕</button>
                 </div>
                 <div className="form-group">

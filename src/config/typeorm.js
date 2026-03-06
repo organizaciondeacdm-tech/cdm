@@ -29,7 +29,9 @@ const initializeDataSource = async (logger = console) => {
   const ds = getDataSource();
   if (ds.isInitialized) return ds;
   logger.info?.(`Connecting to MongoDB with TypeORM: ${sanitizeUri(process.env.MONGODB_URI || '')}`);
+  logger.info?.('Initializing data source...', { timestamp: new Date().toISOString() });
   await ds.initialize();
+  logger.info?.('Data source initialized successfully', { timestamp: new Date().toISOString() });
   return ds;
 };
 

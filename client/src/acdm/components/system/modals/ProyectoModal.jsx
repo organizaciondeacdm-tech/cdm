@@ -1,16 +1,22 @@
 import { useState } from "react";
+import { DevAutofillButton } from "./DevAutofillButton";
+import { useDevAutofill } from "../../../hooks/useDevAutofill";
 
 // ============================================================
 // PROYECTO FORM MODAL
 // ============================================================
-export function ProyectoModal({ proyecto, isNew, onSave, onClose, escuelas, escuelaId }) {
+export function ProyectoModal({ proyecto, isNew, onSave, onClose, escuelas, escuelaId, isDeveloper }) {
     const [form, setForm] = useState(proyecto || { id: `p${Date.now()}`, nombre: "", descripcion: "", estado: "En Progreso", fechaInicio: new Date().toISOString().split('T')[0], fechaBaja: "" });
     const [selectedEscuela, setSelectedEscuela] = useState(escuelaId || "");
+    const { getProyecto } = useDevAutofill();
     return (
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
             <div className="modal">
                 <div className="modal-header">
-                    <div className="modal-title">{isNew ? "➕ Nuevo Proyecto" : "✏️ Editar Proyecto"}</div>
+                    <div className="modal-title">
+                        {isNew ? "➕ Nuevo Proyecto" : "✏️ Editar Proyecto"}
+                        {isDeveloper && <DevAutofillButton onFill={() => setForm(f => ({ ...f, ...getProyecto() }))} />}
+                    </div>
                     <button className="btn-icon" onClick={onClose}>✕</button>
                 </div>
                 <div className="form-group">

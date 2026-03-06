@@ -1,16 +1,22 @@
 import { useState } from "react";
+import { DevAutofillButton } from "./DevAutofillButton";
+import { useDevAutofill } from "../../../hooks/useDevAutofill";
 
 // ============================================================
 // VISITA FORM MODAL
 // ============================================================
-export function VisitaModal({ visita, isNew, onSave, onClose, escuelas, escuelaId }) {
+export function VisitaModal({ visita, isNew, onSave, onClose, escuelas, escuelaId, isDeveloper }) {
     const [form, setForm] = useState(visita || { id: `v${Date.now()}`, fecha: new Date().toISOString().split('T')[0], observaciones: "" });
     const [selectedEscuela, setSelectedEscuela] = useState(escuelaId || "");
+    const { getVisita } = useDevAutofill();
     return (
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
             <div className="modal">
                 <div className="modal-header">
-                    <div className="modal-title">{isNew ? "➕ Nueva Visita" : "✏️ Editar Visita"}</div>
+                    <div className="modal-title">
+                        {isNew ? "➕ Nueva Visita" : "✏️ Editar Visita"}
+                        {isDeveloper && <DevAutofillButton onFill={() => setForm(f => ({ ...f, ...getVisita() }))} />}
+                    </div>
                     <button className="btn-icon" onClick={onClose}>✕</button>
                 </div>
                 <div className="form-group">

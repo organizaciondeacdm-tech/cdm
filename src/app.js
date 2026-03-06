@@ -73,6 +73,7 @@ const FIELD_ALIAS_SCHEME = 'fid1';
 const SECURE_ENDPOINT_CODE = 'SECURE_ENDPOINT_REQUIRED';
 const PUBLIC_SECURE_BYPASS_PATHS = new Set([
   '/api/security/bootstrap',
+  '/api/runtime-environment',
   '/api/health',
   '/api/test'
 ]);
