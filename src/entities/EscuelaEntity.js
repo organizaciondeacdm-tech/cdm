@@ -57,7 +57,12 @@ class EscuelaEntity {
       payload.telefonos = normalizeTelefonos(payload.telefonos || []);
     }
 
-    if (!partial || payload.ubicacion !== undefined || payload.lat !== undefined || payload.lng !== undefined) {
+    // On partial update, skip de if it's empty (avoid wiping existing value)
+    if (partial && Object.prototype.hasOwnProperty.call(payload, 'de') && !payload.de) {
+      delete payload.de;
+    }
+
+    if (!partial || payload.ubicacion !== undefined || (payload.lat != null && payload.lat !== 0) || (payload.lng != null && payload.lng !== 0)) {
       const currentCoordinates = payload.ubicacion?.coordinates;
       const lat = Number(payload.lat);
       const lng = Number(payload.lng);
@@ -67,7 +72,7 @@ class EscuelaEntity {
           type: 'Point',
           coordinates: [Number(currentCoordinates[0]), Number(currentCoordinates[1])]
         };
-      } else if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
+      } else if (!Number.isNaN(lat) && !Number.isNaN(lng) && (lat !== 0 || lng !== 0)) {
         payload.ubicacion = {
           type: 'Point',
           coordinates: [lng, lat]

@@ -134,20 +134,40 @@ const buildVisitaPayload = (form = {}) => ({
   observaciones: String(form.observaciones || '').trim()
 });
 
-const buildEscuelaPayload = (form = {}) => ({
-  de: form.de ? `DE ${String(form.de).replace(/\D/g, '').padStart(2, '0')}` : form.de,
-  escuela: form.escuela,
-  nivel: form.nivel,
-  direccion: form.direccion,
-  localidad: form.localidad,
-  jornada: form.jornada,
-  turno: form.turno,
-  email: form.mail || form.email,
-  telefonos: Array.isArray(form.telefonos) ? form.telefonos : [],
-  lat: form.lat,
-  lng: form.lng,
-  estado: form.estado
-});
+const buildEscuelaPayload = (form = {}) => {
+  const deRaw = String(form.de || '').replace(/\D/g, '');
+  const payload = {
+    escuela: form.escuela,
+    nivel: form.nivel,
+    direccion: form.direccion,
+    jornada: form.jornada,
+    turno: form.turno,
+    email: form.mail || form.email,
+    telefonos: Array.isArray(form.telefonos) ? form.telefonos : []
+  };
+
+  // Only send de if non-empty (avoids wiping existing value)
+  if (deRaw) payload.de = `DE ${deRaw.padStart(2, '0')}`;
+
+  // Only send location if both lat and lng are valid non-zero numbers
+  const lat = Number(form.lat);
+  const lng = Number(form.lng);
+  if (!Number.isNaN(lat) && !Number.isNaN(lng) && (lat !== 0 || lng !== 0)) {
+    payload.lat = lat;
+    payload.lng = lng;
+  }
+
+  // Only send optional fields if they have values
+  if (form.localidad) payload.localidad = form.localidad;
+  if (form.estado) payload.estado = form.estado;
+
+  // Remove undefined values
+  Object.keys(payload).forEach((key) => {
+    if (payload[key] === undefined) delete payload[key];
+  });
+
+  return payload;
+};
 
 const buildDocentePayload = (form = {}, escuelaId, titularId) => {
   const parsed = splitNombreApellido(form.nombreApellido);
