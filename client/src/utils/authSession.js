@@ -4,6 +4,7 @@ import { encryptJsonBodyIfNeeded } from './payloadCrypto.js';
 
 const AUTH_SESSION_KEY = 'acdm_auth_session';
 const TRAFFIC_LOCK_CODE = 'TRAFFIC_LOCK_REQUIRED';
+const ACCESS_TOKEN_REQUIRED_CODE = 'ACCESS_TOKEN_REQUIRED';
 
 let authCache = null;
 let refreshPromise = null;
@@ -11,6 +12,13 @@ let refreshPromise = null;
 const emitTrafficLockEvent = (payload = {}) => {
   if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
   window.dispatchEvent(new CustomEvent('acdm:traffic-lock', { detail: payload }));
+};
+
+const isAccessTokenRequiredPayload = (payload = {}) => {
+  const code = String(payload?.code || '').trim().toUpperCase();
+  if (code === ACCESS_TOKEN_REQUIRED_CODE) return true;
+  const message = String(payload?.error || payload?.message || '').trim().toLowerCase();
+  return message.includes('token de acceso requerido');
 };
 
 const toBase64Url = (value = '') => (
@@ -168,12 +176,22 @@ export async function authFetch(path, options = {}) {
 
   let response = await doRequest(accessToken);
 
-  if (response.status === 423) {
+  if (response.status === 423 || response.status === 401) {
     const payload = await response.clone().json().catch(() => ({}));
-    if (payload?.code === TRAFFIC_LOCK_CODE) {
+    if (payload?.code === TRAFFIC_LOCK_CODE || isAccessTokenRequiredPayload(payload)) {
       emitTrafficLockEvent(payload);
     }
+  }
+
+  if (response.status === 423) {
     return response;
+  }
+
+  if (response.status === 401) {
+    const payload = await response.clone().json().catch(() => ({}));
+    if (isAccessTokenRequiredPayload(payload)) {
+      return response;
+    }
   }
 
   if (response.status !== 401) {
@@ -183,6 +201,12 @@ export async function authFetch(path, options = {}) {
   try {
     const refreshedSession = await refreshAuthSession();
     response = await doRequest(refreshedSession.tokens.access);
+    if (response.status === 401) {
+      const payload = await response.clone().json().catch(() => ({}));
+      if (isAccessTokenRequiredPayload(payload)) {
+        emitTrafficLockEvent(payload);
+      }
+    }
   } catch {
     await clearAuthSession();
   }

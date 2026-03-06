@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { authFetch, getAuthSession } from '../utils/authSession.js';
+import { ACDM_EVENTS, emitAcdmEvent, useAcdmEvent } from './useAcdmEvents.js';
 
 const toDateInput = (value) => {
   if (!value) return null;
@@ -150,12 +151,22 @@ export function useAcdmMongoData(currentUser) {
   const request = useCallback(async (path, options = {}) => {
     const session = await getAuthSession();
     if (!session?.tokens?.refresh) throw new Error('No hay sesión autenticada');
+    const method = String(options.method || 'GET').toUpperCase();
     const response = await authFetch(path, options);
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       const errorMessage = payload.error || (payload.errors && payload.errors.length > 0 ? payload.errors.map(e => e.msg || e.message).join(', ') : `Error HTTP ${response.status}`);
+      emitAcdmEvent(ACDM_EVENTS.ERROR, { path, method, message: errorMessage, status: response.status });
       throw new Error(errorMessage);
+    }
+
+    if (method !== 'GET') {
+      emitAcdmEvent(ACDM_EVENTS.MUTATION, {
+        path,
+        method,
+        success: true
+      });
     }
 
     return payload;
@@ -174,7 +185,7 @@ export function useAcdmMongoData(currentUser) {
       const escuelasRes = await request('/api/escuelas?limit=200');
       const escuelas = (escuelasRes.data?.escuelas || []).map(mapEscuela);
 
-      setDb({
+      const nextDb = {
         escuelas,
         alumnos: [],
         docentes: [],
@@ -182,11 +193,18 @@ export function useAcdmMongoData(currentUser) {
         visitas: [],
         proyectos: [],
         informes: []
+      };
+
+      setDb(nextDb);
+      emitAcdmEvent(ACDM_EVENTS.LOADED, {
+        escuelas: nextDb.escuelas.length,
+        timestamp: new Date().toISOString()
       });
     } catch (err) {
       console.error('Error cargando datos ACDM:', err);
       setError(err.message);
       setDb({ escuelas: [], alumnos: [], docentes: [], usuarios: [currentUser], visitas: [], proyectos: [], informes: [] });
+      emitAcdmEvent(ACDM_EVENTS.ERROR, { source: 'loadAllData', message: err.message });
     } finally {
       setLoading(false);
     }
@@ -195,6 +213,10 @@ export function useAcdmMongoData(currentUser) {
   useEffect(() => {
     loadAllData();
   }, [loadAllData]);
+
+  useAcdmEvent(ACDM_EVENTS.RELOAD_REQUEST, () => {
+    loadAllData();
+  });
 
   const saveEscuela = useCallback(async (form) => {
     try {

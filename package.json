@@ -20,7 +20,17 @@
     "test:e2e:list": "playwright test --list",
     "test:ui": "E2E_DISABLE_RATE_LIMIT=1 playwright test --ui",
     "test:debug": "E2E_DISABLE_RATE_LIMIT=1 playwright test --debug",
-    "test:report": "playwright show-report"
+    "test:report": "playwright show-report",
+    "test:map": "node scripts/generate-test-coverage-structure.js",
+    "test:map:strict": "node scripts/generate-test-coverage-structure.js --strict",
+    "test:segments:gen": "npm run test:map && node scripts/generate-incremental-test-segments.js",
+    "test:segments:list": "playwright test --list tests/e2e/segments",
+    "test:segments:api:1": "playwright test tests/e2e/segments/api/segment-01.structural.spec.js",
+    "test:e2e:incremental": "node scripts/run-e2e-incremental.js",
+    "test:e2e:incremental:smoke": "node scripts/run-e2e-incremental.js --phase=smoke",
+    "test:e2e:incremental:api": "node scripts/run-e2e-incremental.js --phase=core-api",
+    "test:e2e:incremental:ui": "node scripts/run-e2e-incremental.js --phase=ui",
+    "test:e2e:incremental:segments": "node scripts/run-e2e-incremental.js --phase=segments-api-structural"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.1.0",
