@@ -66,7 +66,7 @@ function AcdmContent() {
 
   const handleSaveEscuela = async (form) => {
     try {
-      await saveEscuela(form);
+      await saveEscuela(form, { isNew: Boolean(escuelaModal?.isNew) });
       setFeedback({ id: Date.now(), type: 'success', message: 'Escuela guardada correctamente.' });
     } catch (err) {
       setFeedback({
@@ -142,9 +142,15 @@ function AcdmContent() {
             setEscuelaModal={setEscuelaModal}
             setDocenteModal={setDocenteModal}
             setAlumnoModal={setAlumnoModal}
+            setVisitaModal={setVisitaModal}
+            setProyectoModal={setProyectoModal}
+            setInformeModal={setInformeModal}
             deleteEscuela={deleteEscuela}
             deleteDocente={deleteDocente}
             deleteAlumno={deleteAlumno}
+            deleteVisita={deleteVisita}
+            deleteProyecto={deleteProyecto}
+            deleteInforme={deleteInforme}
             onNotifyDelete={notifyDeleteResult}
           />
         )}

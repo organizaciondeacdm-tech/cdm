@@ -11,7 +11,6 @@ export function EscuelaModal({ escuela, isNew, onSave, onClose, isDeveloper }) {
 
     // Configuración base de una escuela vacía
     const initialValues = escuela || {
-        id: `e${Date.now()}`,
         de: "",
         escuela: "",
         nivel: "Primario",
@@ -40,7 +39,7 @@ export function EscuelaModal({ escuela, isNew, onSave, onClose, isDeveloper }) {
         { name: 'mail', label: 'Mail Institucional', type: 'email', placeholder: 'escuela@bue.edu.ar' },
         [
             { name: 'jornada', label: 'Jornada', type: 'select', options: ['Simple', 'Completa', 'Extendida'] },
-            { name: 'turno', label: 'Turno', type: 'select', options: ['Mañana', 'Tarde', 'Vespertino', 'Completa', 'Noche'] }
+            { name: 'turno', label: 'Turno', type: 'select', options: ['Mañana', 'Tarde', 'Vespertino', 'Completo', 'Noche'] }
         ],
         { name: 'telefonos', label: 'Teléfonos', type: 'array_text', placeholder: '011-XXXX-XXXX', itemName: 'teléfono' }
     ];
@@ -49,7 +48,14 @@ export function EscuelaModal({ escuela, isNew, onSave, onClose, isDeveloper }) {
         if (saving) return;
         setSaving(true);
         try {
-            await onSave(formData);
+            const payload = isNew
+                ? formData
+                : {
+                    ...formData,
+                    id: formData?.id || escuela?.id,
+                    _id: formData?._id || escuela?._id
+                };
+            await onSave(payload);
             onClose();
         } catch (error) {
             // Si quieres mostrar un alert en error, lo mejor es integrarlo al parent handleSave

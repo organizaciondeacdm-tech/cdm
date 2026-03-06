@@ -6,7 +6,7 @@ import { DaysRemaining } from "../alerts/DaysRemaining.jsx";
 // ============================================================
 // SCHOOL DETAIL VIEW
 // ============================================================
-export function EscuelaDetail({ esc, onEdit, onDelete, onAddDocente, onEditDocente, onDeleteDocente, onAddAlumno, onEditAlumno, onDeleteAlumno, viewMode, isAdmin }) {
+export function EscuelaDetail({ esc, onEdit, onDelete, onAddDocente, onEditDocente, onDeleteDocente, onAddAlumno, onEditAlumno, onDeleteAlumno, onAddVisita, onEditVisita, onDeleteVisita, onAddProyecto, onEditProyecto, onDeleteProyecto, onAddInforme, onEditInforme, onDeleteInforme, viewMode, isAdmin }) {
     const [expanded, setExpanded] = useState(false);
     const [calYear, setCalYear] = useState(new Date().getFullYear());
     const [calMonth, setCalMonth] = useState(new Date().getMonth());
@@ -81,7 +81,7 @@ export function EscuelaDetail({ esc, onEdit, onDelete, onAddDocente, onEditDocen
                     </div>
                 </div>
 
-                {expanded && <EscuelaExpandida esc={esc} onEdit={onEdit} onDelete={onDelete} onAddDocente={onAddDocente} onEditDocente={onEditDocente} onDeleteDocente={onDeleteDocente} onAddAlumno={onAddAlumno} onEditAlumno={onEditAlumno} onDeleteAlumno={onDeleteAlumno} calYear={calYear} calMonth={calMonth} navCal={navCal} activeTab={activeTab} setActiveTab={setActiveTab} openMaps={openMaps} openMail={openMail} isAdmin={isAdmin} />}
+                {expanded && <EscuelaExpandida esc={esc} onEdit={onEdit} onDelete={onDelete} onAddDocente={onAddDocente} onEditDocente={onEditDocente} onDeleteDocente={onDeleteDocente} onAddAlumno={onAddAlumno} onEditAlumno={onEditAlumno} onDeleteAlumno={onDeleteAlumno} onAddVisita={onAddVisita} onEditVisita={onEditVisita} onDeleteVisita={onDeleteVisita} onAddProyecto={onAddProyecto} onEditProyecto={onEditProyecto} onDeleteProyecto={onDeleteProyecto} onAddInforme={onAddInforme} onEditInforme={onEditInforme} onDeleteInforme={onDeleteInforme} calYear={calYear} calMonth={calMonth} navCal={navCal} activeTab={activeTab} setActiveTab={setActiveTab} openMaps={openMaps} openMail={openMail} isAdmin={isAdmin} />}
             </div>
         );
     }
@@ -108,18 +108,21 @@ export function EscuelaDetail({ esc, onEdit, onDelete, onAddDocente, onEditDocen
                     <span className="school-meta-item link" onClick={(e) => openMail(esc.mail, e)}>✉️ {esc.mail}</span>
                 </div>
             </div>
-            {expanded && <EscuelaExpandida esc={esc} onEdit={onEdit} onDelete={onDelete} onAddDocente={onAddDocente} onEditDocente={onEditDocente} onDeleteDocente={onDeleteDocente} onAddAlumno={onAddAlumno} onEditAlumno={onEditAlumno} onDeleteAlumno={onDeleteAlumno} calYear={calYear} calMonth={calMonth} navCal={navCal} activeTab={activeTab} setActiveTab={setActiveTab} openMaps={openMaps} openMail={openMail} isAdmin={isAdmin} />}
+            {expanded && <EscuelaExpandida esc={esc} onEdit={onEdit} onDelete={onDelete} onAddDocente={onAddDocente} onEditDocente={onEditDocente} onDeleteDocente={onDeleteDocente} onAddAlumno={onAddAlumno} onEditAlumno={onEditAlumno} onDeleteAlumno={onDeleteAlumno} onAddVisita={onAddVisita} onEditVisita={onEditVisita} onDeleteVisita={onDeleteVisita} onAddProyecto={onAddProyecto} onEditProyecto={onEditProyecto} onDeleteProyecto={onDeleteProyecto} onAddInforme={onAddInforme} onEditInforme={onEditInforme} onDeleteInforme={onDeleteInforme} calYear={calYear} calMonth={calMonth} navCal={navCal} activeTab={activeTab} setActiveTab={setActiveTab} openMaps={openMaps} openMail={openMail} isAdmin={isAdmin} />}
         </div>
     );
 }
 
-function EscuelaExpandida({ esc, onEdit, onDelete, onAddDocente, onEditDocente, onDeleteDocente, onAddAlumno, onEditAlumno, onDeleteAlumno, calYear, calMonth, navCal, activeTab, setActiveTab, openMaps, openMail, isAdmin }) {
+function EscuelaExpandida({ esc, onEdit, onDelete, onAddDocente, onEditDocente, onDeleteDocente, onAddAlumno, onEditAlumno, onDeleteAlumno, onAddVisita, onEditVisita, onDeleteVisita, onAddProyecto, onEditProyecto, onDeleteProyecto, onAddInforme, onEditInforme, onDeleteInforme, calYear, calMonth, navCal, activeTab, setActiveTab, openMaps, openMail, isAdmin }) {
     return (
         <div className="school-card-body" style={{ animation: 'slideIn 0.2s ease' }}>
             <div className="flex items-center justify-between mb-16">
                 <div className="view-toggle">
                     <button className={`view-btn ${activeTab === "docentes" ? "active" : ""}`} onClick={() => setActiveTab("docentes")}>👨‍🏫 Docentes</button>
                     <button className={`view-btn ${activeTab === "alumnos" ? "active" : ""}`} onClick={() => setActiveTab("alumnos")}>👨‍🎓 Alumnos</button>
+                    <button className={`view-btn ${activeTab === "visitas" ? "active" : ""}`} onClick={() => setActiveTab("visitas")}>📋 Visitas</button>
+                    <button className={`view-btn ${activeTab === "proyectos" ? "active" : ""}`} onClick={() => setActiveTab("proyectos")}>🗂️ Proyectos</button>
+                    <button className={`view-btn ${activeTab === "informes" ? "active" : ""}`} onClick={() => setActiveTab("informes")}>📄 Informes</button>
                     <button className={`view-btn ${activeTab === "info" ? "active" : ""}`} onClick={() => setActiveTab("info")}>ℹ️ Info</button>
                 </div>
                 <div className="flex gap-8">
@@ -127,6 +130,9 @@ function EscuelaExpandida({ esc, onEdit, onDelete, onAddDocente, onEditDocente, 
                     {isAdmin && <button className="btn btn-danger btn-sm" onClick={() => { if (confirm("¿Está seguro de eliminar esta escuela?")) onDelete(); }}>🗑️ Eliminar</button>}
                     {isAdmin && activeTab === "docentes" && <button className="btn btn-primary btn-sm" onClick={() => onAddDocente(esc.id)}>+ ACDM</button>}
                     {isAdmin && activeTab === "alumnos" && <button className="btn btn-primary btn-sm" onClick={() => onAddAlumno(esc.id)}>+ Alumno</button>}
+                    {isAdmin && activeTab === "visitas" && onAddVisita && <button className="btn btn-primary btn-sm" onClick={() => onAddVisita(esc.id)}>+ Visita</button>}
+                    {isAdmin && activeTab === "proyectos" && onAddProyecto && <button className="btn btn-primary btn-sm" onClick={() => onAddProyecto(esc.id)}>+ Proyecto</button>}
+                    {isAdmin && activeTab === "informes" && onAddInforme && <button className="btn btn-primary btn-sm" onClick={() => onAddInforme(esc.id)}>+ Informe</button>}
                 </div>
             </div>
 
@@ -205,6 +211,76 @@ function EscuelaExpandida({ esc, onEdit, onDelete, onAddDocente, onEditDocente, 
                                         {isAdmin && <td><div className="flex gap-4">
                                             <button className="btn btn-secondary btn-sm" onClick={() => onEditAlumno(esc.id, a)}>✏️</button>
                                             <button className="btn btn-danger btn-sm" onClick={() => onDeleteAlumno(esc.id, a.id)}>🗑️</button>
+                                        </div></td>}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            )}
+
+            {activeTab === "visitas" && (
+                <div className="table-wrap">
+                    {(!esc.visitas || esc.visitas.length === 0) ? <div className="no-data">Sin visitas registradas</div> : (
+                        <table>
+                            <thead><tr><th>Fecha</th><th>Observaciones</th>{isAdmin && <th>Acciones</th>}</tr></thead>
+                            <tbody>
+                                {esc.visitas.map(v => (
+                                    <tr key={v.id || v._id}>
+                                        <td style={{ whiteSpace: 'nowrap' }}>{v.fecha || '—'}</td>
+                                        <td style={{ color: 'var(--text2)', fontSize: 12 }}>{v.observaciones}</td>
+                                        {isAdmin && <td><div className="flex gap-4">
+                                            {onEditVisita && <button className="btn btn-secondary btn-sm" onClick={() => onEditVisita(esc.id, v)}>✏️</button>}
+                                            {onDeleteVisita && <button className="btn btn-danger btn-sm" onClick={() => onDeleteVisita(esc.id, v.id || v._id)}>🗑️</button>}
+                                        </div></td>}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            )}
+
+            {activeTab === "proyectos" && (
+                <div className="table-wrap">
+                    {(!esc.proyectos || esc.proyectos.length === 0) ? <div className="no-data">Sin proyectos registrados</div> : (
+                        <table>
+                            <thead><tr><th>Nombre</th><th>Estado</th><th>Inicio</th><th>Fin</th>{isAdmin && <th>Acciones</th>}</tr></thead>
+                            <tbody>
+                                {esc.proyectos.map(p => (
+                                    <tr key={p.id || p._id}>
+                                        <td style={{ fontWeight: 600 }}>{p.nombre}</td>
+                                        <td><span className="badge" style={{ background: 'rgba(0,212,255,0.1)', color: 'var(--accent)', border: '1px solid rgba(0,212,255,0.2)' }}>{p.estado}</span></td>
+                                        <td style={{ fontSize: 12, color: 'var(--text2)' }}>{p.fechaInicio || '—'}</td>
+                                        <td style={{ fontSize: 12, color: 'var(--text2)' }}>{p.fechaBaja || '—'}</td>
+                                        {isAdmin && <td><div className="flex gap-4">
+                                            {onEditProyecto && <button className="btn btn-secondary btn-sm" onClick={() => onEditProyecto(esc.id, p)}>✏️</button>}
+                                            {onDeleteProyecto && <button className="btn btn-danger btn-sm" onClick={() => onDeleteProyecto(esc.id, p.id || p._id)}>🗑️</button>}
+                                        </div></td>}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            )}
+
+            {activeTab === "informes" && (
+                <div className="table-wrap">
+                    {(!esc.informes || esc.informes.length === 0) ? <div className="no-data">Sin informes registrados</div> : (
+                        <table>
+                            <thead><tr><th>Título</th><th>Estado</th><th>Entrega</th><th>Observaciones</th>{isAdmin && <th>Acciones</th>}</tr></thead>
+                            <tbody>
+                                {esc.informes.map(inf => (
+                                    <tr key={inf.id || inf._id}>
+                                        <td style={{ fontWeight: 600 }}>{inf.titulo}</td>
+                                        <td><span className="badge" style={{ background: 'rgba(0,212,255,0.1)', color: 'var(--accent)', border: '1px solid rgba(0,212,255,0.2)' }}>{inf.estado}</span></td>
+                                        <td style={{ fontSize: 12, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{inf.fechaEntrega || '—'}</td>
+                                        <td style={{ fontSize: 12, color: 'var(--text2)', maxWidth: 200 }}>{inf.observaciones}</td>
+                                        {isAdmin && <td><div className="flex gap-4">
+                                            {onEditInforme && <button className="btn btn-secondary btn-sm" onClick={() => onEditInforme(esc.id, inf)}>✏️</button>}
+                                            {onDeleteInforme && <button className="btn btn-danger btn-sm" onClick={() => onDeleteInforme(esc.id, inf.id || inf._id)}>🗑️</button>}
                                         </div></td>}
                                     </tr>
                                 ))}

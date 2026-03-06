@@ -2,11 +2,73 @@ import { createContext, useContext, useState, useEffect } from "react";
 import { useAcdmData as useAcdmMongoData } from "../hooks/useAcdmData.js";
 
 const AcdmContext = createContext();
+const EMPTY_DB = { escuelas: [], alumnos: [], docentes: [], usuarios: [], visitas: [], proyectos: [], informes: [] };
+const noop = () => {};
+const DEFAULT_CONTEXT_VALUE = {
+    currentUser: null,
+    setCurrentUser: noop,
+    handleLogout: noop,
+    isAdmin: false,
+    isDeveloper: false,
+    canManageOperationalSections: false,
+    canExportData: false,
+    activeSection: "dashboard",
+    setActiveSection: noop,
+    viewMode: "full",
+    setViewMode: noop,
+    sidebarCollapsed: false,
+    setSidebarCollapsed: noop,
+    search: "",
+    setSearch: noop,
+    showExport: false,
+    setShowExport: noop,
+    showMailsExtractor: false,
+    setShowMailsExtractor: noop,
+    showHiddenAdmin: false,
+    setShowHiddenAdmin: noop,
+    escuelaModal: null,
+    setEscuelaModal: noop,
+    docenteModal: null,
+    setDocenteModal: noop,
+    alumnoModal: null,
+    setAlumnoModal: noop,
+    visitaModal: null,
+    setVisitaModal: noop,
+    proyectoModal: null,
+    setProyectoModal: noop,
+    informeModal: null,
+    setInformeModal: noop,
+    darkMode: true,
+    setDarkMode: noop,
+    db: EMPTY_DB,
+    escuelas: EMPTY_DB.escuelas,
+    loading: false,
+    saveEscuela: noop,
+    deleteEscuela: noop,
+    addDocente: noop,
+    updateDocente: noop,
+    deleteDocente: noop,
+    addAlumno: noop,
+    updateAlumno: noop,
+    deleteAlumno: noop,
+    addVisita: noop,
+    updateVisita: noop,
+    deleteVisita: noop,
+    addProyecto: noop,
+    updateProyecto: noop,
+    deleteProyecto: noop,
+    addInforme: noop,
+    updateInforme: noop,
+    deleteInforme: noop
+};
 
 export function useAcdmContext() {
     const context = useContext(AcdmContext);
     if (!context) {
-        throw new Error("useAcdmContext must be used within an AcdmProvider");
+        if (typeof window !== "undefined") {
+            console.warn("[ACDM][CONTEXT] useAcdmContext without provider. Returning safe fallback context.");
+        }
+        return DEFAULT_CONTEXT_VALUE;
     }
     return context;
 }
@@ -36,7 +98,7 @@ export function AcdmProvider({ children, currentUser: propCurrentUser, onLogout:
         deleteInforme
     } = useAcdmMongoData(currentUser);
 
-    const activeDb = db || { escuelas: [], alumnos: [], docentes: [], usuarios: [], visitas: [], proyectos: [], informes: [] };
+    const activeDb = db || EMPTY_DB;
 
     const [activeSection, setActiveSection] = useState("dashboard");
     const [viewMode, setViewMode] = useState("full"); // full | compact | table

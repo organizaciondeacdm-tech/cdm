@@ -19,6 +19,7 @@ export function GenericFormModal({
 }) {
     const initialValuesRef = useRef(initialValues);
     const [formData, setFormData] = useState(() => ({ ...initialValuesRef.current }));
+    const [validationErrors, setValidationErrors] = useState({});
     const prevIsOpen = useRef(false);
 
     useEffect(() => {
@@ -35,8 +36,6 @@ export function GenericFormModal({
     }, [isOpen]);
 
     if (!isOpen) return null;
-
-    const [validationErrors, setValidationErrors] = useState({});
 
     const handleChange = (name, value) => {
         setFormData((prev) => ({ ...prev, [name]: value }));
