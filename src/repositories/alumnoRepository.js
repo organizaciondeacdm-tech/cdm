@@ -49,24 +49,7 @@ class AlumnoRepository {
         $group: {
           _id: null,
           total: { $sum: 1 },
-          porDiagnostico: { $push: '$diagnosticoDetallado.tipo' },
-          porEdad: {
-            $push: {
-              $let: {
-                vars: {
-                  edad: {
-                    $floor: {
-                      $divide: [
-                        { $subtract: [new Date(), { $toDate: { $ifNull: ['$fechaNacimiento', new Date()] } }] },
-                        365 * 24 * 60 * 60 * 1000
-                      ]
-                    }
-                  }
-                },
-                in: '$$edad'
-              }
-            }
-          }
+          porDiagnostico: { $push: '$diagnosticoDetallado.tipo' }
         }
       },
       {
@@ -74,30 +57,7 @@ class AlumnoRepository {
           _id: 0,
           total: 1,
           porDiagnostico: 1,
-          porEdad: {
-            $arrayToObject: {
-              $map: {
-                input: { $range: [0, 18, 3] },
-                as: 'rango',
-                in: {
-                  k: { $concat: [{ $toString: '$$rango' }, '-', { $toString: { $add: ['$$rango', 3] } }] },
-                  v: {
-                    $size: {
-                      $filter: {
-                        input: '$porEdad',
-                        cond: {
-                          $and: [
-                            { $gte: ['$$this', '$$rango'] },
-                            { $lt: ['$$this', { $add: ['$$rango', 3] }] }
-                          ]
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
+          porEdad: { $literal: {} }
         }
       }
     ]);

@@ -2,18 +2,25 @@ const crypto = require('crypto');
 
 const ALGO = 'aes-256-cbc';
 const strictEnv = !['development', 'test'].includes(String(process.env.NODE_ENV || '').toLowerCase());
-const SECRET = process.env.ENCRYPTION_KEY || (strictEnv ? '' : 'dev-only-env-obfuscator-secret');
-if (!SECRET && strictEnv) {
-    throw new Error('ENCRYPTION_KEY es requerido para envObfuscator en entorno estricto');
-}
+const SECRET = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET || (strictEnv ? '' : 'dev-only-env-obfuscator-secret');
+const hasSecret = Boolean(SECRET);
 
 const getCryptoKey = () => {
+    if (!hasSecret) {
+        throw new Error('ENCRYPTION_KEY/JWT_SECRET es requerido para operaciones de envObfuscator');
+    }
     return crypto.createHash('sha256').update(String(SECRET)).digest();
 };
 
 const obfuscate = (text) => {
     if (!text) return text;
     if (text.startsWith('ENC:')) return text; // already encrypted
+    if (!hasSecret) {
+        if (strictEnv) {
+            throw new Error('No se puede ofuscar sin ENCRYPTION_KEY/JWT_SECRET en entorno estricto');
+        }
+        return text;
+    }
 
     const iv = crypto.randomBytes(16);
     const cipher = crypto.createCipheriv(ALGO, getCryptoKey(), iv);
@@ -27,6 +34,10 @@ const obfuscate = (text) => {
 const deobfuscate = (encryptedText) => {
     if (!encryptedText) return encryptedText;
     if (!encryptedText.startsWith('ENC:')) return encryptedText;
+    if (!hasSecret) {
+        console.warn('envObfuscator: valor ENC detectado sin ENCRYPTION_KEY/JWT_SECRET, devolviendo valor original');
+        return encryptedText;
+    }
 
     try {
         const [, ivHex, payloadHex] = encryptedText.split(':');
