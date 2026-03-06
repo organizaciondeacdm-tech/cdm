@@ -86,6 +86,24 @@ test.describe('Protected resources', () => {
     expect(deleteJson?.success).toBeTruthy();
   });
 
+  test('escuelas: validaciones de alta devuelven errores claros', async () => {
+    const { headers } = await createAuthHeaders(api);
+
+    const { response, json } = await requestJson(api, 'POST', '/api/escuelas', {
+      de: 'DE01',
+      escuela: '',
+      direccion: '',
+      email: 'mail-invalido'
+    }, headers);
+
+    expect(response.status()).toBe(400);
+    expect(json?.success).toBe(false);
+    expect(Array.isArray(json?.errors)).toBeTruthy();
+
+    const messages = (json?.errors || []).map((row) => String(row?.msg || row?.message || ''));
+    expect(messages.join(' | ')).toMatch(/DE debe tener formato DE 01|Nombre de escuela es requerido|Dirección es requerida|Email inválido/);
+  });
+
   test('docentes CRUD + endpoints de estadisticas/licencias', async () => {
     const { headers } = await createAuthHeaders(api);
     const escuelaId = await getFirstEscuelaId(api, headers);
