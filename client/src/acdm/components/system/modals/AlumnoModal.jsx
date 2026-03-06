@@ -1,9 +1,12 @@
 import { useState } from "react";
+import { DevAutofillButton } from "./DevAutofillButton";
+import { useDevAutofill } from "../../../hooks/useDevAutofill";
 
 // ============================================================
 // ALUMNO FORM MODAL
 // ============================================================
-export function AlumnoModal({ alumno, isNew, onSave, onClose }) {
+export function AlumnoModal({ alumno, isNew, onSave, onClose, isDeveloper }) {
+    const { getAlumno } = useDevAutofill();
     const [form, setForm] = useState(alumno || { id: `a${Date.now()}`, gradoSalaAnio: "", nombre: "", diagnostico: "", observaciones: "" });
     const [saving, setSaving] = useState(false);
     const [submitError, setSubmitError] = useState("");
@@ -26,7 +29,10 @@ export function AlumnoModal({ alumno, isNew, onSave, onClose }) {
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
             <div className="modal">
                 <div className="modal-header">
-                    <div className="modal-title">{isNew ? "➕ Nuevo Alumno" : "✏️ Editar Alumno"}</div>
+                    <div className="modal-title">
+                        {isNew ? "➕ Nuevo Alumno" : "✏️ Editar Alumno"}
+                        {isDeveloper && <DevAutofillButton onFill={() => setForm(f => ({ ...f, ...getAlumno() }))} />}
+                    </div>
                     <button className="btn-icon" onClick={onClose} disabled={saving}>✕</button>
                 </div>
                 <div className="form-row">

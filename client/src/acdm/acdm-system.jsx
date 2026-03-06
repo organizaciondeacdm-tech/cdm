@@ -231,7 +231,7 @@ function AcdmContent() {
 
       {escuelaModal && (
         <EscuelaModal isNew={escuelaModal.isNew} escuela={escuelaModal.data}
-          onSave={handleSaveEscuela} onClose={() => setEscuelaModal(null)} />
+          onSave={handleSaveEscuela} onClose={() => setEscuelaModal(null)} isDeveloper={isDeveloper} />
       )}
       {docenteModal && (
         <DocenteModal isNew={docenteModal.isNew} docente={docenteModal.data} titularId={docenteModal.titularId}
@@ -244,7 +244,7 @@ function AcdmContent() {
               throw err;
             }
           }}
-          onClose={() => setDocenteModal(null)} />
+          onClose={() => setDocenteModal(null)} isDeveloper={isDeveloper} />
       )}
       {alumnoModal && (
         <AlumnoModal isNew={alumnoModal.isNew} alumno={alumnoModal.data}
@@ -257,7 +257,7 @@ function AcdmContent() {
               throw err;
             }
           }}
-          onClose={() => setAlumnoModal(null)} />
+          onClose={() => setAlumnoModal(null)} isDeveloper={isDeveloper} />
       )}
       {visitaModal && (
         <VisitaModal isNew={visitaModal.isNew} visita={visitaModal.data} escuelaId={visitaModal.escuelaId}
@@ -270,7 +270,7 @@ function AcdmContent() {
               throw err;
             }
           }}
-          onClose={() => setVisitaModal(null)} escuelas={escuelas} />
+          onClose={() => setVisitaModal(null)} escuelas={escuelas} isDeveloper={isDeveloper} />
       )}
       {proyectoModal && (
         <ProyectoModal isNew={proyectoModal.isNew} proyecto={proyectoModal.data} escuelaId={proyectoModal.escuelaId}
@@ -283,7 +283,7 @@ function AcdmContent() {
               throw err;
             }
           }}
-          onClose={() => setProyectoModal(null)} escuelas={escuelas} />
+          onClose={() => setProyectoModal(null)} escuelas={escuelas} isDeveloper={isDeveloper} />
       )}
       {informeModal && (
         <InformeModal isNew={informeModal.isNew} informe={informeModal.data} escuelaId={informeModal.escuelaId}
@@ -296,7 +296,7 @@ function AcdmContent() {
               throw err;
             }
           }}
-          onClose={() => setInformeModal(null)} escuelas={escuelas} />
+          onClose={() => setInformeModal(null)} escuelas={escuelas} isDeveloper={isDeveloper} />
       )}
       {showExport && <ExportPDF escuelas={escuelas} onClose={() => setShowExport(false)} />}
       {showMailsExtractor && <MailsExtractor escuelas={escuelas} onClose={() => setShowMailsExtractor(false)} />}

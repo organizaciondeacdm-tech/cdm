@@ -4,6 +4,7 @@ import { NumberField } from '../fields/NumberField';
 import { SelectField } from '../fields/SelectField';
 import { TextAreaField } from '../fields/TextAreaField';
 import { TextField } from '../fields/TextField';
+import { DevAutofillButton } from '../../modals/DevAutofillButton';
 
 export function GenericFormModal({
     isOpen,
@@ -13,7 +14,8 @@ export function GenericFormModal({
     initialValues = {},
     onSubmit,
     submitLabel = 'Guardar',
-    isSubmitting = false
+    isSubmitting = false,
+    devAutofillData = null
 }) {
     const initialValuesRef = useRef(initialValues);
     const [formData, setFormData] = useState(() => ({ ...initialValuesRef.current }));
@@ -151,7 +153,12 @@ export function GenericFormModal({
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
             <div className="modal">
                 <div className="modal-header">
-                    <div className="modal-title">{title}</div>
+                    <div className="modal-title">
+                        {title}
+                        {devAutofillData && (
+                            <DevAutofillButton onFill={() => setFormData({ ...devAutofillData })} />
+                        )}
+                    </div>
                     <button className="btn-icon" onClick={onClose} aria-label="Cerrar modal" type="button">
                         &times;
                     </button>

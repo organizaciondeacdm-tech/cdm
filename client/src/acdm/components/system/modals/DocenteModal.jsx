@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { MiniCalendar } from "../calendar/MiniCalendar.jsx";
+import { DevAutofillButton } from "./DevAutofillButton";
+import { useDevAutofill } from "../../../hooks/useDevAutofill";
 
 // ============================================================
 // DOCENTE FORM MODAL
 // ============================================================
-export function DocenteModal({ docente, titularId, isNew, onSave, onClose }) {
+export function DocenteModal({ docente, titularId, isNew, onSave, onClose, isDeveloper }) {
+    const { getDocente } = useDevAutofill();
     // When editing, preserve existing suplentes array; when creating new, initialize empty
     const [form, setForm] = useState(() => {
         if (isNew) {
@@ -54,7 +57,10 @@ export function DocenteModal({ docente, titularId, isNew, onSave, onClose }) {
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
             <div className="modal">
                 <div className="modal-header">
-                    <div className="modal-title">{isNew ? "➕ Nuevo ACDM" : "✏️ Editar ACDM"}</div>
+                    <div className="modal-title">
+                        {isNew ? "➕ Nuevo ACDM" : "✏️ Editar ACDM"}
+                        {isDeveloper && <DevAutofillButton onFill={() => setForm(f => ({ ...f, ...getDocente() }))} />}
+                    </div>
                     <button className="btn-icon" onClick={onClose} disabled={saving}>✕</button>
                 </div>
                 <div className="form-row">

@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { GenericFormModal } from "../forms/modals/GenericFormModal";
+import { useDevAutofill } from "../../../hooks/useDevAutofill";
 
 // ============================================================
 // SCHOOL FORM MODAL (Delegates to GenericFormModal)
 // ============================================================
-export function EscuelaModal({ escuela, isNew, onSave, onClose }) {
+export function EscuelaModal({ escuela, isNew, onSave, onClose, isDeveloper }) {
     const [saving, setSaving] = useState(false);
+    const { getEscuela } = useDevAutofill();
 
     // Configuración base de una escuela vacía
     const initialValues = escuela || {
@@ -66,6 +68,7 @@ export function EscuelaModal({ escuela, isNew, onSave, onClose }) {
             initialValues={initialValues}
             onSubmit={handleSubmit}
             isSubmitting={saving}
+            devAutofillData={isDeveloper ? getEscuela() : null}
         />
     );
 }
