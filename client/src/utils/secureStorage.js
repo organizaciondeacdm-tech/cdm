@@ -33,9 +33,18 @@ const ensureCrypto = () => {
 };
 
 let runtimePassphrasePromise = null;
+let runtimePassphraseResolved = null;
 const getPassphrase = async () => {
+  if (runtimePassphraseResolved && runtimePassphraseResolved !== FALLBACK_PASSPHRASE) {
+    return runtimePassphraseResolved;
+  }
   if (!runtimePassphrasePromise) {
-    runtimePassphrasePromise = getRuntimeEnvironmentValue('VITE_AUTH_STORAGE_SECRET', FALLBACK_PASSPHRASE);
+    runtimePassphrasePromise = getRuntimeEnvironmentValue('VITE_AUTH_STORAGE_SECRET', null)
+      .then((value) => {
+        runtimePassphraseResolved = value || FALLBACK_PASSPHRASE;
+        if (!value) runtimePassphrasePromise = null;
+        return runtimePassphraseResolved;
+      });
   }
   return runtimePassphrasePromise;
 };

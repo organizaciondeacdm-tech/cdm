@@ -1,4 +1,5 @@
 import { getApiUrl } from './apiConfig.js';
+import { securePublicFetch } from './payloadCrypto.js';
 
 let runtimeEnvCache = null;
 let runtimeEnvPromise = null;
@@ -7,7 +8,7 @@ export async function loadRuntimeEnvironment() {
   if (runtimeEnvCache) return runtimeEnvCache;
   if (runtimeEnvPromise) return runtimeEnvPromise;
 
-  runtimeEnvPromise = fetch(`${getApiUrl()}/api/runtime-environment`)
+  runtimeEnvPromise = securePublicFetch(`${getApiUrl()}/api/runtime-environment`)
     .then(async (response) => {
       if (!response.ok) {
         throw new Error(`No se pudo cargar runtime environment (HTTP ${response.status})`);
@@ -33,4 +34,3 @@ export async function getRuntimeEnvironmentValue(key, fallback = '') {
   const value = env?.[key];
   return value === undefined || value === null || value === '' ? fallback : value;
 }
-
