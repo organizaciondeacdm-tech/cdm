@@ -19,6 +19,8 @@ class DocenteEntity {
     delete normalized.nombreApellido;
     delete normalized.id;
     delete normalized._id;
+    delete normalized.suplentes; // managed server-side via addSuplenteToTitular
+    delete normalized.escuela;   // comes from route context, not payload
 
     return normalized;
   }

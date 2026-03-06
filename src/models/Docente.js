@@ -16,10 +16,11 @@ class Docente extends BaseMongoModel {
     if (payload.updatedBy) payload.updatedBy = toObjectId(payload.updatedBy);
 
     if (Array.isArray(payload.suplentes)) {
-      payload.suplentes = payload.suplentes.map((id) => toObjectId(id)).filter(Boolean);
-    } else {
-      payload.suplentes = [];
+      payload.suplentes = payload.suplentes
+        .map((s) => toObjectId(typeof s === 'object' ? (s._id || s.id || s) : s))
+        .filter(Boolean);
     }
+    // If suplentes is not in payload, leave existing value untouched (no else branch)
 
     if (payload.cargo === 'Suplente' && !payload.titularId) {
       throw new Error('Suplente debe tener un titular asociado');
