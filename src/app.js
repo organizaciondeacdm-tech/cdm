@@ -74,6 +74,10 @@ const SECURE_ENDPOINT_CODE = 'SECURE_ENDPOINT_REQUIRED';
 const PUBLIC_SECURE_BYPASS_PATHS = new Set([
   '/api/security/bootstrap',
   '/api/runtime-environment',
+  '/api/auth/login',
+  '/api/auth/refresh-token',
+  '/api/auth/logout',
+  '/api/auth/traffic-handshake',
   '/api/health',
   '/api/test'
 ]);

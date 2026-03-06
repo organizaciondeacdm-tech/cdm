@@ -23,10 +23,7 @@ const SUPERVISOR_ALLOWED_PERMISSIONS = new Set([
 
 const TRAFFIC_LOCK_CODE = 'TRAFFIC_LOCK_REQUIRED';
 const SECURE_ENDPOINT_CODE = 'SECURE_ENDPOINT_REQUIRED';
-const strictEnv = !['development', 'test'].includes(String(process.env.NODE_ENV || '').toLowerCase());
-const ENFORCE_SECURE_ENDPOINT = process.env.SECURE_ENDPOINT_STRICT
-  ? String(process.env.SECURE_ENDPOINT_STRICT) === '1'
-  : strictEnv;
+const ENFORCE_SECURE_ENDPOINT = String(process.env.SECURE_ENDPOINT_STRICT || '0') === '1';
 const LOCK_ALLOWED_PATHS = new Set([
   '/api/auth/traffic-handshake',
   '/api/auth/logout'
