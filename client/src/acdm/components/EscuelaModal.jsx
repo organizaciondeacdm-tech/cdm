@@ -9,10 +9,26 @@ export function EscuelaModal({ escuela, isNew, onSave, onClose }) {
         direccion: "", lat: null, lng: null, telefonos: [""], mail: "",
         jornada: "Completa", turno: "Mañana", alumnos: [], docentes: []
     });
+    const [saving, setSaving] = useState(false);
+    const [submitError, setSubmitError] = useState("");
 
     function setPhone(i, val) {
         const t = [...form.telefonos]; t[i] = val; setForm({ ...form, telefonos: t });
     }
+
+    const handleSave = async () => {
+        if (saving) return;
+        setSaving(true);
+        setSubmitError("");
+        try {
+            await onSave(form);
+            onClose();
+        } catch (error) {
+            setSubmitError(error?.message || "No se pudo guardar la escuela");
+        } finally {
+            setSaving(false);
+        }
+    };
 
     return (
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -79,9 +95,17 @@ export function EscuelaModal({ escuela, isNew, onSave, onClose }) {
                     ))}
                     <button className="btn btn-secondary btn-sm" onClick={() => setForm({ ...form, telefonos: [...form.telefonos, ""] })}>+ Agregar teléfono</button>
                 </div>
+                {submitError && (
+                    <div className="alert alert-danger" style={{ marginTop: 8, marginBottom: 8 }}>
+                        <span>⚠️</span>
+                        {submitError}
+                    </div>
+                )}
                 <div className="flex gap-8 justify-end mt-16">
-                    <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-                    <button className="btn btn-primary" onClick={() => { onSave(form); onClose(); }}>Guardar</button>
+                    <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancelar</button>
+                    <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+                        {saving ? "Guardando..." : "Guardar"}
+                    </button>
                 </div>
             </div>
         </div>

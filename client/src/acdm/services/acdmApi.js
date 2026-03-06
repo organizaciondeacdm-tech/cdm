@@ -9,10 +9,18 @@ import { encryptJsonBodyIfNeeded } from '../../utils/payloadCrypto.js';
 
 const API_BASE_URL = `${getApiUrl()}/api`;
 const TRAFFIC_LOCK_CODE = 'TRAFFIC_LOCK_REQUIRED';
+const ACCESS_TOKEN_REQUIRED_CODE = 'ACCESS_TOKEN_REQUIRED';
 
 const emitTrafficLockEvent = (payload = {}) => {
   if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
   window.dispatchEvent(new CustomEvent('acdm:traffic-lock', { detail: payload }));
+};
+
+const isAccessTokenRequiredPayload = (payload = {}) => {
+  const code = String(payload?.code || '').trim().toUpperCase();
+  if (code === ACCESS_TOKEN_REQUIRED_CODE) return true;
+  const message = String(payload?.error || payload?.message || '').trim().toLowerCase();
+  return message.includes('token de acceso requerido');
 };
 
 class AcdmApiService {
@@ -42,7 +50,10 @@ class AcdmApiService {
       const response = await authFetch(path, options);
       const payload = await response.json().catch(() => ({}));
 
-      if (response.status === 423 && payload?.code === TRAFFIC_LOCK_CODE) {
+      if (
+        (response.status === 423 && payload?.code === TRAFFIC_LOCK_CODE)
+        || (response.status === 401 && isAccessTokenRequiredPayload(payload))
+      ) {
         emitTrafficLockEvent(payload);
       }
 

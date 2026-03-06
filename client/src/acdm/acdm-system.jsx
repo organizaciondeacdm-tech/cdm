@@ -59,6 +59,20 @@ function AcdmContent() {
     }
   };
 
+  const handleSaveEscuela = async (form) => {
+    try {
+      await saveEscuela(form);
+      setFeedback({ id: Date.now(), type: 'success', message: 'Escuela guardada correctamente.' });
+    } catch (err) {
+      setFeedback({
+        id: Date.now(),
+        type: 'error',
+        message: err?.message || 'No se pudo guardar la escuela.'
+      });
+      throw err;
+    }
+  };
+
   if (!currentUser) return <><style>{STYLES}</style><Login onLogin={setCurrentUser} /></>;
 
   const filteredEscuelas = escuelas.filter(e =>
@@ -396,31 +410,71 @@ function AcdmContent() {
 
       {escuelaModal && (
         <EscuelaModal isNew={escuelaModal.isNew} escuela={escuelaModal.data}
-          onSave={saveEscuela} onClose={() => setEscuelaModal(null)} />
+          onSave={handleSaveEscuela} onClose={() => setEscuelaModal(null)} />
       )}
       {docenteModal && (
         <DocenteModal isNew={docenteModal.isNew} docente={docenteModal.data} titularId={docenteModal.titularId}
-          onSave={(form) => docenteModal.isNew ? addDocente(docenteModal.escuelaId, form, docenteModal.titularId) : updateDocente(docenteModal.escuelaId, form, docenteModal.titularId)}
+          onSave={async (form) => {
+            try {
+              if (docenteModal.isNew) await addDocente(docenteModal.escuelaId, form, docenteModal.titularId);
+              else await updateDocente(docenteModal.escuelaId, form, docenteModal.titularId);
+              setFeedback({ id: Date.now(), type: 'success', message: 'Docente guardado correctamente.' });
+            } catch (err) {
+              throw err;
+            }
+          }}
           onClose={() => setDocenteModal(null)} />
       )}
       {alumnoModal && (
         <AlumnoModal isNew={alumnoModal.isNew} alumno={alumnoModal.data}
-          onSave={(form) => alumnoModal.isNew ? addAlumno(alumnoModal.escuelaId, form) : updateAlumno(alumnoModal.escuelaId, form)}
+          onSave={async (form) => {
+            try {
+              if (alumnoModal.isNew) await addAlumno(alumnoModal.escuelaId, form);
+              else await updateAlumno(alumnoModal.escuelaId, form);
+              setFeedback({ id: Date.now(), type: 'success', message: 'Alumno guardado correctamente.' });
+            } catch (err) {
+              throw err;
+            }
+          }}
           onClose={() => setAlumnoModal(null)} />
       )}
       {visitaModal && (
         <VisitaModal isNew={visitaModal.isNew} visita={visitaModal.data} escuelaId={visitaModal.escuelaId}
-          onSave={(form, escId) => visitaModal.isNew ? addVisita(escId, form) : updateVisita(escId, form)}
+          onSave={async (form, escId) => {
+            try {
+              if (visitaModal.isNew) await addVisita(escId, form);
+              else await updateVisita(escId, form);
+              setFeedback({ id: Date.now(), type: 'success', message: 'Visita guardada correctamente.' });
+            } catch (err) {
+              throw err;
+            }
+          }}
           onClose={() => setVisitaModal(null)} escuelas={escuelas} />
       )}
       {proyectoModal && (
         <ProyectoModal isNew={proyectoModal.isNew} proyecto={proyectoModal.data} escuelaId={proyectoModal.escuelaId}
-          onSave={(form, escId) => proyectoModal.isNew ? addProyecto(escId, form) : updateProyecto(escId, form)}
+          onSave={async (form, escId) => {
+            try {
+              if (proyectoModal.isNew) await addProyecto(escId, form);
+              else await updateProyecto(escId, form);
+              setFeedback({ id: Date.now(), type: 'success', message: 'Proyecto guardado correctamente.' });
+            } catch (err) {
+              throw err;
+            }
+          }}
           onClose={() => setProyectoModal(null)} escuelas={escuelas} />
       )}
       {informeModal && (
         <InformeModal isNew={informeModal.isNew} informe={informeModal.data} escuelaId={informeModal.escuelaId}
-          onSave={(form, escId) => informeModal.isNew ? addInforme(escId, form) : updateInforme(escId, form)}
+          onSave={async (form, escId) => {
+            try {
+              if (informeModal.isNew) await addInforme(escId, form);
+              else await updateInforme(escId, form);
+              setFeedback({ id: Date.now(), type: 'success', message: 'Informe guardado correctamente.' });
+            } catch (err) {
+              throw err;
+            }
+          }}
           onClose={() => setInformeModal(null)} escuelas={escuelas} />
       )}
       {showExport && <ExportPDF escuelas={escuelas} onClose={() => setShowExport(false)} />}
