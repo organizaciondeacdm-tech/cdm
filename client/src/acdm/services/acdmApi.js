@@ -10,6 +10,7 @@ import { encryptJsonBodyIfNeeded, readJsonPayload, securePublicFetch, withPayloa
 const API_BASE_URL = `${getApiUrl()}/api`;
 const TRAFFIC_LOCK_CODE = 'TRAFFIC_LOCK_REQUIRED';
 const ACCESS_TOKEN_REQUIRED_CODE = 'ACCESS_TOKEN_REQUIRED';
+const LOGIN_LOG_PREFIX = '[ACDM][LOGIN][API]';
 
 const emitTrafficLockEvent = (payload = {}) => {
   if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
@@ -460,13 +461,27 @@ class AcdmApiService {
   // ==================== AUTENTICACIÓN ====================
   async login(username, password) {
     try {
+      const loginUrl = `${this.baseUrl}/auth/login`;
       const headers = withPayloadIntercept({ 'Content-Type': 'application/json' });
-      const response = await securePublicFetch(`${this.baseUrl}/auth/login`, {
-        method: 'POST',
-        headers,
-        body: await encryptJsonBodyIfNeeded(JSON.stringify({ username, password }), headers)
+      const encryptedBody = await encryptJsonBodyIfNeeded(JSON.stringify({ username, password }), headers);
+      console.log(`${LOGIN_LOG_PREFIX} preparing request`, {
+        url: loginUrl,
+        username: String(username || '').trim(),
+        hasPassword: Boolean(password),
+        headerKeys: Object.keys(headers || {}),
+        encryptedPayload: Boolean(encryptedBody && encryptedBody !== JSON.stringify({ username, password }))
       });
 
+      const response = await securePublicFetch(loginUrl, {
+        method: 'POST',
+        headers,
+        body: encryptedBody
+      });
+
+      console.log(`${LOGIN_LOG_PREFIX} response received`, {
+        status: response.status,
+        ok: response.ok
+      });
       const data = await readJsonPayload(response, {});
 
       if (!response.ok) {
@@ -474,7 +489,11 @@ class AcdmApiService {
         error.status = response.status;
         error.message = data.error || error.message;
         error.payload = data;
-        console.error('Login error:', error.message);
+        console.error(`${LOGIN_LOG_PREFIX} non-ok response`, {
+          status: error.status,
+          message: error.message,
+          payload: data
+        });
         throw error;
       }
 
@@ -503,7 +522,11 @@ class AcdmApiService {
         error.status = 500;
         error.message = error.message || "Error de conexión con el servidor";
       }
-      console.error('Login error:', error);
+      console.error(`${LOGIN_LOG_PREFIX} request failed`, {
+        status: error.status,
+        message: error.message,
+        payload: error?.payload || null
+      });
       throw error;
     }
   }

@@ -6,6 +6,7 @@ const AUTH_SESSION_KEY = 'acdm_auth_session';
 const TRAFFIC_LOCK_CODE = 'TRAFFIC_LOCK_REQUIRED';
 const ACCESS_TOKEN_REQUIRED_CODE = 'ACCESS_TOKEN_REQUIRED';
 const SECURE_ENDPOINT_REQUIRED_CODE = 'SECURE_ENDPOINT_REQUIRED';
+const LOGIN_LOG_PREFIX = '[ACDM][LOGIN][SESSION]';
 
 let authCache = null;
 let refreshPromise = null;
@@ -177,39 +178,75 @@ export async function clearAuthSession() {
 }
 
 export async function loginWithSession(username, password) {
+  const loginUrl = `${getApiUrl()}/api/auth/login`;
   const loginHeaders = withPayloadIntercept({ 'Content-Type': 'application/json' });
-  const loginBody = await encryptJsonBodyIfNeeded(JSON.stringify({ username, password }), loginHeaders);
-  const response = await securePublicFetch(`${getApiUrl()}/api/auth/login`, {
-    method: 'POST',
-    headers: loginHeaders,
-    body: loginBody
-  });
 
-  const payload = await readJsonPayload(response, {});
-  if (!response.ok) {
-    const error = new Error(payload.error || `HTTP ${response.status}`);
-    error.status = response.status;
-    error.payload = payload;
+  try {
+    console.log(`${LOGIN_LOG_PREFIX} preparing login request`, {
+      url: loginUrl,
+      username: String(username || '').trim(),
+      hasPassword: Boolean(password)
+    });
+
+    const loginBody = await encryptJsonBodyIfNeeded(JSON.stringify({ username, password }), loginHeaders);
+    const response = await securePublicFetch(loginUrl, {
+      method: 'POST',
+      headers: loginHeaders,
+      body: loginBody
+    });
+
+    console.log(`${LOGIN_LOG_PREFIX} response received`, {
+      status: response.status,
+      ok: response.ok
+    });
+
+    const payload = await readJsonPayload(response, {});
+    if (!response.ok) {
+      const error = new Error(payload.error || `HTTP ${response.status}`);
+      error.status = response.status;
+      error.payload = payload;
+      console.error(`${LOGIN_LOG_PREFIX} non-ok response`, {
+        status: error.status,
+        message: error.message,
+        payload
+      });
+      throw error;
+    }
+
+    const user = payload?.data?.user;
+    const access = payload?.data?.tokens?.access;
+    const refresh = payload?.data?.tokens?.refresh;
+
+    if (!user || !access || !refresh) {
+      throw new Error('Respuesta inválida del servidor de autenticación');
+    }
+
+    const session = {
+      user,
+      tokens: { access, refresh },
+      secureChannel: normalizeSecureChannel(payload?.data?.secureChannel),
+      updatedAt: Date.now()
+    };
+
+    await setAuthSession(session);
+    console.log(`${LOGIN_LOG_PREFIX} session established`, {
+      username: session?.user?.username || String(username || '').trim(),
+      hasSecureChannel: Boolean(session?.secureChannel?.sessionId)
+    });
+    return session;
+  } catch (error) {
+    const message = String(error?.message || '');
+    const isCryptoUnavailable = /WebCrypto no disponible/i.test(message);
+    if (isCryptoUnavailable) {
+      error.message = 'No se pudo iniciar sesión porque WebCrypto no está disponible. Abrí la app en HTTPS o en http://localhost.';
+    }
+    console.error(`${LOGIN_LOG_PREFIX} login request failed`, {
+      status: error?.status,
+      message: error?.message || 'error desconocido',
+      payload: error?.payload || null
+    });
     throw error;
   }
-
-  const user = payload?.data?.user;
-  const access = payload?.data?.tokens?.access;
-  const refresh = payload?.data?.tokens?.refresh;
-
-  if (!user || !access || !refresh) {
-    throw new Error('Respuesta inválida del servidor de autenticación');
-  }
-
-  const session = {
-    user,
-    tokens: { access, refresh },
-    secureChannel: normalizeSecureChannel(payload?.data?.secureChannel),
-    updatedAt: Date.now()
-  };
-
-  await setAuthSession(session);
-  return session;
 }
 
 async function refreshAuthSession() {

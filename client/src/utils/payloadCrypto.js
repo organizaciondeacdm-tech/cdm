@@ -10,7 +10,8 @@ const KEY_LENGTH = 256;
 const FALLBACK_SECRET = 'acdm-default-payload-secret-change-me';
 const SECURE_ENDPOINT_REQUIRED_CODE = 'SECURE_ENDPOINT_REQUIRED';
 const PUBLIC_CHANNEL_ENDPOINT = '/api/security/bootstrap';
-const PUBLIC_CHANNEL_BYPASS = new Set([PUBLIC_CHANNEL_ENDPOINT, '/api/health', '/api/test']);
+const RUNTIME_ENV_ENDPOINT = '/api/runtime-environment';
+const PUBLIC_CHANNEL_BYPASS = new Set([PUBLIC_CHANNEL_ENDPOINT, RUNTIME_ENV_ENDPOINT, '/api/health', '/api/test']);
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 let publicChannelState = null;
@@ -124,28 +125,25 @@ const parsePathFromUrl = (url = '') => {
   }
 };
 
+const isChannelValid = () =>
+  publicChannelState
+  && publicChannelState.expiresAt
+  && new Date(publicChannelState.expiresAt).getTime() > Date.now();
+
+// Obtiene o refresca el canal SIN encolar (para usar dentro de la queue)
+const ensurePublicChannelInner = async () => {
+  if (isChannelValid()) return publicChannelState;
+  const response = await fetch(`${getApiUrl()}${PUBLIC_CHANNEL_ENDPOINT}`);
+  const payload = await response.json().catch(() => ({}));
+  const channel = payload?.data?.publicChannel || payload?.publicChannel;
+  return setPublicChannel(channel);
+};
+
 const ensurePublicChannel = async () => {
-  if (
-    publicChannelState
-    && publicChannelState.expiresAt
-    && new Date(publicChannelState.expiresAt).getTime() > Date.now()
-  ) {
-    return publicChannelState;
-  }
+  if (isChannelValid()) return publicChannelState;
 
   return (publicChannelQueue = publicChannelQueue.then(async () => {
-    if (
-      publicChannelState
-      && publicChannelState.expiresAt
-      && new Date(publicChannelState.expiresAt).getTime() > Date.now()
-    ) {
-      return publicChannelState;
-    }
-
-    const response = await fetch(`${getApiUrl()}${PUBLIC_CHANNEL_ENDPOINT}`);
-    const payload = await response.json().catch(() => ({}));
-    const channel = payload?.data?.publicChannel || payload?.publicChannel;
-    return setPublicChannel(channel);
+    return ensurePublicChannelInner();
   }).catch(() => publicChannelState));
 };
 
@@ -155,7 +153,8 @@ const reservePublicEndpointHeaders = async ({ url, method = 'GET', body }) => {
   if (PUBLIC_CHANNEL_BYPASS.has(path)) return {};
 
   return (publicChannelQueue = publicChannelQueue.then(async () => {
-    const channel = await ensurePublicChannel();
+    // Llamar a la versión interna (sin re-encolar) para evitar deadlock
+    const channel = await ensurePublicChannelInner();
     if (!channel) return {};
 
     const nextSeq = Number(channel.seq || 0) + 1;
@@ -223,14 +222,45 @@ const getSharedSecret = async () => {
     return sharedSecretResolved;
   }
   if (!sharedSecretPromise) {
-    sharedSecretPromise = securePublicFetch(`${getApiUrl()}/api/runtime-environment`)
-      .then(async (response) => {
+    // Obtener el secreto usando un canal público FRESCO y PROPIO,
+    // completamente independiente de publicChannelQueue para evitar deadlocks.
+    sharedSecretPromise = (async () => {
+      try {
+        // 1. Obtener canal fresco desde bootstrap (fetch directo, sin queue)
+        const bootstrapRes = await fetch(`${getApiUrl()}${PUBLIC_CHANNEL_ENDPOINT}`);
+        const bootstrapPayload = await bootstrapRes.json().catch(() => ({}));
+        const freshChannel = normalizePublicChannel(
+          bootstrapPayload?.data?.publicChannel || bootstrapPayload?.publicChannel
+        );
+        if (!freshChannel) return null;
+
+        // 2. Firmar la request con ese canal fresco (sin tocar publicChannelState)
+        const nextSeq = 1;
+        const ts = Date.now();
+        const nonce = randomToken(16);
+        const bodyHash = await sha256Hex('');
+        const key = await sha256Hex(`${freshChannel.channelId}|${freshChannel.serverNonce}|${freshChannel.clientToken}`);
+        const path = RUNTIME_ENV_ENDPOINT;
+        const aliasHash = await sha256Hex(`${key}|alias|GET|${path}|${nextSeq}|${nonce}|${ts}`);
+        const signatureHash = await sha256Hex(`${key}|sig|GET|${path}|${nextSeq}|${nonce}|${ts}|${bodyHash}`);
+        const headers = {
+          'X-Endpoint-Channel': freshChannel.channelId,
+          'X-Endpoint-Alias': `epa1.${aliasHash.slice(0, 48)}`,
+          'X-Endpoint-Signature': `eps1.${signatureHash.slice(0, 64)}`,
+          'X-Endpoint-Seq': String(nextSeq),
+          'X-Endpoint-Nonce': nonce,
+          'X-Endpoint-Ts': String(ts)
+        };
+
+        // 3. Fetch directo — respuesta en claro (no cifrada con el secreto)
+        const response = await fetch(`${getApiUrl()}${RUNTIME_ENV_ENDPOINT}`, { headers });
         if (!response.ok) return null;
         const payload = await response.json().catch(() => ({}));
-        const value = payload?.data?.VITE_AUTH_STORAGE_SECRET;
-        return value || null;
-      })
-      .catch(() => null)
+        return payload?.data?.VITE_AUTH_STORAGE_SECRET || null;
+      } catch {
+        return null;
+      }
+    })()
       .then((value) => {
         sharedSecretResolved = value || FALLBACK_SECRET;
         if (!value) sharedSecretPromise = null;
@@ -362,4 +392,10 @@ export async function encryptJsonBodyIfNeeded(body, headers = {}) {
   const aliasedPayload = obfuscateTopLevelFieldNames(payload);
   const encrypted = await encryptPayloadObject(aliasedPayload);
   return JSON.stringify(encrypted);
+}
+
+// Pre-cargar el secreto compartido al inicio del módulo para que esté
+// disponible cuando llegue el primer login, sin competir con otras requests.
+if (typeof window !== 'undefined' && window.crypto?.subtle) {
+  getSharedSecret().catch(() => {});
 }
