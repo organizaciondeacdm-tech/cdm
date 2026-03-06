@@ -13,21 +13,38 @@ export function VisitaModal({ visitaModal, onClose, onSave, escuelas }) {
     observaciones: '',
   });
   const [selectedEscuela, setSelectedEscuela] = useState(escuelaId || "");
+  const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+
+  const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    setSubmitError("");
+    try {
+      await onSave(form, selectedEscuela || escuelaId);
+      onClose();
+    } catch (error) {
+      setSubmitError(error?.message || "Error al guardar la visita");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
           <div className="modal-title">{isNew ? "➕ Nueva Visita" : "✏️ Editar Visita"}</div>
-          <button className="btn-icon" onClick={onClose}>✕</button>
+          <button className="btn-icon" onClick={onClose} disabled={saving}>✕</button>
         </div>
-        
+
         <div className="form-group">
           <label className="form-label">Escuela</label>
           <select
             className="form-select"
             value={selectedEscuela}
             onChange={(e) => setSelectedEscuela(e.target.value)}
+            disabled={saving || (!isNew && !!escuelaId)}
           >
             <option value="">Seleccionar escuela...</option>
             {escuelas.map(esc => (
@@ -45,6 +62,7 @@ export function VisitaModal({ visitaModal, onClose, onSave, escuelas }) {
             className="form-input"
             value={form.fecha || ""}
             onChange={(e) => setForm({ ...form, fecha: e.target.value })}
+            disabled={saving}
           />
         </div>
 
@@ -56,19 +74,25 @@ export function VisitaModal({ visitaModal, onClose, onSave, escuelas }) {
             value={form.observaciones || ""}
             onChange={(e) => setForm({ ...form, observaciones: e.target.value })}
             placeholder="Detalle de la visita..."
+            disabled={saving}
           />
         </div>
 
+        {submitError && (
+          <div className="alert alert-danger" style={{ marginTop: 8, marginBottom: 8 }}>
+            <span>⚠️</span>
+            {submitError}
+          </div>
+        )}
+
         <div className="flex gap-8 justify-end mt-16">
-          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button 
-            className="btn btn-primary" 
-            onClick={() => { 
-              onSave(form, selectedEscuela || escuelaId); 
-              onClose(); 
-            }}
+          <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancelar</button>
+          <button
+            className="btn btn-primary"
+            onClick={handleSave}
+            disabled={saving}
           >
-            Guardar
+            {saving ? "Guardando..." : "Guardar"}
           </button>
         </div>
       </div>
@@ -92,21 +116,38 @@ export function ProyectoModal({ proyectoModal, onClose, onSave, escuelas }) {
     fechaBaja: '',
   });
   const [selectedEscuela, setSelectedEscuela] = useState(escuelaId || "");
+  const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+
+  const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    setSubmitError("");
+    try {
+      await onSave(form, selectedEscuela || escuelaId);
+      onClose();
+    } catch (error) {
+      setSubmitError(error?.message || "Error al guardar el proyecto");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
           <div className="modal-title">{isNew ? "➕ Nuevo Proyecto" : "✏️ Editar Proyecto"}</div>
-          <button className="btn-icon" onClick={onClose}>✕</button>
+          <button className="btn-icon" onClick={onClose} disabled={saving}>✕</button>
         </div>
-        
+
         <div className="form-group">
           <label className="form-label">Escuela</label>
           <select
             className="form-select"
             value={selectedEscuela}
             onChange={(e) => setSelectedEscuela(e.target.value)}
+            disabled={saving || (!isNew && !!escuelaId)}
           >
             <option value="">Seleccionar escuela...</option>
             {escuelas.map(esc => (
@@ -124,6 +165,7 @@ export function ProyectoModal({ proyectoModal, onClose, onSave, escuelas }) {
             value={form.nombre || ""}
             onChange={(e) => setForm({ ...form, nombre: e.target.value })}
             placeholder="Ej: Adaptación de material didáctico"
+            disabled={saving}
           />
         </div>
 
@@ -135,6 +177,7 @@ export function ProyectoModal({ proyectoModal, onClose, onSave, escuelas }) {
             value={form.descripcion || ""}
             onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
             placeholder="Detalle del proyecto..."
+            disabled={saving}
           />
         </div>
 
@@ -145,6 +188,7 @@ export function ProyectoModal({ proyectoModal, onClose, onSave, escuelas }) {
               className="form-select"
               value={form.estado || "En Progreso"}
               onChange={(e) => setForm({ ...form, estado: e.target.value })}
+              disabled={saving}
             >
               <option>En Progreso</option>
               <option>Completado</option>
@@ -162,6 +206,7 @@ export function ProyectoModal({ proyectoModal, onClose, onSave, escuelas }) {
               className="form-input"
               value={form.fechaInicio || ""}
               onChange={(e) => setForm({ ...form, fechaInicio: e.target.value })}
+              disabled={saving}
             />
           </div>
           <div className="form-group">
@@ -171,20 +216,26 @@ export function ProyectoModal({ proyectoModal, onClose, onSave, escuelas }) {
               className="form-input"
               value={form.fechaBaja || ""}
               onChange={(e) => setForm({ ...form, fechaBaja: e.target.value })}
+              disabled={saving}
             />
           </div>
         </div>
 
+        {submitError && (
+          <div className="alert alert-danger" style={{ marginTop: 8, marginBottom: 8 }}>
+            <span>⚠️</span>
+            {submitError}
+          </div>
+        )}
+
         <div className="flex gap-8 justify-end mt-16">
-          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button 
-            className="btn btn-primary" 
-            onClick={() => { 
-              onSave(form, selectedEscuela || escuelaId); 
-              onClose(); 
-            }}
+          <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancelar</button>
+          <button
+            className="btn btn-primary"
+            onClick={handleSave}
+            disabled={saving}
           >
-            Guardar
+            {saving ? "Guardando..." : "Guardar"}
           </button>
         </div>
       </div>
@@ -207,21 +258,38 @@ export function InformeModal({ informeModal, onClose, onSave, escuelas }) {
     observaciones: '',
   });
   const [selectedEscuela, setSelectedEscuela] = useState(escuelaId || "");
+  const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+
+  const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    setSubmitError("");
+    try {
+      await onSave(form, selectedEscuela || escuelaId);
+      onClose();
+    } catch (error) {
+      setSubmitError(error?.message || "Error al guardar el informe");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
           <div className="modal-title">{isNew ? "➕ Nuevo Informe" : "✏️ Editar Informe"}</div>
-          <button className="btn-icon" onClick={onClose}>✕</button>
+          <button className="btn-icon" onClick={onClose} disabled={saving}>✕</button>
         </div>
-        
+
         <div className="form-group">
           <label className="form-label">Escuela</label>
           <select
             className="form-select"
             value={selectedEscuela}
             onChange={(e) => setSelectedEscuela(e.target.value)}
+            disabled={saving || (!isNew && !!escuelaId)}
           >
             <option value="">Seleccionar escuela...</option>
             {escuelas.map(esc => (
@@ -239,6 +307,7 @@ export function InformeModal({ informeModal, onClose, onSave, escuelas }) {
             value={form.titulo || ""}
             onChange={(e) => setForm({ ...form, titulo: e.target.value })}
             placeholder="Ej: Informe mensual enero"
+            disabled={saving}
           />
         </div>
 
@@ -248,6 +317,7 @@ export function InformeModal({ informeModal, onClose, onSave, escuelas }) {
             className="form-select"
             value={form.estado || "Pendiente"}
             onChange={(e) => setForm({ ...form, estado: e.target.value })}
+            disabled={saving}
           >
             <option>Pendiente</option>
             <option>En Progreso</option>
@@ -263,6 +333,7 @@ export function InformeModal({ informeModal, onClose, onSave, escuelas }) {
             className="form-input"
             value={form.fechaEntrega || ""}
             onChange={(e) => setForm({ ...form, fechaEntrega: e.target.value })}
+            disabled={saving}
           />
         </div>
 
@@ -274,19 +345,25 @@ export function InformeModal({ informeModal, onClose, onSave, escuelas }) {
             value={form.observaciones || ""}
             onChange={(e) => setForm({ ...form, observaciones: e.target.value })}
             placeholder="Detalles del informe..."
+            disabled={saving}
           />
         </div>
 
+        {submitError && (
+          <div className="alert alert-danger" style={{ marginTop: 8, marginBottom: 8 }}>
+            <span>⚠️</span>
+            {submitError}
+          </div>
+        )}
+
         <div className="flex gap-8 justify-end mt-16">
-          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button 
-            className="btn btn-primary" 
-            onClick={() => { 
-              onSave(form, selectedEscuela || escuelaId); 
-              onClose(); 
-            }}
+          <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancelar</button>
+          <button
+            className="btn btn-primary"
+            onClick={handleSave}
+            disabled={saving}
           >
-            Guardar
+            {saving ? "Guardando..." : "Guardar"}
           </button>
         </div>
       </div>

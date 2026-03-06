@@ -66,7 +66,7 @@ export default function AppWithAuth() {
   };
 
   const handleUnlockTraffic = async () => {
-    if (!trafficLock) return;
+    if (!trafficLock?.lock?.challenge) return;
     setUnlocking(true);
     setUnlockError('');
     try {
@@ -95,6 +95,10 @@ export default function AppWithAuth() {
 
   if (currentUser) {
     if (trafficLock) {
+      const lockCode = String(trafficLock?.code || '').trim().toUpperCase();
+      const lockMessage = String(trafficLock?.error || trafficLock?.message || '').trim();
+      const requiresAccessToken = lockCode === 'ACCESS_TOKEN_REQUIRED' || /token de acceso requerido/i.test(lockMessage);
+      const hasChallenge = Boolean(trafficLock?.lock?.challenge);
       return (
         <div style={{
           background: '#050914',
@@ -117,10 +121,14 @@ export default function AppWithAuth() {
               Lockscreen de Seguridad
             </h2>
             <p style={{ margin: '0 0 8px', color: '#d6e2f0' }}>
-              Se detectó tráfico inusual desde una IP no habitual. Servicios bloqueados hasta completar handshake cifrado.
+              {requiresAccessToken
+                ? 'Token de acceso requerido. La sesión quedó bloqueada hasta volver a autenticarse.'
+                : 'Se detectó tráfico inusual desde una IP no habitual. Servicios bloqueados hasta completar handshake cifrado.'}
             </p>
             <p style={{ margin: '0 0 16px', fontSize: 12, color: '#8bacc8' }}>
-              IP sesión: {trafficLock?.lock?.sessionIp || '-'} | IP actual: {trafficLock?.lock?.requestIp || '-'}
+              {requiresAccessToken
+                ? `Detalle: ${lockMessage || 'Token de acceso requerido'}`
+                : `IP sesión: ${trafficLock?.lock?.sessionIp || '-'} | IP actual: ${trafficLock?.lock?.requestIp || '-'}`}
             </p>
             {unlockError && (
               <div style={{ marginBottom: 12, color: '#ff7d7d', fontSize: 13 }}>
@@ -128,11 +136,13 @@ export default function AppWithAuth() {
               </div>
             )}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button className="btn-primary" style={{ width: 'auto' }} onClick={handleUnlockTraffic} disabled={unlocking}>
-                {unlocking ? 'Validando...' : 'Validar Handshake'}
-              </button>
+              {hasChallenge && !requiresAccessToken && (
+                <button className="btn-primary" style={{ width: 'auto' }} onClick={handleUnlockTraffic} disabled={unlocking}>
+                  {unlocking ? 'Validando...' : 'Validar Handshake'}
+                </button>
+              )}
               <button className="btn-primary" style={{ width: 'auto', background: '#233655', color: '#d4e8ff' }} onClick={handleLogout} disabled={unlocking}>
-                Cerrar sesión
+                {requiresAccessToken ? 'Reingresar' : 'Cerrar sesión'}
               </button>
             </div>
           </div>
