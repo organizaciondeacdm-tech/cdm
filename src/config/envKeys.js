@@ -1,5 +1,4 @@
 const ALLOWED_EXACT_KEYS = new Set([
-  'MONGODB_URI',
   'MONGO_URI',
   'NODE_ENV',
   'PORT',
@@ -30,7 +29,8 @@ const ALLOWED_EXACT_KEYS = new Set([
   'BACKUP_RETENTION_DAYS',
   'BACKUP_PATH',
   'VERCEL',
-  'VITE_API_URL'
+  'VITE_API_URL',
+  'VITE_AUTH_STORAGE_SECRET'
 ]);
 
 const ALLOWED_PREFIXES = [

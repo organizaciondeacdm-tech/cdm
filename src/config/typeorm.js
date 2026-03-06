@@ -17,7 +17,9 @@ const getDataSource = () => {
     type: 'mongodb',
     url: mongoUri,
     logging: false,
-    synchronize: false
+    synchronize: false,
+    connectTimeoutMS: 10000,
+    serverSelectionTimeoutMS: 10000
   });
 
   return appDataSource;

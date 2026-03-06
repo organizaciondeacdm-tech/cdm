@@ -615,9 +615,10 @@ const login = async (req, res) => {
     }
 
     // Crear sesión
+    let createdSession = null;
     try {
       const deviceInfo = SessionService.parseDeviceInfo(req);
-      await SessionService.createSession(user, accessToken, refreshToken, deviceInfo);
+      createdSession = await SessionService.createSession(user, accessToken, refreshToken, deviceInfo);
       console.log('Sesión creada exitosamente');
     } catch (sessionError) {
       console.error('Error creando sesión:', sessionError);
@@ -633,7 +634,8 @@ const login = async (req, res) => {
         tokens: {
           access: accessToken,
           refresh: refreshToken
-        }
+        },
+        secureChannel: createdSession ? SessionService.getPublicSecureChannel(createdSession) : null
       }
     });
 
@@ -649,29 +651,25 @@ const login = async (req, res) => {
       timestamp: new Date().toISOString()
     });
 
-    // Proporcionar información de debug avanzada
-    const debugInfo = {
+    const isDebug = ['development', 'test'].includes(String(process.env.NODE_ENV || '').toLowerCase());
+    const debugInfo = isDebug ? {
       message: error.message,
       name: error.name,
       code: error.code,
       timestamp: new Date().toISOString(),
-      // Incluir stack trace siempre para debugging
       stack: error.stack,
-      // Información adicional del error
       details: {
         errno: error.errno,
         syscall: error.syscall,
         hostname: error.hostname,
-        // Agregar información del entorno
         nodeVersion: process.version,
         platform: process.platform,
         environment: process.env.NODE_ENV || 'unknown',
-        // Verificar si las variables de entorno críticas están definidas
         jwtSecretDefined: !!process.env.JWT_SECRET,
         jwtRefreshSecretDefined: !!process.env.JWT_REFRESH_SECRET,
         mongoUriDefined: !!process.env.MONGODB_URI
       }
-    };
+    } : null;
 
     const internalError = new InternalServerError(
       'Error en el servidor',
@@ -734,7 +732,7 @@ const refreshToken = async (req, res) => {
 
     // Crear nueva sesión
     const deviceInfo = SessionService.parseDeviceInfo(req);
-    await SessionService.createSession(session.userId, accessToken, newRefreshToken, deviceInfo);
+    const createdSession = await SessionService.createSession(session.userId, accessToken, newRefreshToken, deviceInfo);
 
     // Invalidar la sesión anterior después de asegurar la nueva
     await SessionService.invalidateSession(session._id);
@@ -746,7 +744,8 @@ const refreshToken = async (req, res) => {
         tokens: {
           access: accessToken,
           refresh: newRefreshToken
-        }
+        },
+        secureChannel: createdSession ? SessionService.getPublicSecureChannel(createdSession) : null
       }
     });
 
@@ -1022,9 +1021,14 @@ const trafficHandshake = async (req, res) => {
 
     if (!lockIsActive) {
       await registerKnownIp(user, clientIp);
+      const rotatedChannel = await SessionService.rotateSecureChannel(req.sessionId, SessionService.parseDeviceInfo(req));
       return res.json({
         success: true,
-        data: { unlocked: true, mode: 'noop' },
+        data: {
+          unlocked: true,
+          mode: 'noop',
+          secureChannel: rotatedChannel
+        },
         message: 'Sin bloqueo activo'
       });
     }
@@ -1071,11 +1075,13 @@ const trafficHandshake = async (req, res) => {
     });
     await registerKnownIp(user, clientIp);
 
+    const rotatedChannel = await SessionService.rotateSecureChannel(req.sessionId, SessionService.parseDeviceInfo(req));
     return res.json({
       success: true,
       data: {
         unlocked: true,
-        ip: clientIp
+        ip: clientIp,
+        secureChannel: rotatedChannel
       },
       message: 'Handshake validado. Bloqueo removido.'
     });

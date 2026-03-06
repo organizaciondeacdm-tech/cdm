@@ -17,15 +17,27 @@ const SUPERVISOR_ALLOWED_PERMISSIONS = new Set([
   'editar_alumno',
   'eliminar_alumno',
   'exportar_datos',
-  'ver_reportes'
+  'ver_reportes',
+  'gestionar_formularios'
 ].map((permission) => normalizePermission(permission)));
 
 const TRAFFIC_LOCK_CODE = 'TRAFFIC_LOCK_REQUIRED';
+const SECURE_ENDPOINT_CODE = 'SECURE_ENDPOINT_REQUIRED';
+const strictEnv = !['development', 'test'].includes(String(process.env.NODE_ENV || '').toLowerCase());
+const ENFORCE_SECURE_ENDPOINT = process.env.SECURE_ENDPOINT_STRICT
+  ? String(process.env.SECURE_ENDPOINT_STRICT) === '1'
+  : strictEnv;
 const LOCK_ALLOWED_PATHS = new Set([
   '/api/auth/traffic-handshake',
   '/api/auth/logout'
 ]);
+const SECURE_ENDPOINT_ALLOWED_PATHS = new Set([
+  '/api/auth/traffic-handshake',
+  '/api/auth/logout'
+]);
 const UNKNOWN_IP_LOCK_TTL_MS = (parseInt(process.env.UNKNOWN_IP_LOCK_TTL_MINUTES, 10) || 30) * 60 * 1000;
+const SECURE_TS_DRIFT_MS = Math.max(10000, Number.parseInt(process.env.SECURE_ENDPOINT_MAX_DRIFT_MS || '120000', 10) || 120000);
+const SECURE_NONCE_LIMIT = Math.max(16, Number.parseInt(process.env.SECURE_ENDPOINT_NONCE_WINDOW || '64', 10) || 64);
 
 const normalizeIp = (value) => {
   const raw = String(value || '').trim();
@@ -111,6 +123,50 @@ const sendTrafficLockResponse = (res, lock) => (
   })
 );
 
+const sha256Hex = (value = '') => (
+  crypto.createHash('sha256').update(String(value)).digest('hex')
+);
+
+const safeEquals = (a = '', b = '') => {
+  const left = Buffer.from(String(a));
+  const right = Buffer.from(String(b));
+  if (left.length !== right.length) return false;
+  return crypto.timingSafeEqual(left, right);
+};
+
+const normalizePath = (value = '') => String(value || '').split('?')[0];
+
+const payloadDigest = (payload) => {
+  if (payload === undefined) return sha256Hex('');
+  try {
+    return sha256Hex(JSON.stringify(payload));
+  } catch {
+    return sha256Hex('');
+  }
+};
+
+const buildSecureChannelKey = ({ token = '', serverNonce = '', sessionId = '', clientToken = '' }) => (
+  sha256Hex(`${String(token)}|${String(serverNonce)}|${String(sessionId)}|${String(clientToken)}`)
+);
+
+const buildExpectedAlias = ({ key, method, path, seq, nonce, ts }) => (
+  `epa1.${sha256Hex(`${key}|alias|${method}|${path}|${seq}|${nonce}|${ts}`).slice(0, 48)}`
+);
+
+const buildExpectedSignature = ({ key, method, path, seq, nonce, ts, bodyHash }) => (
+  `eps1.${sha256Hex(`${key}|sig|${method}|${path}|${seq}|${nonce}|${ts}|${bodyHash}`).slice(0, 64)}`
+);
+
+const sendSecureEndpointResponse = (res, channel, reason = 'secure_channel_required') => (
+  res.status(428).json({
+    success: false,
+    code: SECURE_ENDPOINT_CODE,
+    error: 'Se requiere handshake seguro de endpoint',
+    reason,
+    secureChannel: channel || null
+  })
+);
+
 const authMiddleware = async (req, res, next) => {
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -181,6 +237,96 @@ const authMiddleware = async (req, res, next) => {
       if (!allowWhileLocked) {
         return sendTrafficLockResponse(res, nextLock);
       }
+    }
+
+    const securePath = path;
+    const secureAllowedPath = SECURE_ENDPOINT_ALLOWED_PATHS.has(securePath);
+    const secureState = req.session?.secureChannel || null;
+    const secureExpired = (
+      !secureState
+      || !secureState.serverNonce
+      || !secureState.clientToken
+      || new Date(secureState.expiresAt || 0).getTime() <= Date.now()
+    );
+
+    const alias = String(req.headers['x-endpoint-alias'] || '').trim();
+    const signature = String(req.headers['x-endpoint-signature'] || '').trim();
+    const nonce = String(req.headers['x-endpoint-nonce'] || '').trim();
+    const tsRaw = String(req.headers['x-endpoint-ts'] || '').trim();
+    const seqRaw = String(req.headers['x-endpoint-seq'] || '').trim();
+    const ts = Number.parseInt(tsRaw, 10);
+    const seq = Number.parseInt(seqRaw, 10);
+
+    if (!secureAllowedPath && ENFORCE_SECURE_ENDPOINT) {
+      if (secureExpired) {
+        const rotated = await SessionService.rotateSecureChannel(req.sessionId, SessionService.parseDeviceInfo(req));
+        return sendSecureEndpointResponse(res, rotated, 'channel_expired');
+      }
+
+      const hasHeaders = alias && signature && nonce && Number.isFinite(ts) && Number.isFinite(seq);
+      if (!hasHeaders) {
+        const channel = SessionService.getPublicSecureChannel(req.session);
+        return sendSecureEndpointResponse(res, channel, 'missing_headers');
+      }
+
+      const now = Date.now();
+      if (Math.abs(now - ts) > SECURE_TS_DRIFT_MS) {
+        const channel = SessionService.getPublicSecureChannel(req.session);
+        return sendSecureEndpointResponse(res, channel, 'clock_drift');
+      }
+
+      const currentSeq = Number(secureState.seq || 0);
+      if (seq <= currentSeq) {
+        const channel = SessionService.getPublicSecureChannel(req.session);
+        return sendSecureEndpointResponse(res, channel, 'replay_seq');
+      }
+
+      const recentNonces = Array.isArray(secureState.recentNonces) ? secureState.recentNonces : [];
+      if (recentNonces.includes(nonce)) {
+        const channel = SessionService.getPublicSecureChannel(req.session);
+        return sendSecureEndpointResponse(res, channel, 'replay_nonce');
+      }
+
+      if (secureState.uaHash) {
+        const uaHash = sha256Hex(req.headers['user-agent'] || '');
+        if (uaHash !== String(secureState.uaHash)) {
+          const rotated = await SessionService.rotateSecureChannel(req.sessionId, SessionService.parseDeviceInfo(req));
+          return sendSecureEndpointResponse(res, rotated, 'ua_mismatch');
+        }
+      }
+
+      const method = String(req.method || 'GET').toUpperCase();
+      const channelKey = buildSecureChannelKey({
+        token: req.token || '',
+        serverNonce: secureState.serverNonce,
+        sessionId: req.session?._id || req.sessionId || '',
+        clientToken: secureState.clientToken
+      });
+      const bodyHash = payloadDigest(req.body);
+      const expectedAlias = buildExpectedAlias({ key: channelKey, method, path: securePath, seq, nonce, ts });
+      const expectedSignature = buildExpectedSignature({ key: channelKey, method, path: securePath, seq, nonce, ts, bodyHash });
+
+      const validAlias = safeEquals(alias, expectedAlias);
+      const validSignature = safeEquals(signature, expectedSignature);
+      if (!validAlias || !validSignature) {
+        const channel = SessionService.getPublicSecureChannel(req.session);
+        return sendSecureEndpointResponse(res, channel, 'invalid_signature');
+      }
+
+      const updatedNonces = [nonce, ...recentNonces].slice(0, SECURE_NONCE_LIMIT);
+      await req.session.updateOne({
+        $set: {
+          'secureChannel.seq': seq,
+          'secureChannel.lastUsedAt': new Date(),
+          'secureChannel.recentNonces': updatedNonces
+        }
+      });
+      req.session.secureChannel = {
+        ...(req.session.secureChannel || {}),
+        seq,
+        recentNonces: updatedNonces,
+        lastUsedAt: new Date()
+      };
     }
 
     next();

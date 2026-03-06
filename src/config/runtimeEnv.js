@@ -14,7 +14,9 @@ async function loadRuntimeEnvFromMongo(options = {}) {
     if (!item?.key) return;
     if (!isAllowedRuntimeEnvKey(item.key)) return;
     if (!override && process.env[item.key] !== undefined) return;
+
     process.env[item.key] = String(item.value ?? '');
+
     applied += 1;
   });
 
