@@ -27,6 +27,9 @@ import { FormulariosSection } from "./sections/FormulariosSection.jsx";
 import { InformesSection } from "./sections/InformesSection.jsx";
 import { ProyectosSection } from "./sections/ProyectosSection.jsx";
 import { VisitasSection } from "./sections/VisitasSection.jsx";
+import { MapaSection } from "./sections/MapaSection.jsx";
+import { DocentesSection } from "./sections/DocentesSection.jsx";
+import { AlumnosSection } from "./sections/AlumnosSection.jsx";
 
 const normalizeProyectoEstado = (value) => String(value || '').trim().toLowerCase();
 
@@ -176,6 +179,18 @@ function AcdmContent() {
 
         {activeSection === "estadisticas" && (
           <EstadisticasSection escuelas={escuelas} />
+        )}
+
+        {activeSection === "mapa" && (
+          <MapaSection escuelas={escuelas} />
+        )}
+
+        {activeSection === "docentes" && (
+          <DocentesSection escuelas={escuelas} />
+        )}
+
+        {activeSection === "alumnos" && (
+          <AlumnosSection escuelas={escuelas} />
         )}
 
         {activeSection === "calendario" && <CalendarioSection escuelas={escuelas} isAdmin={isAdmin} />}

@@ -15,6 +15,10 @@ export function Sidebar({
   const navItems = [
     { id: "dashboard", icon: "📊", label: "Dashboard" },
     { id: "escuelas", icon: "🏫", label: "Escuelas", badge: 0 },
+    { id: "mapa", icon: "📍", label: "Mapa" },
+    { id: "docentes", icon: "👨‍🏫", label: "Docentes" },
+    { id: "alumnos", icon: "👨‍🎓", label: "Alumnos" },
+
     { id: "visitas", icon: "👁️", label: "Visitas" },
     { id: "proyectos", icon: "📦", label: "Proyectos" },
     { id: "informes", icon: "📋", label: "Informes" },
