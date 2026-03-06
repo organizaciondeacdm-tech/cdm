@@ -5,6 +5,7 @@ import apiService from "../../../services/acdmApi.js";
 // LOGIN SCREEN
 // ============================================================
 export function Login({ onLogin }) {
+    const LOGIN_LOG_PREFIX = "[ACDM][LOGIN]";
     const MAX_LOCAL_LOGIN_ATTEMPTS = 3;
     const BASE_LOCAL_COOLDOWN_MS = 15 * 1000;
     const MAX_LOCAL_COOLDOWN_MS = 5 * 60 * 1000;
@@ -37,21 +38,40 @@ export function Login({ onLogin }) {
     }, [cooldownUntil]);
 
     async function doLogin() {
+        console.log(`${LOGIN_LOG_PREFIX} doLogin invoked`, {
+            user: user?.trim?.() || "",
+            hasPassword: Boolean(pass),
+            isSubmitting,
+            cooldownUntil,
+            cooldownSeconds
+        });
         setErr("");
-        if (isSubmitting) return;
+        if (isSubmitting) {
+            console.warn(`${LOGIN_LOG_PREFIX} blocked: already submitting`);
+            return;
+        }
 
         if (!user.trim() || !pass) {
+            console.warn(`${LOGIN_LOG_PREFIX} blocked: missing credentials`, {
+                hasUser: Boolean(user.trim()),
+                hasPassword: Boolean(pass)
+            });
             setErr("Usuario y contraseña son requeridos");
             return;
         }
 
         if (cooldownUntil && Date.now() < cooldownUntil) {
+            console.warn(`${LOGIN_LOG_PREFIX} blocked: local cooldown active`, {
+                cooldownUntil,
+                cooldownSeconds
+            });
             setErr(`Demasiados intentos. Espere ${cooldownSeconds}s para reintentar.`);
             return;
         }
 
         setIsSubmitting(true);
         try {
+            console.log(`${LOGIN_LOG_PREFIX} calling apiService.login`);
             const response = await apiService.login(user.trim(), pass);
             const responseUser = response?.data?.user || response?.user;
             const accessToken = response?.data?.tokens?.access || response?.token;
@@ -60,6 +80,10 @@ export function Login({ onLogin }) {
                 throw new Error("Respuesta inválida del servidor de autenticación");
             }
 
+            console.log(`${LOGIN_LOG_PREFIX} login success`, {
+                username: responseUser?.username || responseUser?.user || user.trim(),
+                hasAccessToken: Boolean(accessToken)
+            });
             apiService.setToken(accessToken);
             setClientFailedAttempts(0);
             setCooldownUntil(0);
@@ -67,6 +91,11 @@ export function Login({ onLogin }) {
         } catch (backendError) {
             const status = backendError?.status;
             const backendMessage = backendError?.message || "No se pudo iniciar sesión. Intente nuevamente.";
+            console.error(`${LOGIN_LOG_PREFIX} login failed`, {
+                status,
+                message: backendMessage,
+                payload: backendError?.payload || null
+            });
 
             if (status === 423 || status === 429) {
                 const retryAfterSeconds = Number(backendError?.payload?.retryAfterSeconds) || 60;
@@ -92,6 +121,7 @@ export function Login({ onLogin }) {
                 }
             }
         } finally {
+            console.log(`${LOGIN_LOG_PREFIX} login flow finished`);
             setIsSubmitting(false);
         }
     }
@@ -111,16 +141,29 @@ export function Login({ onLogin }) {
                 </div>
                 <div className="form-group">
                     <label className="form-label login-label">USUARIO</label>
-                    <input className="form-input login-input" value={user} onChange={e => setUser(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin()} placeholder="admin" autoFocus disabled={isSubmitting || cooldownSeconds > 0} />
+                    <input className="form-input login-input" value={user} onChange={e => setUser(e.target.value)} onKeyDown={e => {
+                        if (e.key === "Enter") {
+                            console.log(`${LOGIN_LOG_PREFIX} Enter key pressed on username input`);
+                            doLogin();
+                        }
+                    }} placeholder="admin" autoFocus disabled={isSubmitting || cooldownSeconds > 0} />
                 </div>
                 <div className="form-group" style={{ marginBottom: 24 }}>
                     <label className="form-label login-label">CONTRASEÑA</label>
-                    <input type="password" className="form-input login-input" value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin()} placeholder="••••••••" disabled={isSubmitting || cooldownSeconds > 0} />
+                    <input type="password" className="form-input login-input" value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => {
+                        if (e.key === "Enter") {
+                            console.log(`${LOGIN_LOG_PREFIX} Enter key pressed on password input`);
+                            doLogin();
+                        }
+                    }} placeholder="••••••••" disabled={isSubmitting || cooldownSeconds > 0} />
                 </div>
                 {err && <div className="alert alert-danger" style={{ marginBottom: 12 }}><span>⚠️</span>{err}</div>}
                 <button
                     className="btn btn-primary login-btn"
-                    onClick={doLogin}
+                    onClick={() => {
+                        console.log(`${LOGIN_LOG_PREFIX} login button clicked`);
+                        doLogin();
+                    }}
                     disabled={isSubmitting || cooldownSeconds > 0}
                 >
                     {isSubmitting ? "INGRESANDO..." : cooldownSeconds > 0 ? `REINTENTAR EN ${cooldownSeconds}s` : "INGRESAR →"}

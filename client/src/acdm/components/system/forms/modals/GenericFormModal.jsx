@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DateField } from '../fields/DateField';
 import { NumberField } from '../fields/NumberField';
 import { SelectField } from '../fields/SelectField';
@@ -15,24 +15,49 @@ export function GenericFormModal({
     submitLabel = 'Guardar',
     isSubmitting = false
 }) {
-    const [formData, setFormData] = useState({});
+    const initialValuesRef = useRef(initialValues);
+    const [formData, setFormData] = useState(() => ({ ...initialValuesRef.current }));
+    const prevIsOpen = useRef(false);
 
     useEffect(() => {
-        if (isOpen) {
+        const wasOpen = prevIsOpen.current;
+        prevIsOpen.current = isOpen;
+        // Solo reiniciar el form cuando el modal pasa de cerrado → abierto
+        if (isOpen && !wasOpen) {
             setFormData({ ...initialValues });
-        } else {
+        } else if (!isOpen && wasOpen) {
             setFormData({});
         }
-    }, [isOpen, initialValues]);
+    // initialValues se lee en el momento de apertura; no necesita ser dependencia
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen]);
 
     if (!isOpen) return null;
 
+    const [validationErrors, setValidationErrors] = useState({});
+
     const handleChange = (name, value) => {
         setFormData((prev) => ({ ...prev, [name]: value }));
+        setValidationErrors((prev) => ({ ...prev, [name]: undefined }));
     };
 
     const handleSubmit = (e) => {
         e.preventDefault();
+        // Validar campos requeridos
+        const errors = {};
+        const flatSchema = schema.flat();
+        flatSchema.forEach((field) => {
+            if (field.required) {
+                const val = formData[field.name];
+                if (val === null || val === undefined || String(val).trim() === '') {
+                    errors[field.name] = `${field.label} es requerido`;
+                }
+            }
+        });
+        if (Object.keys(errors).length > 0) {
+            setValidationErrors(errors);
+            return;
+        }
         if (onSubmit) {
             onSubmit(formData);
         }
@@ -41,22 +66,28 @@ export function GenericFormModal({
     const renderField = (fieldParams) => {
         const { name, type, ...rest } = fieldParams;
         const value = formData[name];
+        const error = validationErrors[name];
 
         // Convertir a estructura esperada por los componentes field
         const fieldProps = { name, type, ...rest };
 
+        let fieldEl;
         switch (type) {
             case 'date':
-                return <DateField key={name} field={fieldProps} value={value} onChange={handleChange} />;
+                fieldEl = <DateField key={name} field={fieldProps} value={value} onChange={handleChange} />;
+                break;
             case 'number':
-                return <NumberField key={name} field={fieldProps} value={value} onChange={handleChange} />;
+                fieldEl = <NumberField key={name} field={fieldProps} value={value} onChange={handleChange} />;
+                break;
             case 'select':
-                return <SelectField key={name} field={fieldProps} value={value} onChange={handleChange} />;
+                fieldEl = <SelectField key={name} field={fieldProps} value={value} onChange={handleChange} />;
+                break;
             case 'textarea':
-                return <TextAreaField key={name} field={fieldProps} value={value} onChange={handleChange} />;
+                fieldEl = <TextAreaField key={name} field={fieldProps} value={value} onChange={handleChange} />;
+                break;
             case 'array_text':
                 const arr = Array.isArray(value) && value.length > 0 ? value : [''];
-                return (
+                fieldEl = (
                     <div key={name} className="form-group field array-field">
                         <label className="form-label">{fieldParams.label}</label>
                         {arr.map((item, idx) => (
@@ -87,12 +118,12 @@ export function GenericFormModal({
                         >+ Agregar {fieldParams.itemName || 'item'}</button>
                     </div>
                 );
+                break;
             case 'text':
             case 'password':
             case 'email':
             default:
-                // TextField expects suggestions and onSuggestionPick optionally
-                return (
+                fieldEl = (
                     <TextField
                         key={name}
                         field={fieldProps}
@@ -103,6 +134,17 @@ export function GenericFormModal({
                     />
                 );
         }
+
+        return (
+            <>
+                {fieldEl}
+                {error && (
+                    <span style={{ color: '#ff4757', fontSize: '11px', marginTop: '-8px', display: 'block' }}>
+                        {error}
+                    </span>
+                )}
+            </>
+        );
     };
 
     return (

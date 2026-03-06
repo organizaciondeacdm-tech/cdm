@@ -2,11 +2,21 @@ import { useState, useEffect } from 'react';
 import App from './acdm/acdm-system.jsx';
 import { loginWithSession, logoutSession, performTrafficHandshake, restoreUserFromSession } from './utils/authSession.js';
 import PapiwebSpinner from './PapiwebSpinner.jsx';
+import NotificationToast from './acdm/components/system/NotificationToast.jsx';
+import { GenericFormModal } from './acdm/components/system/forms/index.js';
+import { useNotifications } from './hooks/useNotifications.js';
+import { useAcdmEvent, ACDM_EVENTS } from './hooks/useAcdmEvents.js';
+
+const LOGIN_SCHEMA = [
+  { name: 'username', label: 'Usuario',     type: 'text',     required: true, placeholder: 'admin' },
+  { name: 'password', label: 'Contraseña',  type: 'password', required: true, placeholder: '••••••••' },
+];
 
 /**
  * Wrapper que proporciona autenticación MongoDB a acdm-system.jsx
  */
 export default function AppWithAuth() {
+  const LOGIN_LOG_PREFIX = '[ACDM][LOGIN][APP]';
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState('');
@@ -14,6 +24,20 @@ export default function AppWithAuth() {
   const [trafficLock, setTrafficLock] = useState(null);
   const [unlocking, setUnlocking] = useState(false);
   const [unlockError, setUnlockError] = useState('');
+
+  // ── Notificaciones globales ─────────────────────────────────────────
+  const { notifications, notify, dismiss } = useNotifications();
+
+  // Escuchar errores y mutaciones de datos para surfacearlos globalmente
+  useAcdmEvent(ACDM_EVENTS.ERROR, (detail) => {
+    notify({ type: 'error', message: detail?.message || 'Error en la operación' });
+  });
+
+  useAcdmEvent(ACDM_EVENTS.MUTATION, (detail) => {
+    if (detail?.message) {
+      notify({ type: 'success', message: detail.message });
+    }
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -46,17 +70,35 @@ export default function AppWithAuth() {
   }, []);
 
   const handleLogin = async (username, password) => {
+    const normalizedUsername = String(username || '').trim();
+    const normalizedPassword = String(password || '');
+    console.log(`${LOGIN_LOG_PREFIX} handleLogin called`, {
+      username: normalizedUsername,
+      hasPassword: Boolean(normalizedPassword)
+    });
+
     setIsLoggingIn(true);
     setLoginError('');
     try {
-      const session = await loginWithSession(username, password);
+      const session = await loginWithSession(normalizedUsername, normalizedPassword);
       setCurrentUser(session.user);
+      console.log(`${LOGIN_LOG_PREFIX} login success`, {
+        username: session?.user?.username || normalizedUsername
+      });
     } catch (err) {
       setLoginError(err.message);
-      throw err;
+      console.error(`${LOGIN_LOG_PREFIX} login failed`, {
+        message: err?.message || 'error desconocido',
+        status: err?.status
+      });
     } finally {
+      console.log(`${LOGIN_LOG_PREFIX} login flow finished`);
       setIsLoggingIn(false);
     }
+  };
+
+  const handleLoginSubmit = async ({ username, password }) => {
+    await handleLogin(username, password);
   };
 
   const handleLogout = async () => {
@@ -88,6 +130,7 @@ export default function AppWithAuth() {
         alignItems: 'center',
         justifyContent: 'center'
       }}>
+        <NotificationToast notifications={notifications} dismiss={dismiss} />
         <PapiwebSpinner />
       </div>
     );
@@ -110,6 +153,7 @@ export default function AppWithAuth() {
           justifyContent: 'center',
           padding: 24
         }}>
+          <NotificationToast notifications={notifications} dismiss={dismiss} />
           <div style={{
             width: 'min(620px, 100%)',
             background: '#111827',
@@ -149,7 +193,7 @@ export default function AppWithAuth() {
         </div>
       );
     }
-    return <App currentUser={currentUser} onLogout={handleLogout} />;
+    return <><NotificationToast notifications={notifications} dismiss={dismiss} /><App currentUser={currentUser} onLogout={handleLogout} /></>;
   }
 
   return (
@@ -162,6 +206,7 @@ export default function AppWithAuth() {
       alignItems: 'center',
       justifyContent: 'center',
     }}>
+      <NotificationToast notifications={notifications} dismiss={dismiss} />
       <style>{`
         body { margin: 0; padding: 0; }
         .login-box {
@@ -218,6 +263,91 @@ export default function AppWithAuth() {
           outline: none;
           border-color: #00d4ff;
           box-shadow: 0 0 0 3px rgba(0,212,255,0.1);
+        }
+
+        /* ── Estilos para GenericFormModal dentro del login-box ── */
+        .login-box .modal-overlay {
+          position: static;
+          background: none;
+          display: block;
+          padding: 0;
+        }
+        .login-box .modal {
+          background: none;
+          border: none;
+          border-radius: 0;
+          padding: 0;
+          box-shadow: none;
+          width: auto;
+          max-width: none;
+        }
+        .login-box .modal-header {
+          display: none;
+        }
+        .login-box .modal-body {
+          padding: 0;
+        }
+        .login-box label.field {
+          display: flex;
+          flex-direction: column;
+          margin-bottom: 16px;
+        }
+        .login-box label.field > span {
+          display: block;
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 1px;
+          color: #8bacc8;
+          text-transform: uppercase;
+          margin-bottom: 6px;
+          font-family: 'Exo 2', sans-serif;
+        }
+        .login-box label.field > input {
+          width: 100%;
+          background: #0f1626;
+          border: 1px solid #1e3a5f;
+          border-radius: 8px;
+          padding: 9px 14px;
+          color: #e8f4f8;
+          font-family: 'Exo 2', sans-serif;
+          font-size: 13px;
+          transition: all 0.2s ease;
+          box-sizing: border-box;
+        }
+        .login-box label.field > input:focus {
+          outline: none;
+          border-color: #00d4ff;
+          box-shadow: 0 0 0 3px rgba(0,212,255,0.1);
+        }
+        .login-box label.field > input::placeholder {
+          color: #3a5a80;
+        }
+        .login-box .btn.btn-secondary {
+          display: none;
+        }
+        .login-box .btn.btn-primary {
+          width: 100%;
+          background: linear-gradient(135deg, #0099cc, #00d4ff);
+          color: #0a0e1a;
+          padding: 10px 16px;
+          border-radius: 8px;
+          font-family: 'Exo 2', sans-serif;
+          font-size: 13px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          border: none;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          margin-top: 4px;
+        }
+        .login-box .btn.btn-primary:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 6px 20px rgba(0,212,255,0.4);
+        }
+        .login-box .btn.btn-primary:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
         .btn-primary {
           width: 100%;
@@ -340,49 +470,23 @@ export default function AppWithAuth() {
             <PapiwebSpinner />
           </div>
         ) : (
-          <form onSubmit={(e) => {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            handleLogin(formData.get('username'), formData.get('password'));
-          }}>
+          <>
             {loginError && (
               <div className="error">
                 <span>⚠️</span>
                 {loginError}
               </div>
             )}
-
-            <div className="form-group">
-              <label className="form-label">Usuario</label>
-              <input
-                className="form-input"
-                type="text"
-                name="username"
-                placeholder="admin"
-                autoFocus
-                disabled={isLoggingIn}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Contraseña</label>
-              <input
-                className="form-input"
-                type="password"
-                name="password"
-                placeholder="••••••••"
-                disabled={isLoggingIn}
-              />
-            </div>
-
-            <button
-              className="btn-primary"
-              type="submit"
-              disabled={isLoggingIn}
-            >
-              Ingresar →
-            </button>
-          </form>
+            <GenericFormModal
+              isOpen
+              onClose={() => {}}
+              title=""
+              schema={LOGIN_SCHEMA}
+              onSubmit={handleLoginSubmit}
+              submitLabel="Ingresar →"
+              isSubmitting={isLoggingIn}
+            />
+          </>
         )}
       </div>
     </div>

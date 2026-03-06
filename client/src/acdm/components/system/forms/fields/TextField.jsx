@@ -8,7 +8,7 @@ export function TextField({ field, value, onChange, suggestions = [], onSuggesti
       <input
         id={identity.id}
         name={identity.name}
-        type={field.type === 'email' ? 'email' : 'text'}
+        type={field.type === 'email' ? 'email' : field.type === 'password' ? 'password' : 'text'}
         value={value || ''}
         placeholder={field.placeholder || ''}
         onChange={(event) => onChange(field.name, event.target.value)}
