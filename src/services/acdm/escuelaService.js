@@ -28,7 +28,8 @@ const repairEscuelaNestedIds = async (escuela) => {
   const visitas = ensureNestedIds(escuela.visitas);
   const proyectos = ensureNestedIds(escuela.proyectos);
   const informes = ensureNestedIds(escuela.informes);
-  const changed = visitas.changed || proyectos.changed || informes.changed;
+  const citas = ensureNestedIds(escuela.citas);
+  const changed = visitas.changed || proyectos.changed || informes.changed || citas.changed;
   if (!changed) return escuela;
 
   await Escuela.updateOne(
@@ -37,7 +38,8 @@ const repairEscuelaNestedIds = async (escuela) => {
       $set: {
         visitas: visitas.normalized,
         proyectos: proyectos.normalized,
-        informes: informes.normalized
+        informes: informes.normalized,
+        citas: citas.normalized
       }
     }
   );
@@ -46,7 +48,8 @@ const repairEscuelaNestedIds = async (escuela) => {
     ...escuela,
     visitas: visitas.normalized,
     proyectos: proyectos.normalized,
-    informes: informes.normalized
+    informes: informes.normalized,
+    citas: citas.normalized
   };
 };
 

@@ -19,7 +19,11 @@ const {
   getInformesEscuela,
   createInformeEscuela,
   updateInformeEscuela,
-  deleteInformeEscuela
+  deleteInformeEscuela,
+  getCitas,
+  createCita,
+  updateCita,
+  deleteCita
 } = require('../controllers/escuelaController');
 const { authMiddleware, requirePermission } = require('../middleware/auth');
 const { validateEscuela } = require('../middleware/validation');
@@ -40,6 +44,10 @@ router.get('/:id/informes', authMiddleware, getInformesEscuela);
 router.post('/:id/informes', authMiddleware, createInformeEscuela);
 router.put('/:id/informes/:informeId', authMiddleware, updateInformeEscuela);
 router.delete('/:id/informes/:informeId', authMiddleware, deleteInformeEscuela);
+router.get('/:id/citas', authMiddleware, getCitas);
+router.post('/:id/citas', authMiddleware, createCita);
+router.put('/:id/citas/:citaId', authMiddleware, updateCita);
+router.delete('/:id/citas/:citaId', authMiddleware, deleteCita);
 router.get('/:id', authMiddleware, getEscuelaById);
 router.post('/', 
   authMiddleware, 
