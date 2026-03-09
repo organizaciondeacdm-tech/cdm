@@ -121,12 +121,13 @@ const buildInformePayload = (form = {}) => ({
   observaciones: String(form.observaciones || '').trim()
 });
 
-const buildProyectoPayload = (form = {}) => ({
-  nombre: String(form.nombre || '').trim(),
+const buildCitaPayload = (form = {}) => ({
+  titulo: String(form.titulo || '').trim(),
   descripcion: String(form.descripcion || '').trim(),
-  estado: String(form.estado || 'En Progreso').trim() || 'En Progreso',
-  fechaInicio: form.fechaInicio || null,
-  fechaBaja: form.fechaBaja || null
+  fecha: form.fecha || null,
+  hora: String(form.hora || '').trim(),
+  participantes: String(form.participantes || '').trim(),
+  visitaId: form.visitaId || null
 });
 
 const buildVisitaPayload = (form = {}) => ({
@@ -588,6 +589,58 @@ export function useAcdmMongoData(currentUser) {
     }
   }, [loadAllData, request]);
 
+  const addCita = useCallback(async (escuelaId, citaForm) => {
+    try {
+      if (!escuelaId) {
+        throw new Error('Debe seleccionar una escuela');
+      }
+      await request(`/api/escuelas/${escuelaId}/citas`, {
+        method: 'POST',
+        body: JSON.stringify(buildCitaPayload(citaForm))
+      });
+      await loadAllData();
+    } catch (err) {
+      console.error('Error agregando cita:', err);
+      setError(err.message);
+      throw err;
+    }
+  }, [loadAllData, request]);
+
+  const updateCita = useCallback(async (escuelaId, citaForm) => {
+    try {
+      if (!escuelaId) {
+        throw new Error('Debe seleccionar una escuela');
+      }
+      const citaId = citaForm.id || citaForm._id;
+      if (!citaId) {
+        throw new Error('Cita inválida');
+      }
+      await request(`/api/escuelas/${escuelaId}/citas/${citaId}`, {
+        method: 'PUT',
+        body: JSON.stringify(buildCitaPayload(citaForm))
+      });
+      await loadAllData();
+    } catch (err) {
+      console.error('Error actualizando cita:', err);
+      setError(err.message);
+      throw err;
+    }
+  }, [loadAllData, request]);
+
+  const deleteCita = useCallback(async (escuelaId, citaId) => {
+    if (!confirm('¿Eliminar cita?')) return false;
+
+    try {
+      await request(`/api/escuelas/${escuelaId}/citas/${citaId}`, { method: 'DELETE' });
+      await loadAllData();
+      return true;
+    } catch (err) {
+      console.error('Error eliminando cita:', err);
+      setError(err.message);
+      throw err;
+    }
+  }, [loadAllData, request]);
+
   return {
     db,
     loading,
@@ -609,6 +662,9 @@ export function useAcdmMongoData(currentUser) {
     addInforme,
     updateInforme,
     deleteInforme,
+    addCita,
+    updateCita,
+    deleteCita,
     reload: loadAllData
   };
 }

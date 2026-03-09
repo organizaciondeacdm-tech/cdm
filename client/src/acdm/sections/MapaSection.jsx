@@ -1,240 +1,188 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { useAcdmContext } from '../context/AcdmContext.jsx';
 
 export function MapaSection({ escuelas }) {
-  const [search, setSearch] = useState('');
-  const [filterNivel, setFilterNivel] = useState('');
-  const [filterDE, setFilterDE] = useState('');
-  const [selected, setSelected] = useState(null);
+  const { search } = useAcdmContext();
+  const [selectedEscuelas, setSelectedEscuelas] = useState([]);
+  const [showOnlySelected, setShowOnlySelected] = useState(false);
 
-  const niveles = [...new Set((escuelas || []).map(e => e.nivel).filter(Boolean))].sort();
-  const des = [...new Set((escuelas || []).map(e => e.de).filter(Boolean))].sort();
+  const escuelasMapeables = useMemo(() => {
+    return escuelas.filter(e => {
+      const matchSearch = !search ||
+        e.escuela.toLowerCase().includes(search.toLowerCase()) ||
+        e.de.toLowerCase().includes(search.toLowerCase());
 
-  const term = search.toLowerCase().trim();
-  const filtered = (escuelas || []).filter(esc => {
-    if (filterNivel && esc.nivel !== filterNivel) return false;
-    if (filterDE && esc.de !== filterDE) return false;
-    if (term && !(
-      String(esc.escuela || '').toLowerCase().includes(term) ||
-      String(esc.de || '').toLowerCase().includes(term) ||
-      String(esc.direccion || '').toLowerCase().includes(term)
-    )) return false;
-    return true;
-  });
+      const hasCoords = e.ubicacion?.coordinates && e.ubicacion.coordinates.length === 2;
 
-  const withCoords = filtered.filter(e => e.lat && e.lng && e.lat !== 0 && e.lng !== 0);
-  const withoutCoords = filtered.filter(e => !e.lat || !e.lng || e.lat === 0 || e.lng === 0);
+      const isSelected = showOnlySelected ? selectedEscuelas.some(sel => sel.id === e.id) : true;
 
-  const NIVEL_COLORS = {
-    'Inicial': '#00d4ff',
-    'Primario': '#a259ff',
-    'Secundario': '#f6c90e',
-    'Especial': '#ff6b6b',
-    'Técnica': '#4ecdc4',
-    'Adultos': '#ff9f43',
+      return matchSearch && hasCoords && isSelected;
+    });
+  }, [escuelas, search, selectedEscuelas, showOnlySelected]);
+
+  const mapBounds = useMemo(() => {
+    if (escuelasMapeables.length === 0) return null;
+    let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+
+    // Si solo hay una escuela o están muy cerca, damos un margen fijo
+    escuelasMapeables.forEach(e => {
+      const [lng, lat] = e.ubicacion.coordinates;
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+    });
+
+    // Expand bounds slightly to prevent markers from hitting the edge
+    const lngPadding = Math.max((maxLng - minLng) * 0.15, 0.05);
+    const latPadding = Math.max((maxLat - minLat) * 0.15, 0.05);
+
+    return {
+      minLng: minLng - lngPadding,
+      maxLng: maxLng + lngPadding,
+      minLat: minLat - latPadding,
+      maxLat: maxLat + latPadding,
+    };
+  }, [escuelasMapeables]);
+
+  const getPosition = (lng, lat) => {
+    if (!mapBounds) return { left: '50%', top: '50%' };
+    const { minLng, maxLng, minLat, maxLat } = mapBounds;
+    const xPct = ((lng - minLng) / (maxLng - minLng)) * 100;
+    // Lat increases towards North, so Y is inverted in web (top is 0)
+    const yPct = 100 - (((lat - minLat) / (maxLat - minLat)) * 100);
+    return { left: `${xPct}%`, top: `${yPct}%` };
   };
 
-  const getNivelColor = (nivel) => NIVEL_COLORS[nivel] || 'var(--accent)';
-
   return (
-    <div>
-      {/* Header */}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '80vh' }}>
       <div className="flex items-center justify-between mb-16">
         <div>
-          <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2 }}>
-            🗺️ Mapa de Escuelas
-          </h1>
-          <p style={{ color: 'var(--text2)', fontSize: 13 }}>
-            Ubicación geográfica de escuelas del sistema
-          </p>
-          <div className="flex gap-8 items-center" style={{ marginTop: 8 }}>
-            <span className="badge badge-info" style={{ background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.25)', color: 'var(--accent)' }}>
-              {withCoords.length} con coordenadas
-            </span>
-            <span className="badge" style={{ background: 'rgba(255,107,107,0.1)', border: '1px solid rgba(255,107,107,0.25)', color: '#ff6b6b' }}>
-              {withoutCoords.length} sin coordenadas
-            </span>
-          </div>
+          <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2 }}>Mapa Escolar</h1>
+          <p style={{ color: 'var(--text2)', fontSize: 13 }}>Mostrando {escuelasMapeables.length} establecimiento(s) geolocalizado(s)</p>
+        </div>
+        <div className="flex gap-8">
+          <button 
+            className={`btn ${showOnlySelected ? 'btn-primary' : 'btn-secondary'}`} 
+            onClick={() => setShowOnlySelected(!showOnlySelected)}
+            disabled={selectedEscuelas.length === 0}
+          >
+            {showOnlySelected ? 'Mostrar Todas' : 'Mostrar Solo Seleccionadas'} ({selectedEscuelas.length})
+          </button>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="card mb-16" style={{ padding: 12 }}>
-        <div className="flex gap-8 items-center flex-wrap">
-          <input
-            className="form-input"
-            placeholder="Buscar escuela, DE o dirección..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{ flex: 1, minWidth: 200 }}
-          />
-          <select
-            className="form-input"
-            value={filterNivel}
-            onChange={e => setFilterNivel(e.target.value)}
-            style={{ minWidth: 130 }}
-          >
-            <option value="">Todos los niveles</option>
-            {niveles.map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
-          <select
-            className="form-input"
-            value={filterDE}
-            onChange={e => setFilterDE(e.target.value)}
-            style={{ minWidth: 100 }}
-          >
-            <option value="">Todos los DE</option>
-            {des.map(d => <option key={d} value={d}>{d}</option>)}
-          </select>
-          {(search || filterNivel || filterDE) && (
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={() => { setSearch(''); setFilterNivel(''); setFilterDE(''); }}
-            >
-              ✕ Limpiar
-            </button>
-          )}
-        </div>
-      </div>
+      <div className="card" style={{ flex: 1, padding: 0, position: 'relative', overflow: 'hidden', borderRadius: 16, backgroundColor: 'var(--bg2)', border: '1px solid var(--border)' }}>
+        {/* Background Grid Pattern */}
+        <div style={{
+          position: 'absolute', inset: 0, opacity: 0.05, pointerEvents: 'none',
+          backgroundImage: 'linear-gradient(var(--text1) 1px, transparent 1px), linear-gradient(90deg, var(--text1) 1px, transparent 1px)',
+          backgroundSize: '40px 40px'
+        }} />
 
-      {/* Map placeholder + list */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 16, alignItems: 'start' }}>
-
-        {/* Map area */}
-        <div className="card" style={{ padding: 0, overflow: 'hidden', minHeight: 500, position: 'relative' }}>
-          {/* Simulated map with OpenStreetMap embed */}
-          {withCoords.length > 0 ? (
-            <div style={{ position: 'relative', width: '100%', height: 500 }}>
-              <iframe
-                title="Mapa de escuelas"
-                style={{ width: '100%', height: '100%', border: 'none' }}
-                src={`https://www.openstreetmap.org/export/embed.html?bbox=-58.55,-34.70,-58.30,-34.50&layer=mapnik&marker=${withCoords[0]?.lat},${withCoords[0]?.lng}`}
-                allowFullScreen
-              />
-              <div style={{
-                position: 'absolute', bottom: 0, left: 0, right: 0,
-                background: 'rgba(20,20,36,0.85)', backdropFilter: 'blur(4px)',
-                padding: '8px 12px', fontSize: 12, color: 'var(--text2)',
-                display: 'flex', alignItems: 'center', gap: 8
-              }}>
-                <span>🗺️</span>
-                <span>Vista general de CABA — seleccioná una escuela en la lista para ver su ubicación exacta</span>
-              </div>
-            </div>
-          ) : (
-            <div style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              height: 500, gap: 16, color: 'var(--text2)'
-            }}>
-              <div style={{ fontSize: 64 }}>🗺️</div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text1)' }}>No hay escuelas con coordenadas</div>
-              <div style={{ fontSize: 13, textAlign: 'center', maxWidth: 320 }}>
-                Editá las escuelas y completá los campos de latitud y longitud para visualizarlas en el mapa.
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Sidebar list */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 520, overflowY: 'auto' }}>
-          {filtered.length === 0 && (
-            <div className="card no-data" style={{ textAlign: 'center', padding: 24, color: 'var(--text2)' }}>
-              No se encontraron escuelas
-            </div>
-          )}
-
-          {withCoords.map(esc => (
-            <div
-              key={esc.id}
-              className="card"
-              style={{
-                padding: '10px 12px',
-                cursor: 'pointer',
-                border: selected?.id === esc.id
-                  ? '1px solid var(--accent)'
-                  : '1px solid rgba(255,255,255,0.06)',
-                background: selected?.id === esc.id
-                  ? 'rgba(0,212,255,0.07)'
-                  : undefined,
-                transition: 'all 0.15s'
-              }}
-              onClick={() => setSelected(selected?.id === esc.id ? null : esc)}
-            >
-              <div className="flex items-center gap-8">
-                <span style={{
-                  width: 10, height: 10, borderRadius: '50%',
-                  background: getNivelColor(esc.nivel),
-                  flexShrink: 0, boxShadow: `0 0 6px ${getNivelColor(esc.nivel)}`
+        {mapBounds ? (
+          escuelasMapeables.map(esc => {
+            const [lng, lat] = esc.ubicacion.coordinates;
+            const isSelected = selectedEscuelas.some(sel => sel.id === esc.id);
+            const pos = getPosition(lng, lat);
+            return (
+              <div
+                key={esc.id}
+                style={{
+                  position: 'absolute',
+                  left: pos.left,
+                  top: pos.top,
+                  transform: 'translate(-50%, -100%)',
+                  cursor: 'pointer',
+                  zIndex: isSelected ? 10 : 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  transition: 'all 0.2s ease',
+                  opacity: showOnlySelected || selectedEscuelas.length === 0 ? 1 : (isSelected ? 1 : 0.6)
+                }}
+                onClick={() => {
+                  setSelectedEscuelas(prev => {
+                    const exists = prev.some(sel => sel.id === esc.id);
+                    if (exists) {
+                      return prev.filter(sel => sel.id !== esc.id);
+                    } else {
+                      return [...prev, esc];
+                    }
+                  });
+                }}
+              >
+                <div style={{
+                  padding: '6px 12px',
+                  backgroundColor: isSelected ? 'var(--accent)' : 'var(--bg1)',
+                  color: isSelected ? '#000' : 'var(--text1)',
+                  border: `2px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                  boxShadow: isSelected ? '0 8px 16px rgba(0,0,0,0.3)' : '0 4px 8px rgba(0,0,0,0.2)',
+                  marginBottom: 8,
+                  transform: isSelected ? 'scale(1.1) translateY(-4px)' : 'scale(1)'
+                }}>
+                  {esc.de} - {esc.escuela}
+                </div>
+                <div style={{
+                  width: 14, height: 14, borderRadius: '50%',
+                  backgroundColor: isSelected ? 'var(--accent)' : 'var(--text1)',
+                  border: '3px solid var(--bg1)',
+                  boxShadow: '0 0 0 2px var(--bg1), 0 4px 8px rgba(0,0,0,0.3)'
                 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {esc.escuela}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
-                    {esc.de} · {esc.nivel}
-                  </div>
-                  {selected?.id === esc.id && (
-                    <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text2)' }}>
-                      <div>📍 {esc.direccion}</div>
-                      <div style={{ marginTop: 2, fontFamily: 'monospace', color: 'var(--accent)' }}>
-                        {Number(esc.lat).toFixed(5)}, {Number(esc.lng).toFixed(5)}
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <span style={{ fontSize: 10, color: 'var(--accent)', background: 'rgba(0,212,255,0.1)', padding: '2px 6px', borderRadius: 4 }}>
-                  📍
-                </span>
               </div>
-            </div>
-          ))}
+            );
+          })
+        ) : (
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text3)' }}>
+            No hay establecimientos con coordenadas válidas para mostrar en el mapa.
+          </div>
+        )}
 
-          {withoutCoords.length > 0 && (
-            <>
-              <div style={{ fontSize: 11, color: 'var(--text2)', padding: '4px 2px', marginTop: 4, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 8 }}>
-                Sin coordenadas ({withoutCoords.length})
-              </div>
-              {withoutCoords.map(esc => (
-                <div
-                  key={esc.id}
-                  className="card"
-                  style={{ padding: '8px 12px', opacity: 0.6, cursor: 'default' }}
+        {/* Selected Schools List */}
+        {selectedEscuelas.length > 0 && (
+          <div style={{
+            position: 'absolute',
+            top: 24, right: 24,
+            backgroundColor: 'var(--bg1)',
+            border: '1px solid var(--border)',
+            borderRadius: 16,
+            padding: '16px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+            zIndex: 20,
+            maxWidth: 300,
+            maxHeight: 'calc(100% - 48px)',
+            overflowY: 'auto',
+            backdropFilter: 'blur(10px)'
+          }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text1)', marginBottom: 12 }}>Escuelas Seleccionadas ({selectedEscuelas.length})</div>
+            {selectedEscuelas.map(esc => (
+              <div key={esc.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 12, color: 'var(--text2)' }}>{esc.de} - {esc.escuela}</div>
+                <button 
+                  className="btn-icon" 
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    setSelectedEscuelas(prev => prev.filter(sel => sel.id !== esc.id)); 
+                  }}
+                  style={{ fontSize: 12, padding: '4px' }}
                 >
-                  <div className="flex items-center gap-8">
-                    <span style={{
-                      width: 10, height: 10, borderRadius: '50%',
-                      background: 'rgba(255,255,255,0.15)',
-                      flexShrink: 0
-                    }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {esc.escuela}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
-                        {esc.de} · {esc.nivel}
-                      </div>
-                    </div>
-                    <span style={{ fontSize: 10, color: 'var(--text2)', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: 4 }}>
-                      sin coord.
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Legend */}
-      <div className="card mt-16" style={{ padding: '10px 16px' }}>
-        <div className="flex gap-16 items-center flex-wrap" style={{ fontSize: 12 }}>
-          <span style={{ color: 'var(--text2)', fontWeight: 600 }}>Referencias:</span>
-          {Object.entries(NIVEL_COLORS).map(([nivel, color]) => (
-            <span key={nivel} className="flex items-center gap-4">
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block' }} />
-              <span style={{ color: 'var(--text2)' }}>{nivel}</span>
-            </span>
-          ))}
-        </div>
+                  ✕
+                </button>
+              </div>
+            ))}
+            <button 
+              className="btn btn-secondary" 
+              onClick={() => setSelectedEscuelas([])} 
+              style={{ width: '100%', marginTop: 12, fontSize: 12 }}
+            >
+              Limpiar Selección
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 {
   "name": "acdm-backend",
   "version": "1.0.0",
-  "description": "Backend para Sistema ACDM - Gestión de Asistentes de Clase",
+  "description": "Backend para Sistema ACDM - Gestión de ACDM",
   "main": "server.js",
   "engines": {
     "node": "24.x"

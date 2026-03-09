@@ -72,6 +72,11 @@ const createInformeEscuela = createNestedCollectionItem('informes');
 const updateInformeEscuela = updateNestedCollectionItem('informes', 'informeId');
 const deleteInformeEscuela = deleteNestedCollectionItem('informes', 'informeId');
 
+const getCitas = getNestedCollection('citas');
+const createCita = createNestedCollectionItem('citas');
+const updateCita = updateNestedCollectionItem('citas', 'citaId');
+const deleteCita = deleteNestedCollectionItem('citas', 'citaId');
+
 module.exports = {
   getEscuelas,
   getEscuelaById,
@@ -91,5 +96,9 @@ module.exports = {
   getInformesEscuela,
   createInformeEscuela,
   updateInformeEscuela,
-  deleteInformeEscuela
+  deleteInformeEscuela,
+  getCitas,
+  createCita,
+  updateCita,
+  deleteCita
 };
