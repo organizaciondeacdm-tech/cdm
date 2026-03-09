@@ -463,7 +463,7 @@ export default function AppWithAuth() {
           </div>
         </div>
         <h1 className="login-title">SISTEMA ACDM</h1>
-        <h2 className="login-sub">Gestión de Asistentes de Clase</h2>
+        <h2 className="login-sub">Gestión de ACDM</h2>
 
         {isLoggingIn ? (
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '40px 0', minHeight: '260px' }}>

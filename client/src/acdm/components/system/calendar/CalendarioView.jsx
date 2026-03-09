@@ -49,7 +49,7 @@ export function CalendarioView({ escuelas }) {
                 if (!docente?.id) return;
                 map.set(docente.id, {
                     id: docente.id,
-                    nombreApellido: docente.nombreApellido || "Sin nombre",
+                    nombreApellido: `${docente.apellido || ''}, ${docente.nombre || ''}`.trim() || "Sin nombre",
                     escuela: escuela.escuela,
                     de: escuela.de
                 });
@@ -71,7 +71,7 @@ export function CalendarioView({ escuelas }) {
                     type: "licencia",
                     id: `${escuela.id}-${docente.id}-${inicio}-${fin}`,
                     docenteId: docente.id,
-                    docente: docente.nombreApellido || "Sin nombre",
+                    docente: `${docente.apellido || ''}, ${docente.nombre || ''}`.trim() || "Sin nombre",
                     escuelaId: escuela.id,
                     escuela: escuela.escuela,
                     de: escuela.de,
@@ -85,11 +85,36 @@ export function CalendarioView({ escuelas }) {
         return items.sort((a, b) => `${a.inicio}-${a.docente}`.localeCompare(`${b.inicio}-${b.docente}`, "es"));
     }, [escuelasFiltradas, selectedDocente, startBound, endBound]);
 
+    const citas = useMemo(() => {
+        const items = [];
+        escuelasFiltradas.forEach((escuela) => {
+            (escuela.citas || []).forEach((cita) => {
+                const fecha = normalizeDateKey(cita.fecha);
+                if (!fecha) return;
+                if (fecha < startBound || fecha > endBound) return;
+                items.push({
+                    type: "cita",
+                    id: `${escuela.id}-${cita._id}`,
+                    titulo: cita.titulo || "Sin título",
+                    descripcion: cita.descripcion || "",
+                    participantes: cita.participantes || "",
+                    hora: cita.hora || "",
+                    escuelaId: escuela.id,
+                    escuela: escuela.escuela,
+                    de: escuela.de,
+                    fecha,
+                    visitaId: cita.visitaId
+                });
+            });
+        });
+        return items.sort((a, b) => `${a.fecha}-${a.titulo}`.localeCompare(`${b.fecha}-${b.titulo}`, "es"));
+    }, [escuelasFiltradas, startBound, endBound]);
+
     const getEventsForDay = (day) => {
         const dateKey = normalizeDateKey(new Date(year, month, day));
         if (!dateKey) return [];
         if (dateKey < startBound || dateKey > endBound) return [];
-        return licencias.filter((licencia) => licencia.inicio <= dateKey && licencia.fin >= dateKey);
+        return [...licencias.filter((licencia) => licencia.inicio <= dateKey && licencia.fin >= dateKey), ...citas.filter((cita) => cita.fecha === dateKey)];
     };
 
     const dayEvents = selectedDay ? getEventsForDay(selectedDay) : [];
@@ -105,7 +130,7 @@ export function CalendarioView({ escuelas }) {
 
     return (
         <div>
-            <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2, marginBottom: 24 }}>Calendario de Licencias</h1>
+            <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--accent)', letterSpacing: 2, marginBottom: 24 }}>Calendario de Licencias y Citas</h1>
 
             <div className="flex gap-16 mb-24" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
                 <div>
@@ -231,18 +256,28 @@ export function CalendarioView({ escuelas }) {
                                 <div style={{ color: 'var(--text3)', fontSize: 13, padding: '20px 0' }}>Sin eventos para este día</div>
                             ) : (
                                 dayEvents.map((ev, i) => (
-                                    <div key={i} className="alert alert-danger" style={{ marginBottom: 8 }}>
-                                        <span>🔴</span>
+                                    <div key={i} className={`alert ${ev.type === 'cita' ? 'alert-info' : 'alert-danger'}`} style={{ marginBottom: 8 }}>
+                                        <span>{ev.type === 'cita' ? '📅' : '🔴'}</span>
                                         <div style={{ flex: 1 }}>
-                                            <strong>{ev.docente}</strong><br />
+                                            <strong>{ev.type === 'cita' ? ev.titulo : ev.docente}</strong><br />
                                             <span style={{ fontSize: 12 }}>{ev.escuela} ({ev.de})</span><br />
-                                            <span style={{ fontSize: 11, opacity: 0.8 }}>{ev.motivo}</span>
-                                            <span style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginTop: 4 }}>
-                                                {formatDate(ev.inicio)} → {formatDate(ev.fin)}
-                                            </span>
-                                            <span style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginTop: 2 }}>
-                                                ⏱ {ev.diasRestantes} día(s) restante(s)
-                                            </span>
+                                            {ev.type === 'cita' ? (
+                                                <>
+                                                    <span style={{ fontSize: 11, opacity: 0.8 }}>{ev.participantes || 'Sin participantes'}</span>
+                                                    {ev.hora && <span style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginTop: 2 }}>🕐 {ev.hora}</span>}
+                                                    {ev.descripcion && <span style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginTop: 2 }}>{ev.descripcion}</span>}
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <span style={{ fontSize: 11, opacity: 0.8 }}>{ev.motivo}</span>
+                                                    <span style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginTop: 4 }}>
+                                                        {formatDate(ev.inicio)} → {formatDate(ev.fin)}
+                                                    </span>
+                                                    <span style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginTop: 2 }}>
+                                                        ⏱ {ev.diasRestantes} día(s) restante(s)
+                                                    </span>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
                                 ))
@@ -250,23 +285,38 @@ export function CalendarioView({ escuelas }) {
                         </div>
                     ) : (
                         <div className="card">
-                            <div className="card-header"><span className="card-title">📋 Licencias del Mes</span></div>
-                            {monthLicencias.length === 0 ? (
-                                <div className="no-data">Sin licencias registradas</div>
+                            <div className="card-header"><span className="card-title">📋 Eventos del Mes</span></div>
+                            {[...monthLicencias, ...citas.filter(c => c.fecha >= monthStart && c.fecha <= monthEnd)].length === 0 ? (
+                                <div className="no-data">Sin eventos registrados</div>
                             ) : (
-                                monthLicencias.map((d, i) => (
+                                [...monthLicencias, ...citas.filter(c => c.fecha >= monthStart && c.fecha <= monthEnd)].sort((a, b) => {
+                                    const aDate = a.fecha || a.inicio;
+                                    const bDate = b.fecha || b.inicio;
+                                    return aDate.localeCompare(bDate);
+                                }).map((d, i) => (
                                     <div key={i} className="docente-row" style={{ marginBottom: 8, cursor: 'pointer', padding: 8, borderRadius: 4, transition: 'all 0.2s', ':hover': { background: 'var(--border)' } }}
                                         onMouseEnter={e => e.currentTarget.style.background = 'var(--border)'}
                                         onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                                        <div style={{ fontFamily: 'Rajdhani', fontWeight: 700 }}>{d.docente}</div>
+                                        <div style={{ fontFamily: 'Rajdhani', fontWeight: 700 }}>{d.type === 'cita' ? d.titulo : d.docente}</div>
                                         <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>{d.escuela} ({d.de})</div>
-                                        <div style={{ fontSize: 11, color: 'var(--yellow)', marginTop: 2 }}>{d.motivo}</div>
-                                        <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-                                            {formatDate(d.inicio)} → {formatDate(d.fin)}
-                                        </div>
-                                        <div style={{ fontSize: 10, color: 'var(--accent3)', marginTop: 4, fontWeight: 700 }}>
-                                            ⏱ {d.diasRestantes} día(s)
-                                        </div>
+                                        {d.type === 'cita' ? (
+                                            <>
+                                                <div style={{ fontSize: 11, color: 'var(--blue)', marginTop: 2 }}>{d.participantes || 'Sin participantes'}</div>
+                                                <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                                                    {formatDate(d.fecha)} {d.hora && `🕐 ${d.hora}`}
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div style={{ fontSize: 11, color: 'var(--yellow)', marginTop: 2 }}>{d.motivo}</div>
+                                                <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                                                    {formatDate(d.inicio)} → {formatDate(d.fin)}
+                                                </div>
+                                                <div style={{ fontSize: 10, color: 'var(--accent3)', marginTop: 4, fontWeight: 700 }}>
+                                                    ⏱ {d.diasRestantes} día(s)
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                 ))
                             )}

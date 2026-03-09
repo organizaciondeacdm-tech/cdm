@@ -11,6 +11,7 @@ import {
   EscuelaModal,
   ExportPDF,
   InformeModal,
+  CitaModal,
   Login,
   MailsExtractor,
   ProyectoModal,
@@ -58,6 +59,7 @@ function AcdmContent() {
     visitaModal, setVisitaModal,
     proyectoModal, setProyectoModal,
     informeModal, setInformeModal,
+    citaModal, setCitaModal,
     showExport, setShowExport,
     showMailsExtractor, setShowMailsExtractor,
     showHiddenAdmin
@@ -163,6 +165,7 @@ function AcdmContent() {
             setVisitaModal={setVisitaModal}
             setProyectoModal={setProyectoModal}
             setInformeModal={setInformeModal}
+            setCitaModal={setCitaModal}
             deleteEscuela={deleteEscuela}
             deleteDocente={deleteDocente}
             deleteAlumno={deleteAlumno}
@@ -333,6 +336,19 @@ function AcdmContent() {
             }
           }}
           onClose={() => setInformeModal(null)} escuelas={escuelas} isDeveloper={isDeveloper} />
+      )}
+      {citaModal && (
+        <CitaModal citaModal={citaModal} 
+          onSave={async (form, escId) => {
+            try {
+              if (citaModal.isNew) await addCita(escId, form);
+              else await updateCita(escId, form);
+              setFeedback({ id: Date.now(), type: 'success', message: 'Cita guardada correctamente.' });
+            } catch (err) {
+              throw err;
+            }
+          }}
+          onClose={() => setCitaModal(null)} escuelas={escuelas} visitas={escuelas.flatMap(e => (e.visitas || []).map(v => ({ ...v, escuelaId: e.id })))} isDeveloper={isDeveloper} />
       )}
       {showExport && <ExportPDF escuelas={escuelas} onClose={() => setShowExport(false)} />}
       {showMailsExtractor && <MailsExtractor escuelas={escuelas} onClose={() => setShowMailsExtractor(false)} />}
