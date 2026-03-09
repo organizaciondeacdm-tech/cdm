@@ -38,6 +38,8 @@ const DEFAULT_CONTEXT_VALUE = {
     setProyectoModal: noop,
     informeModal: null,
     setInformeModal: noop,
+    citaModal: null,
+    setCitaModal: noop,
     darkMode: true,
     setDarkMode: noop,
     db: EMPTY_DB,
@@ -59,7 +61,10 @@ const DEFAULT_CONTEXT_VALUE = {
     deleteProyecto: noop,
     addInforme: noop,
     updateInforme: noop,
-    deleteInforme: noop
+    deleteInforme: noop,
+    addCita: noop,
+    updateCita: noop,
+    deleteCita: noop
 };
 
 export function useAcdmContext() {
@@ -95,7 +100,10 @@ export function AcdmProvider({ children, currentUser: propCurrentUser, onLogout:
         deleteProyecto,
         addInforme,
         updateInforme,
-        deleteInforme
+        deleteInforme,
+        addCita,
+        updateCita,
+        deleteCita
     } = useAcdmMongoData(currentUser);
 
     const activeDb = db || EMPTY_DB;
@@ -115,6 +123,7 @@ export function AcdmProvider({ children, currentUser: propCurrentUser, onLogout:
     const [visitaModal, setVisitaModal] = useState(null);
     const [proyectoModal, setProyectoModal] = useState(null);
     const [informeModal, setInformeModal] = useState(null);
+    const [citaModal, setCitaModal] = useState(null);
 
     const [darkMode, setDarkMode] = useState(() => {
         const saved = localStorage.getItem("acdm_darkMode");
@@ -233,6 +242,8 @@ export function AcdmProvider({ children, currentUser: propCurrentUser, onLogout:
         setProyectoModal,
         informeModal,
         setInformeModal,
+        citaModal,
+        setCitaModal,
         darkMode,
         setDarkMode,
 
@@ -258,7 +269,10 @@ export function AcdmProvider({ children, currentUser: propCurrentUser, onLogout:
         deleteProyecto,
         addInforme,
         updateInforme,
-        deleteInforme
+        deleteInforme,
+        addCita,
+        updateCita,
+        deleteCita
     };
 
     return (

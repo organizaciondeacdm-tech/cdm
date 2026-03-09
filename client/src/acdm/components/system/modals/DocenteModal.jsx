@@ -27,7 +27,7 @@ export function DocenteModal({ docente, titularId, isNew, onSave, onClose, isDev
             suplentes: docente?.suplentes || []
         });
 
-    const MOTIVOS = ["-", "Art. 101 - Enfermedad", "Art. 102 - Familiar enfermo", "Art. 103 - Maternidad", "Art. 104 - Accidente de trabajo", "Art. 108 - Gremial", "Art. 115 - Estudio", "Art. 140 - Concurso", "Otro"];
+    const MOTIVOS = ["-", "69A – Enfermedad", "69E – Familiar enfermo", "69CH – Maternidad", "Accidente de trabajo", "69K – Estudio", "Otro"];
 
     const [calYear, setCalYear] = useState(new Date().getFullYear());
     const [calMonth, setCalMonth] = useState(new Date().getMonth());
@@ -112,13 +112,21 @@ export function DocenteModal({ docente, titularId, isNew, onSave, onClose, isDev
                     <div className="form-group">
                         <label className="form-label">Jornada</label>
                         <select className="form-select" value={form.jornada} onChange={e => setForm({ ...form, jornada: e.target.value })} disabled={saving}>
-                            <option>Simple</option><option>Completa</option><option>Extendida</option>
+                            <option>Simple mañana</option><option>Simple tarde</option><option>Simple mañana y tarde</option><option>Completa</option><option>Extendida</option>
                         </select>
                     </div>
                 </div>
                 <div className="form-group">
                     <label className="form-label">Nombre y Apellido</label>
                     <input className="form-input" value={form.nombreApellido} onChange={e => setForm({ ...form, nombreApellido: e.target.value })} placeholder="Apellido, Nombre" disabled={saving} />
+                </div>
+                <div className="form-group">
+                    <label className="form-label">Correo Electrónico</label>
+                    <input type="email" className="form-input" value={form.email || ""} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="email@ejemplo.com" disabled={saving} />
+                </div>
+                <div className="form-group">
+                    <label className="form-label">DNI</label>
+                    <input type="text" className="form-input" value={form.dni || ""} onChange={e => setForm({ ...form, dni: e.target.value })} placeholder="12345678" disabled={saving} />
                 </div>
                 <div className="form-row">
                     <div className="form-group">
