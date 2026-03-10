@@ -27,6 +27,14 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: false,
     minify: 'terser',
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          leaflet: ['leaflet', 'react-leaflet'],
+        },
+      },
+    },
     // En Vercel, NODE_ENV se configura automáticamente a 'production'
   },
 })
